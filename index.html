@@ -27,7 +27,7 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-let habits = [];
+        let habits = [];
         let viewingDate = new Date();
         let collapsed = {};
         let activeFilter = null;
@@ -76,12 +76,10 @@ let habits = [];
             const dIdx = getDayIdx(viewingDate);
             const oldQty = h.history[dIdx];
             
-            // Toggle down if clicking the current high mark, else set to val
             const newVal = (oldQty === val) ? val - 1 : val;
             const oldTier = getTier(h, oldQty);
             const newTier = getTier(h, newVal);
             
-            // FIX: Force progress to stick for all days forward in the week
             for (let i = dIdx; i < 7; i++) {
                 h.history[i] = newVal;
             }
@@ -113,8 +111,20 @@ let habits = [];
             const categories = [...new Set(habits.map(h => h.cat))];
 
             categories.forEach(cat => {
-                const items = habits.filter(h => h.cat === cat);
                 const isCol = collapsed[cat];
+
+                // SORTING LOGIC: Track original index to maintain order unless acted upon today
+                let items = habits
+                    .map((h, originalIndex) => ({ ...h, originalIndex })) 
+                    .filter(h => h.cat === cat);
+
+                items.sort((a, b) => {
+                    const aActed = (dIdx === 0 && a.history[dIdx] > 0) || (dIdx > 0 && a.history[dIdx] !== a.history[dIdx-1]);
+                    const bActed = (dIdx === 0 && b.history[dIdx] > 0) || (dIdx > 0 && b.history[dIdx] !== b.history[dIdx-1]);
+                    if (aActed && !bActed) return 1;
+                    if (!aActed && bActed) return -1;
+                    return a.originalIndex - b.originalIndex;
+                });
                 
                 todayRoot.innerHTML += `<div class="category-header" onclick="window.toggleCol('${cat}')">
                     <div style="flex:1"><span class="cat-label">${cat}</span></div>
@@ -135,22 +145,29 @@ let habits = [];
                     counts[tier]++;
                     totalMoney += (tier==='punish'?h.valPunish : tier==='low'?h.valLow : tier==='goal'?h.valGoal : h.valBonus);
 
+                    // PRIORITY LOGIC
+                    const daysRem = 7 - dIdx;
+                    const isUrgent = (h.goal - cur) >= daysRem && (h.goal - cur) > 0;
+
                     let bubblesHtml = '';
                     for (let i = 1; i <= (h.max || 7); i++) {
                         const stepTier = getTier(h, i);
                         bubblesHtml += `<div class="bubble ${i <= cur ? 'filled ' + stepTier : ''}" style="border-color:var(--color-${stepTier})" onclick="window.toggleBubble('${h.id}',${i})"></div>`;
                     }
 
-                    if (!isCol && (!activeFilter || activeFilter === tier)) {
-                        todayRoot.innerHTML += `<div class="habit-card">
-                            <div style="font-size:24px; margin-right:15px;">${h.icon}</div>
-                            <div style="flex:1">
-                                <p style="margin:0; font-weight:600;">${h.name}</p>
-                                <div class="bubbles">${bubblesHtml}</div>
-                            </div></div>`;
-                    }
+                    const cardHtml = `<div class="habit-card ${isUrgent ? 'priority-border' : ''}">
+                        <div style="font-size:24px; margin-right:15px;">${h.icon}</div>
+                        <div style="flex:1">
+                            ${isUrgent ? '<span class="priority-tag">✦ Goal at Risk</span>' : ''}
+                            <p style="margin:0; font-weight:600;">${h.name}</p>
+                            <div class="bubbles">${bubblesHtml}</div>
+                        </div></div>`;
 
-                    // CALENDAR FIX: Dot is only colored if value CHANGED from the previous day
+                    if (!isCol && (!activeFilter || activeFilter === tier)) {
+                        todayRoot.innerHTML += cardHtml;
+                    }
+                    if (isUrgent) priorityRoot.innerHTML += cardHtml;
+
                     const weeklyDotsHtml = h.history.map((c, i) => {
                         const isActionDay = (i === 0 && c > 0) || (i > 0 && c !== h.history[i-1]);
                         if (isActionDay && c > 0) {
@@ -232,7 +249,6 @@ let habits = [];
                 });
             }
         }
-        window.addEventListener('load', fetchWeatherAndUV);
     </script>
     <style>
         :root { 
@@ -370,8 +386,6 @@ let habits = [];
             align-items: center;
         }
         .cat-label { font-family: 'Playfair Display'; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; text-transform: uppercase; }
-        .status-mini-bar { display: flex; gap: 4px; margin-top: 6px; }
-        .mini-dot { width: 7px; height: 7px; border-radius: 50%; }
 
         .habit-card { background: rgba(255, 255, 255, 0.95); border-radius: 20px 5px; padding: 20px; margin-bottom: 15px; display: flex; align-items: center; box-shadow: 5px 5px 15px rgba(212,163,163,0.08); position: relative; }
         .priority-border { border: 1.5px solid #d4af37; background: rgba(255, 254, 251, 0.98); }
