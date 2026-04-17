@@ -226,14 +226,13 @@
             document.getElementById('daytimeGreeting').innerText = g;
         }
 
-async function fetchWeatherAndUV() {
+        async function fetchWeatherAndUV() {
             updateGreeting();
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(async (pos) => {
                     const lat = pos.coords.latitude;
                     const lon = pos.coords.longitude;
                     
-                    // 1. Fetch UV (Using your OpenUV Key)
                     try {
                         const uvRes = await fetch(`https://api.openuv.io/api/v1/uv?lat=${lat}&lng=${lon}`, {
                             headers: { "x-access-token": "openuv-q3onrmo2zfflc-io" }
@@ -247,22 +246,18 @@ async function fetchWeatherAndUV() {
                         }
                     } catch (e) { console.error("UV error", e); }
 
-                    // 2. Fetch Weather (Using your OpenWeather Key)
                     try {
                         const weatherRes = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=imperial&appid=ff4155f6320e193fc795a67d1b40b6dd`);
-                        
                         if (weatherRes.status === 401) {
                             document.getElementById('weatherInfo').innerText = "Activating...";
-                            console.warn("Weather key not yet active. Wait ~30 mins.");
                             return;
                         }
-
                         const wData = await weatherRes.json();
-                        // Safety Check: Only try to read 'temp' if 'main' exists
                         if (wData && wData.main) {
-                            document.getElementById('weatherInfo').innerText = `${Math.round(wData.main.temp)}°F`;
-                        } else {
-                            document.getElementById('weatherInfo').innerText = "N/A";
+                            // Map the OpenWeather icon to a cute emoji!
+                            const em = { '01d':'☀️','01n':'🌙','02d':'⛅','02n':'☁️','03d':'☁️','03n':'☁️','04d':'☁️','04n':'☁️','09d':'🌧️','09n':'🌧️','10d':'🌦️','10n':'🌧️','11d':'⛈️','11n':'⛈️','13d':'❄️','13n':'❄️','50d':'🌫️','50n':'🌫️' };
+                            const icon = em[wData.weather[0].icon] || '☀️';
+                            document.getElementById('weatherInfo').innerText = `${icon} ${Math.round(wData.main.temp)}°F`;
                         }
                     } catch (e) { 
                         console.error("Weather error", e);
@@ -469,11 +464,24 @@ async function fetchWeatherAndUV() {
     </div>
 
     <div class="tier-cards">
-        <div class="tier-card" id="filter-punish" onclick="window.toggleFilter('punish')"><div style="font-family:'Great Vibes'; font-size:18px;">Debt</div><div id="countPunish">0</div></div>
-        <div class="tier-card" id="filter-low" onclick="window.toggleFilter('low')"><div style="font-family:'Great Vibes'; font-size:18px;">Low</div><div id="countLow">0</div></div>
-        <div class="tier-card" id="filter-goal" onclick="window.toggleFilter('goal')"><div style="font-family:'Great Vibes'; font-size:18px;">Goal</div><div id="countGoal">0</div></div>
-        <div class="tier-card" id="filter-bonus" onclick="window.toggleFilter('bonus')"><div style="font-family:'Great Vibes'; font-size:18px;">Bonus</div><div id="countBonus">0</div></div>
+        <div class="tier-card" id="filter-punish" style="color: var(--color-punish);" onclick="window.toggleFilter('punish')">
+            <div style="font-family:'Great Vibes'; font-size:22px;">Debt</div>
+            <div id="countPunish" style="opacity: 0.7; font-weight: bold; font-size: 14px;">0</div>
+        </div>
+        <div class="tier-card" id="filter-low" style="color: var(--color-low);" onclick="window.toggleFilter('low')">
+            <div style="font-family:'Great Vibes'; font-size:22px;">Low</div>
+            <div id="countLow" style="opacity: 0.7; font-weight: bold; font-size: 14px;">0</div>
+        </div>
+        <div class="tier-card" id="filter-goal" style="color: var(--color-goal);" onclick="window.toggleFilter('goal')">
+            <div style="font-family:'Great Vibes'; font-size:22px;">Goal</div>
+            <div id="countGoal" style="opacity: 0.7; font-weight: bold; font-size: 14px;">0</div>
+        </div>
+        <div class="tier-card" id="filter-bonus" style="color: var(--color-bonus);" onclick="window.toggleFilter('bonus')">
+            <div style="font-family:'Great Vibes'; font-size:22px;">Bonus</div>
+            <div id="countBonus" style="opacity: 0.7; font-weight: bold; font-size: 14px;">0</div>
+        </div>
     </div>
+
     <nav class="tabs">
         <div class="tab active" onclick="window.switchTab(0)">Today</div>
         <div class="tab" onclick="window.switchTab(1)">Priorities</div>
