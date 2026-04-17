@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>The Victoria Tracker</title>
+    <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@300;400;600&display=swap" rel="stylesheet">
+    
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, doc, setDoc, getDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        emailjs.init("NBsqPD18bw0R4XtcM");
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyB9ztBUJyUvlyycujmDjbTcKT-GIejpsM4",
+            authDomain: "victoria-tracker-1d2ab.firebaseapp.com",
+            projectId: "victoria-tracker-1d2ab",
+            storageBucket: "victoria-tracker-1d2ab.firebasestorage.app",
+            messagingSenderId: "893813838454",
+            appId: "1:893813838454:web:72ac9f21756d00f8a88557"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        let habits = [];
+        let viewingDate = new Date();
+        let collapsed = {};
+        let activeFilter = null;
+
+        const getDayIdx = (d) => (d.getDay() + 6) % 7;
+        
+        async function syncToFirebase() { await setDoc(doc(db, "system", "habits_list"), { data: habits }); }
+
+        window.runWeeklyReport = async (isManual = true) => {
+            let totalMoney = 0;
+            let summaryParts = [];
+            habits.forEach(h => {
+                const cur = h.history[6];
+                const tier = getTier(h, cur);
+                const payout = (tier==='punish'?h.valPunish : tier==='low'?h.valLow : tier==='goal'?h.valGoal : h.valBonus);
+                totalMoney += payout;
+                summaryParts.push(`${h.icon} ${h.name}: ${tier.toUpperCase()} ($${payout.toFixed(2)})`);
+            });
+            try {
+                await emailjs.send("service_gj1f9sj", "template_2cyqti5", { date_range: new Date().toLocaleDateString(), total_money: `$${totalMoney.toFixed(2)}`, summary_text: summaryParts.join('\n') });
+                habits = habits.map(h => ({ ...h, history: [0,0,0,0,0,0,0] }));
+                await syncToFirebase();
+                if(isManual) alert("Weekly report sent!");
+            } catch (err) { console.error("Email failed:", err); }
+        };
+
+        window.addTask = async () => {
+            const name = document.getElementById('newName').value;
+            const cat = document.getElementById('newCat').value;
+            if(!name || !cat) return alert("Fill name and category");
+            habits.push({ id: Date.now().toString(), name, icon: document.getElementById('newIcon').value || "✨", cat, punish:1, low:3, goal:5, bonus:7, max:7, valPunish:-1.5, valLow:1, valGoal:2, valBonus:3, history:[0,0,0,0,0,0,0] });
+            await syncToFirebase();
+            document.getElementById('newName').value = '';
+        };
+
+        window.deleteTask = async (id) => { if (confirm("Delete?")) { habits = habits.filter(h => h.id !== id); await syncToFirebase(); } };
+
+        window.updateField = async (id, field, value) => {
+            const h = habits.find(x => x.id === id);
+            h[field] = (field.startsWith('val')) ? parseFloat(value) : parseInt(value);
+            await syncToFirebase();
+        };
+
+        window.toggleBubble = async (id, val) => {
+            const h = habits.find(x => x.id === id);
+            const dIdx = getDayIdx(viewingDate);
+            const oldQty = h.history[dIdx];
+            const newVal = (oldQty === val) ? val - 1 : val;
+            const oldTier = getTier(h, oldQty);
+            const newTier = getTier(h, newVal);
+            for (let i = dIdx; i < 7; i++) h.history[i] = newVal;
+            await syncToFirebase();
+            if (newVal > oldQty && newTier !== 'punish' && newTier !== oldTier) triggerFanfare(newTier);
+        };
+
+        onSnapshot(doc(db, "system", "habits_list"), (doc) => { if (doc.exists()) { habits = doc.data().data; render(); } });
+
+        function getTier(h, count) {
+            if (count >= h.bonus) return 'bonus';
+            if (count >= h.goal) return 'goal';
+            if (count >= h.low) return 'low';
+            return 'punish'; 
+        }
+
+        window.render = function() {
+            buildDateStrip();
+            updateFiltersUI();
+            const todayRoot = document.getElementById('todayRoot');
+            const priorityRoot = document.getElementById('priorityRoot');
+            const weeklyRoot = document.getElementById('weeklyRoot');
+            const manageRoot = document.getElementById('manageRoot');
+            const dIdx = getDayIdx(viewingDate);
+            const daysRem = 7 - dIdx;
+            
+            todayRoot.innerHTML = ''; priorityRoot.innerHTML = ''; weeklyRoot.innerHTML = ''; manageRoot.innerHTML = '';
+            let totalMoney = 0; let counts = { punish: 0, low: 0, goal: 0, bonus: 0 };
+            const categories = [...new Set(habits.map(h => h.cat))];
+
+            categories.forEach(cat => {
+                const items = habits.filter(h => h.cat === cat);
+                const isCol = collapsed[cat];
+                const dots = items.map(h => `<div class="mini-dot" style="background:var(--color-${getTier(h, h.history[dIdx])})"></div>`).join('');
+                
+                todayRoot.innerHTML += `<div class="category-header" onclick="window.toggleCol('${cat}')">
+                    <div style="flex:1"><span class="cat-label">${cat}</span>${isCol ? `<div class="status-mini-bar">${dots}</div>` : ''}</div>
+                    <span style="color:var(--header-pink); font-size:12px; font-weight:bold;">${isCol ? 'SHOW ✦' : 'HIDE ✧'}</span>
+                </div>`;
+                
+                let weekSectionHtml = `<div class="weekly-cat-section"><h3 class="weekly-cat-label">${cat}</h3><div class="weekly-grid">
+                    <div class="weekly-row day-labels">
+                        <span class="weekly-task-name"></span>
+                        <div class="weekly-dots-row">
+                            <span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span>
+                        </div>
+                    </div>`;
+
+                items.forEach(h => {
+                    const cur = h.history[dIdx];
+                    const tier = getTier(h, cur);
+                    counts[tier]++;
+                    totalMoney += (tier==='punish'?h.valPunish : tier==='low'?h.valLow : tier==='goal'?h.valGoal : h.valBonus);
+                    const isUrgent = (h.goal - cur) >= daysRem && (h.goal - cur) > 0;
+                    
+                    let bubblesHtml = '';
+                    for (let i = 1; i <= (h.max || 7); i++) {
+                        const stepTier = getTier(h, i);
+                        bubblesHtml += `<div class="bubble ${i <= cur ? 'filled ' + stepTier : ''}" style="border-color:var(--color-${stepTier})" onclick="window.toggleBubble('${h.id}',${i})"></div>`;
+                    }
+
+                    const card = `<div class="habit-card ${isUrgent?'priority-border':''}">
+                        <div style="font-size:24px; margin-right:15px;">${h.icon}</div>
+                        <div style="flex:1">
+                            ${isUrgent?'<span class="priority-tag">✦ Goal at Risk</span>':''}
+                            <p style="margin:0; font-weight:600;">${h.name}</p>
+                            <div class="bubbles">${bubblesHtml}</div>
+                        </div></div>`;
+
+                    if (!isCol) {
+                        if (!activeFilter || activeFilter === tier) {
+                            todayRoot.innerHTML += card;
+                        }
+                    }
+
+                    if (isUrgent) priorityRoot.innerHTML += card;
+                    weekSectionHtml += `<div class="weekly-row"><span class="weekly-task-name">${h.name}</span><div class="weekly-dots-row">${h.history.map((c)=>`<div class="weekly-dot" style="background:${c>0?'var(--color-'+getTier(h,c)+')':'#eee'}"></div>`).join('')}</div></div>`;
+                    
+                    manageRoot.innerHTML += `<div class="manage-card">
+                        <h4 class="beloved-small">${h.icon} ${h.name}</h4>
+                        <div style="margin-bottom:10px; font-size:12px;">Max Circles: <input type="number" value="${h.max || 7}" style="width:45px;" onchange="window.updateField('${h.id}','max',this.value)"></div>
+                        <table class="matrix-table">
+                            <tr><th>Tier</th><th>Qty</th><th>$ Payout</th></tr>
+                            <tr><td style="color:var(--color-punish)">Debt</td><td><input type="number" value="${h.punish}" onchange="window.updateField('${h.id}','punish',this.value)"></td><td><input type="number" value="${h.valPunish}" onchange="window.updateField('${h.id}','valPunish',this.value)"></td></tr>
+                            <tr><td style="color:var(--color-low)">Low</td><td><input type="number" value="${h.low}" onchange="window.updateField('${h.id}','low',this.value)"></td><td><input type="number" value="${h.valLow}" onchange="window.updateField('${h.id}','valLow',this.value)"></td></tr>
+                            <tr><td style="color:var(--color-goal)">Goal</td><td><input type="number" value="${h.goal}" onchange="window.updateField('${h.id}','goal',this.value)"></td><td><input type="number" value="${h.valGoal}" onchange="window.updateField('${h.id}','valGoal',this.value)"></td></tr>
+                            <tr><td style="color:var(--color-bonus)">Bonus</td><td><input type="number" value="${h.bonus}" onchange="window.updateField('${h.id}','bonus',this.value)"></td><td><input type="number" value="${h.valBonus}" onchange="window.updateField('${h.id}','valBonus',this.value)"></td></tr>
+                        </table><button class="btn-delete" onclick="window.deleteTask('${h.id}')">DELETE TASK</button></div>`;
+                });
+                
+                weekSectionHtml += `</div></div>`;
+                weeklyRoot.innerHTML += weekSectionHtml;
+            });
+
+            const moneyDisplay = document.getElementById('moneyDisplay');
+            moneyDisplay.innerText = (totalMoney < 0 ? '-$' : '$') + Math.abs(totalMoney).toFixed(2);
+            moneyDisplay.style.color = totalMoney < 0 ? 'var(--color-punish)' : 'var(--text-main)';
+
+            ['Punish', 'Low', 'Goal', 'Bonus'].forEach(t => { const el = document.getElementById('count'+t); if(el) el.innerText = counts[t.toLowerCase()]; });
+        }
+
+        window.toggleCol = (cat) => { collapsed[cat] = !collapsed[cat]; render(); };
+        window.toggleFilter = (tier) => { activeFilter = (activeFilter === tier) ? null : tier; render(); };
+        window.switchTab = (idx) => {
+            document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', i === idx));
+            document.querySelectorAll('.view').forEach((v, i) => v.classList.toggle('active', i === idx));
+            render();
+        };
+        window.handleManageClick = () => { if (prompt("Passcode:") === "1234") window.switchTab(3); };
+        function updateFiltersUI() { ['punish', 'low', 'goal', 'bonus'].forEach(t => { const el = document.getElementById('filter-' + t); if(el) el.className = `tier-card ${activeFilter === t ? 'active-filter' : ''}`; }); }
+        
+        function buildDateStrip() {
+            const strip = document.getElementById('dateStrip'); strip.innerHTML = '';
+            const start = new Date(); start.setDate(start.getDate() - getDayIdx(start));
+            for (let i = 0; i < 7; i++) {
+                const d = new Date(start); d.setDate(start.getDate() + i);
+                const active = d.toDateString() === viewingDate.toDateString();
+                strip.innerHTML += `<div class="date-item ${active?'active':''}" onclick="window.setDate('${d.toISOString()}')">
+                    <div class="day-label">${d.toLocaleDateString('en-US',{weekday:'short'}).toUpperCase()}</div>
+                    <div class="day-num">${d.getDate()}</div>
+                </div>`;
+            }
+        }
+        window.setDate = (iso) => { viewingDate = new Date(iso); render(); };
+        function triggerFanfare(tier) {
+            const moneyEl = document.getElementById('moneyDisplay');
+            moneyEl.classList.add('payout-pulse');
+            setTimeout(() => moneyEl.classList.remove('payout-pulse'), 1000);
+            if (tier === 'low') confetti({ particleCount: 40, spread: 50, origin: { y: 0.8 } });
+            else if (tier === 'goal') confetti({ particleCount: 100, spread: 70, origin: { y: 0.7 } });
+            else if (tier === 'bonus') {
+                const end = Date.now() + 2000;
+                (function frame() {
+                    confetti({ particleCount: 5, angle: 60, spread: 55, origin: { x: 0 } });
+                    confetti({ particleCount: 5, angle: 120, spread: 55, origin: { x: 1 } });
+                    if (Date.now() < end) requestAnimationFrame(frame);
+                }());
+            }
+        }
+
+        async function fetchUV() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(async (pos) => {
+                    const res = await fetch(`https://api.openuv.io/api/v1/uv?lat=${pos.coords.latitude}&lng=${pos.coords.longitude}`, {
+                        headers: { "x-access-token": "openuv-q3onrmo2zfflc-io" }
+                    });
+                    const data = await res.json();
+                    const uv = data.result.uv.toFixed(1);
+                    const el = document.getElementById('uvDisplay');
+                    el.innerText = `UV: ${uv}`; el.style.display = 'inline-block';
+                    el.style.color = uv > 6 ? 'var(--color-punish)' : uv > 3 ? 'var(--color-low)' : 'var(--color-goal)';
+                });
+            }
+        }
+        window.addEventListener('load', fetchUV);
+    </script>
+    <style>
+        :root { 
+            --bg-color: #f8f6f2; 
+            --header-pink: #d4a3a3; 
+            --soft-rose: #f9ecec; 
+            --text-main: #4a3a3a; 
+            --color-punish: #d9534f; 
+            --color-low: #e67e22; 
+            --color-goal: #27ae60; 
+            --color-bonus: #8e44ad; 
+        }
+        
+        body { 
+            font-family: 'Montserrat', sans-serif; 
+            background-color: var(--bg-color);
+            background-image: url("background.jpg");
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            background-repeat: no-repeat;
+            margin: 0; 
+            color: var(--text-main); 
+        }
+
+        .phone-mockup { width: 100%; max-width: 480px; margin: auto; padding: 25px; box-sizing: border-box; }
+        
+        .tabs { 
+            display: flex; 
+            justify-content: center; 
+            gap: 15px; 
+            margin-bottom: 20px; 
+            background: rgba(255, 255, 255, 0.45); 
+            padding: 12px 10px;
+            border-radius: 50px;
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        }
+        .tab { 
+            font-family: 'Playfair Display', serif; 
+            color: #555; 
+            cursor: pointer; 
+            font-size: 14px; 
+            font-weight: 700; 
+            transition: all 0.2s ease;
+            text-shadow: 0 1px 1px rgba(255,255,255,0.8);
+        }
+        .tab.active { 
+            color: var(--header-pink); 
+            text-shadow: 0 0 8px rgba(212, 163, 163, 0.3);
+        }
+
+        .greeting-line { font-family: 'Montserrat'; font-size: 24px; margin-bottom: 20px; text-shadow: 0 1px 2px white; }
+        .beloved { font-family: 'Great Vibes', cursive; font-size: 38px; color: var(--header-pink); margin-left: 5px; }
+        .uv-tag { font-size: 11px; background: rgba(255,255,255,0.5); padding: 3px 8px; border-radius: 10px; margin-left: 10px; vertical-align: middle; font-weight: 700; }
+        .date-strip { display: flex; justify-content: space-between; margin-bottom: 25px; }
+        .date-item { text-align: center; cursor: pointer; padding: 10px 5px; min-width: 45px; color: #666; font-weight: 600; }
+        .date-item.active { background: white; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); color: var(--header-pink); }
+        
+        /*Girly & Elegant Money Display Container */
+        .earnings-container { 
+            background: rgba(255, 255, 255, 0.6); 
+            border-radius: 40px 10px; 
+            padding: 25px; 
+            margin-bottom: 25px; 
+            text-align: center; 
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            box-shadow: 0 10px 25px rgba(212, 163, 163, 0.2);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .earnings-container::before {
+            content: "✿";
+            position: absolute;
+            top: 5px;
+            left: 10px;
+            color: rgba(212, 163, 163, 0.3);
+            font-size: 18px;
+        }
+
+        .earnings-label {
+            font-family: 'Montserrat', sans-serif;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--header-pink);
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        .earnings-value { 
+            font-family: 'Great Vibes', cursive; 
+            font-size: 52px; 
+            font-weight: 400;
+            text-shadow: 2px 2px 0px rgba(255, 255, 255, 0.8);
+            transition: all 0.5s ease;
+            display: inline-block;
+        }
+        
+        .payout-pulse {
+            animation: goldGlow 1s ease;
+        }
+
+        @keyframes goldGlow {
+            0% { transform: scale(1); text-shadow: 0 0 0px var(--header-pink); }
+            50% { transform: scale(1.05); text-shadow: 0 0 15px var(--header-pink); }
+            100% { transform: scale(1); text-shadow: 0 0 0px var(--header-pink); }
+        }
+        
+        .tier-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 25px; }
+        .tier-card { background: rgba(255, 255, 255, 0.7); border-radius: 12px; padding: 10px 5px; text-align: center; cursor: pointer; backdrop-filter: blur(2px); }
+        .tier-card.active-filter { background: white; border: 1.5px solid var(--header-pink); box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+        
+        .view { display: none; } .view.active { display: block; }
+        
+        .category-header { 
+            display: flex; 
+            padding: 15px 10px; 
+            cursor: pointer; 
+            border-bottom: 1px solid rgba(212,163,163,0.15); 
+            background: rgba(255,255,255,0.4);
+            border-radius: 8px;
+            margin-bottom: 5px;
+            align-items: center;
+        }
+        .cat-label { font-family: 'Playfair Display'; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; text-transform: uppercase; }
+        .status-mini-bar { display: flex; gap: 4px; margin-top: 6px; }
+        .mini-dot { width: 7px; height: 7px; border-radius: 50%; }
+
+        .habit-card { background: rgba(255, 255, 255, 0.95); border-radius: 20px 5px; padding: 20px; margin-bottom: 15px; display: flex; align-items: center; box-shadow: 5px 5px 15px rgba(212,163,163,0.08); position: relative; }
+        .priority-border { border: 1.5px solid #d4af37; background: rgba(255, 254, 251, 0.98); }
+        
+        .priority-tag { 
+            position: absolute; 
+            top: 10px; 
+            right: 15px;
+            font-size: 9px; 
+            background: rgba(212, 175, 55, 0.1);
+            color: #b8860b; 
+            padding: 4px 8px;
+            border-radius: 20px;
+            font-weight: 800; 
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .bubbles { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+        .bubble { width: 24px; height: 24px; border-radius: 50%; border: 2.5px solid; background: white; cursor: pointer; }
+        .bubble.filled.punish { background: var(--color-punish); border-color: var(--color-punish); }
+        .bubble.filled.low { background: var(--color-low); border-color: var(--color-low); }
+        .bubble.filled.goal { background: var(--color-goal); border-color: var(--color-goal); }
+        .bubble.filled.bonus { background: var(--color-bonus); border-color: var(--color-bonus); }
+        
+        .weekly-grid { background: rgba(255, 255, 255, 0.85); border-radius: 15px; padding: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.03); }
+        .weekly-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #f2f2f2; }
+        .day-labels { border-bottom: 1.5px solid var(--soft-rose); color: #888; font-weight: 700; font-size: 10px; }
+        .weekly-task-name { font-size: 12px; font-weight: 600; width: 35%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .weekly-dots-row { display: flex; justify-content: space-between; flex: 1; margin-left: 10px; }
+        .weekly-dot { width: 11px; height: 11px; border-radius: 50%; }
+
+        .manage-card { background: rgba(255, 255, 255, 0.95); padding: 15px; border-radius: 15px; margin-bottom: 15px; border-left: 4px solid var(--header-pink); }
+        .matrix-table input { width: 100%; border: 1px solid #eee; padding: 5px; text-align: center; background: white; }
+        .btn-delete { margin-top: 15px; color: #d9534f; background: none; border: 1px solid; border-radius: 8px; padding: 8px; width: 100%; font-size: 10px; font-weight: bold; cursor: pointer; }
+        footer { text-align: center; margin-top: 40px; font-family: 'Great Vibes'; color: var(--header-pink); font-size: 24px; padding-bottom: 20px; text-shadow: 0 1px 1px white; }
+    </style>
+</head>
+<body>
+<div class="phone-mockup">
+    <header>
+        <div class="greeting-line">Hello,<span class="beloved">Victoria</span><span id="uvDisplay" class="uv-tag" style="display:none;"></span></div>
+        <div class="date-strip" id="dateStrip"></div>
+    </header>
+    
+    <div class="earnings-container">
+        <span class="earnings-label">Current Balance</span>
+        <span class="earnings-value" id="moneyDisplay">$0.00</span>
+    </div>
+
+    <div class="tier-cards">
+        <div class="tier-card" id="filter-punish" onclick="window.toggleFilter('punish')"><div style="font-family:'Great Vibes'; font-size:18px;">Debt</div><div id="countPunish">0</div></div>
+        <div class="tier-card" id="filter-low" onclick="window.toggleFilter('low')"><div style="font-family:'Great Vibes'; font-size:18px;">Low</div><div id="countLow">0</div></div>
+        <div class="tier-card" id="filter-goal" onclick="window.toggleFilter('goal')"><div style="font-family:'Great Vibes'; font-size:18px;">Goal</div><div id="countGoal">0</div></div>
+        <div class="tier-card" id="filter-bonus" onclick="window.toggleFilter('bonus')"><div style="font-family:'Great Vibes'; font-size:18px;">Bonus</div><div id="countBonus">0</div></div>
+    </div>
+    <nav class="tabs">
+        <div class="tab active" onclick="window.switchTab(0)">Today</div>
+        <div class="tab" onclick="window.switchTab(1)">Priorities</div>
+        <div class="tab" onclick="window.switchTab(2)">Weekly</div>
+        <div class="tab" onclick="window.handleManageClick()">Manage 🔒</div>
+    </nav>
+    <div id="view-today" class="view active"><div id="todayRoot"></div></div>
+    <div id="view-priority" class="view"><div id="priorityRoot"></div></div>
+    <div id="view-weekly" class="view"><div id="weeklyRoot"></div></div>
+    <div id="view-manage" class="view">
+        <div class="manage-card" style="margin-bottom:20px;">
+            <div style="display:flex; gap:10px; margin-bottom:10px;">
+                <input type="text" id="newIcon" placeholder="Icon" style="width:25%;">
+                <input type="text" id="newName" placeholder="Habit Name" style="flex:1;">
+            </div>
+            <input type="text" id="newCat" placeholder="Category" style="width:100%; margin-bottom:10px;">
+            <button onclick="window.addTask()" style="width:100%; background:var(--header-pink); color:white; border:none; padding:10px; border-radius:8px;">Add Habit</button>
+        </div>
+        <button style="width:100%; padding:15px; margin-bottom:20px; background:var(--text-main); color:white; border:none; border-radius:12px;" onclick="window.runWeeklyReport(true)">Send Weekly Report</button>
+        <div id="manageRoot"></div>
+    </div>
+    <footer>Victoria Tracker</footer>
+</div>
+</body>
+</html>
