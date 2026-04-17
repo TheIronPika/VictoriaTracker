@@ -113,7 +113,6 @@
             categories.forEach(cat => {
                 const isCol = collapsed[cat];
 
-                // SORTING LOGIC: Track original index to maintain order unless acted upon today
                 let items = habits
                     .map((h, originalIndex) => ({ ...h, originalIndex })) 
                     .filter(h => h.cat === cat);
@@ -126,7 +125,6 @@
                     return a.originalIndex - b.originalIndex;
                 });
                 
-                // MINI DOTS LOGIC
                 let miniDotsHtml = '';
                 items.forEach(h => {
                     const cur = h.history[dIdx];
@@ -156,7 +154,6 @@
                     counts[tier]++;
                     totalMoney += (tier==='punish'?h.valPunish : tier==='low'?h.valLow : tier==='goal'?h.valGoal : h.valBonus);
 
-                    // PRIORITY LOGIC
                     const daysRem = 7 - dIdx;
                     const isUrgent = (h.goal - cur) >= daysRem && (h.goal - cur) > 0;
 
@@ -250,7 +247,6 @@
                 navigator.geolocation.getCurrentPosition(async (pos) => {
                     const { latitude: lat, longitude: lon } = pos.coords;
                     
-                    // 1. Fetch Weather
                     try {
                         const weatherRes = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=imperial&appid=ff4155f6320e193fc795a67d1b40b6dd`);
                         const wData = await weatherRes.json();
@@ -260,7 +256,6 @@
                         }
                     } catch (e) { console.error("Weather error:", e); }
 
-                    // 2. Fetch UV Index (OpenUV)
                     try {
                         const uvRes = await fetch(`https://api.openuv.io/api/v1/uv?lat=${lat}&lng=${lon}`, {
                             headers: { "x-access-token": "openuv-q3onrmo2zfflc-io" } 
@@ -270,11 +265,10 @@
                         const uvEl = document.getElementById('uvDisplay');
                         
                         uvEl.innerText = `UV: ${uvIdx}`;
-                        // Color coding the UV text
-                        if (uvIdx <= 2) uvEl.style.color = "#27ae60";      // Low
-                        else if (uvIdx <= 5) uvEl.style.color = "#f1c40f"; // Moderate
-                        else if (uvIdx <= 7) uvEl.style.color = "#e67e22"; // High
-                        else uvEl.style.color = "#d9534f";                // Very High/Extreme
+                        if (uvIdx <= 2) uvEl.style.color = "#27ae60";
+                        else if (uvIdx <= 5) uvEl.style.color = "#f1c40f";
+                        else if (uvIdx <= 7) uvEl.style.color = "#e67e22";
+                        else uvEl.style.color = "#d9534f";
                     } catch (e) { 
                         console.error("UV error:", e); 
                         document.getElementById('uvDisplay').innerText = "UV: --";
@@ -420,9 +414,18 @@
         }
         .cat-label { font-family: 'Playfair Display'; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; text-transform: uppercase; }
 
-        /* ADDED: Missing CSS for the Mini Dots */
         .status-mini-bar { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
-        .mini-dot { width: 7px; height: 7px; border-radius: 50%; opacity: 0.85; }
+        .mini-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            opacity: 0.85;
+            transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            cursor: pointer;
+            user-select: none;
+        }
+        .mini-dot:hover  { transform: scale(1.1); }
+        .mini-dot:active { transform: scale(0.85); }
 
         .habit-card { background: rgba(255, 255, 255, 0.95); border-radius: 20px 5px; padding: 20px; margin-bottom: 15px; display: flex; align-items: center; box-shadow: 5px 5px 15px rgba(212,163,163,0.08); position: relative; }
         .priority-border { border: 1.5px solid #d4af37; background: rgba(255, 254, 251, 0.98); }
@@ -442,7 +445,18 @@
         }
         
         .bubbles { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
-        .bubble { width: 24px; height: 24px; border-radius: 50%; border: 2.5px solid; background: white; cursor: pointer; }
+        .bubble {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border: 2.5px solid;
+            background: white;
+            cursor: pointer;
+            transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            user-select: none;
+        }
+        .bubble:hover  { transform: scale(1.1); }
+        .bubble:active { transform: scale(0.85); }
         .bubble.filled.punish { background: var(--color-punish); border-color: var(--color-punish); }
         .bubble.filled.low { background: var(--color-low); border-color: var(--color-low); }
         .bubble.filled.goal { background: var(--color-goal); border-color: var(--color-goal); }
