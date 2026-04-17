@@ -238,6 +238,8 @@
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(async (pos) => {
                     const { latitude: lat, longitude: lon } = pos.coords;
+                    
+                    // 1. Fetch Weather
                     try {
                         const weatherRes = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=imperial&appid=ff4155f6320e193fc795a67d1b40b6dd`);
                         const wData = await weatherRes.json();
@@ -245,7 +247,27 @@
                             const em = { '01d':'☀️','01n':'🌙','02d':'⛅','02n':'☁️','03d':'☁️','03n':'☁️','04d':'☁️','04n':'☁️','09d':'🌧️','09n':'🌧️','10d':'🌦️','10n':'🌧️','11d':'⛈️','11n':'⛈️','13d':'❄️','13n':'❄️','50d':'🌫️','50n':'🌫️' };
                             document.getElementById('weatherInfo').innerText = `${em[wData.weather[0].icon] || '☀️'} ${Math.round(wData.main.temp)}°F`;
                         }
-                    } catch (e) { console.error(e); }
+                    } catch (e) { console.error("Weather error:", e); }
+
+                    // 2. Fetch UV Index (OpenUV)
+                    try {
+                        const uvRes = await fetch(`https://api.openuv.io/api/v1/uv?lat=${lat}&lng=${lon}`, {
+                            headers: { "x-access-token": "openuv-q3onrmo2zfflc-io" } 
+                        });
+                        const uvData = await uvRes.json();
+                        const uvIdx = Math.round(uvData.result.uv);
+                        const uvEl = document.getElementById('uvDisplay');
+                        
+                        uvEl.innerText = `UV: ${uvIdx}`;
+                        // Color coding the UV text
+                        if (uvIdx <= 2) uvEl.style.color = "#27ae60";      // Low
+                        else if (uvIdx <= 5) uvEl.style.color = "#f1c40f"; // Moderate
+                        else if (uvIdx <= 7) uvEl.style.color = "#e67e22"; // High
+                        else uvEl.style.color = "#d9534f";                // Very High/Extreme
+                    } catch (e) { 
+                        console.error("UV error:", e); 
+                        document.getElementById('uvDisplay').innerText = "UV: --";
+                    }
                 });
             }
         }
