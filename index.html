@@ -126,8 +126,19 @@
                     return a.originalIndex - b.originalIndex;
                 });
                 
+                // MINI DOTS LOGIC
+                let miniDotsHtml = '';
+                items.forEach(h => {
+                    const cur = h.history[dIdx];
+                    const tier = getTier(h, cur);
+                    miniDotsHtml += `<div class="mini-dot" style="background:var(--color-${tier})"></div>`;
+                });
+
                 todayRoot.innerHTML += `<div class="category-header" onclick="window.toggleCol('${cat}')">
-                    <div style="flex:1"><span class="cat-label">${cat}</span></div>
+                    <div style="flex:1">
+                        <span class="cat-label">${cat}</span>
+                        <div class="status-mini-bar">${miniDotsHtml}</div>
+                    </div>
                     <span style="color:var(--header-pink); font-size:12px; font-weight:bold;">${isCol ? 'SHOW ✦' : 'HIDE ✧'}</span>
                 </div>`;
                 
@@ -408,6 +419,10 @@
             align-items: center;
         }
         .cat-label { font-family: 'Playfair Display'; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; text-transform: uppercase; }
+
+        /* ADDED: Missing CSS for the Mini Dots */
+        .status-mini-bar { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
+        .mini-dot { width: 7px; height: 7px; border-radius: 50%; opacity: 0.85; }
 
         .habit-card { background: rgba(255, 255, 255, 0.95); border-radius: 20px 5px; padding: 20px; margin-bottom: 15px; display: flex; align-items: center; box-shadow: 5px 5px 15px rgba(212,163,163,0.08); position: relative; }
         .priority-border { border: 1.5px solid #d4af37; background: rgba(255, 254, 251, 0.98); }
