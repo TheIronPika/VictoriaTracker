@@ -216,21 +216,62 @@
             }
         }
 
-        async function fetchUV() {
+        function updateGreeting() {
+            const hour = new Date().getHours();
+            let g = "Hello";
+            if (hour < 12) g = "Good Morning";
+            else if (hour < 17) g = "Good Afternoon";
+            else if (hour < 21) g = "Good Evening";
+            else g = "Good Night";
+            document.getElementById('daytimeGreeting').innerText = g;
+        }
+
+async function fetchWeatherAndUV() {
+            updateGreeting();
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(async (pos) => {
-                    const res = await fetch(`https://api.openuv.io/api/v1/uv?lat=${pos.coords.latitude}&lng=${pos.coords.longitude}`, {
-                        headers: { "x-access-token": "openuv-q3onrmo2zfflc-io" }
-                    });
-                    const data = await res.json();
-                    const uv = data.result.uv.toFixed(1);
-                    const el = document.getElementById('uvDisplay');
-                    el.innerText = `UV: ${uv}`; el.style.display = 'inline-block';
-                    el.style.color = uv > 6 ? 'var(--color-punish)' : uv > 3 ? 'var(--color-low)' : 'var(--color-goal)';
+                    const lat = pos.coords.latitude;
+                    const lon = pos.coords.longitude;
+                    
+                    // 1. Fetch UV (Using your OpenUV Key)
+                    try {
+                        const uvRes = await fetch(`https://api.openuv.io/api/v1/uv?lat=${lat}&lng=${lon}`, {
+                            headers: { "x-access-token": "openuv-q3onrmo2zfflc-io" }
+                        });
+                        const uvData = await uvRes.json();
+                        if (uvData.result) {
+                            const uv = uvData.result.uv.toFixed(1);
+                            const uvEl = document.getElementById('uvDisplay');
+                            uvEl.innerText = `UV: ${uv}`;
+                            uvEl.style.color = uv > 6 ? 'var(--color-punish)' : uv > 3 ? 'var(--color-low)' : 'var(--color-goal)';
+                        }
+                    } catch (e) { console.error("UV error", e); }
+
+                    // 2. Fetch Weather (Using your OpenWeather Key)
+                    try {
+                        const weatherRes = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=imperial&appid=ff4155f6320e193fc795a67d1b40b6dd`);
+                        
+                        if (weatherRes.status === 401) {
+                            document.getElementById('weatherInfo').innerText = "Activating...";
+                            console.warn("Weather key not yet active. Wait ~30 mins.");
+                            return;
+                        }
+
+                        const wData = await weatherRes.json();
+                        // Safety Check: Only try to read 'temp' if 'main' exists
+                        if (wData && wData.main) {
+                            document.getElementById('weatherInfo').innerText = `${Math.round(wData.main.temp)}°F`;
+                        } else {
+                            document.getElementById('weatherInfo').innerText = "N/A";
+                        }
+                    } catch (e) { 
+                        console.error("Weather error", e);
+                        document.getElementById('weatherInfo').innerText = "Error";
+                    }
                 });
             }
         }
-        window.addEventListener('load', fetchUV);
+        window.addEventListener('load', fetchWeatherAndUV);
     </script>
     <style>
         :root { 
@@ -287,27 +328,29 @@
 
         .greeting-line { font-family: 'Montserrat'; font-size: 24px; margin-bottom: 20px; text-shadow: 0 1px 2px white; }
         .beloved { font-family: 'Great Vibes', cursive; font-size: 38px; color: var(--header-pink); margin-left: 5px; }
-        .uv-tag { font-size: 11px; background: rgba(255,255,255,0.5); padding: 3px 8px; border-radius: 10px; margin-left: 10px; vertical-align: middle; font-weight: 700; }
         .date-strip { display: flex; justify-content: space-between; margin-bottom: 25px; }
         .date-item { text-align: center; cursor: pointer; padding: 10px 5px; min-width: 45px; color: #666; font-weight: 600; }
         .date-item.active { background: white; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); color: var(--header-pink); }
         
-        /*Girly & Elegant Money Display Container */
-        .earnings-container { 
-            background: rgba(255, 255, 255, 0.6); 
-            border-radius: 40px 10px; 
-            padding: 25px; 
-            margin-bottom: 25px; 
-            text-align: center; 
+        .header-status-row {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 25px;
+        }
+        .earnings-mini-card, .weather-mini-card {
+            background: rgba(255, 255, 255, 0.6);
             backdrop-filter: blur(8px);
             -webkit-backdrop-filter: blur(8px);
+            border-radius: 20px 5px;
+            padding: 15px;
             border: 1px solid rgba(255, 255, 255, 0.4);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
             box-shadow: 0 10px 25px rgba(212, 163, 163, 0.2);
-            position: relative;
-            overflow: hidden;
         }
-
-        .earnings-container::before {
+        .earnings-mini-card { flex: 2; text-align: left; position: relative; overflow: hidden; }
+        .earnings-mini-card::before {
             content: "✿";
             position: absolute;
             top: 5px;
@@ -315,7 +358,8 @@
             color: rgba(212, 163, 163, 0.3);
             font-size: 18px;
         }
-
+        .weather-mini-card { flex: 1; text-align: center; font-weight: 700; font-size: 16px; }
+        
         .earnings-label {
             font-family: 'Montserrat', sans-serif;
             text-transform: uppercase;
@@ -326,20 +370,22 @@
             display: block;
             margin-bottom: 5px;
         }
-
-        .earnings-value { 
+        .earnings-value-small { 
             font-family: 'Great Vibes', cursive; 
-            font-size: 52px; 
-            font-weight: 400;
-            text-shadow: 2px 2px 0px rgba(255, 255, 255, 0.8);
-            transition: all 0.5s ease;
+            font-size: 38px; 
+            color: var(--header-pink);
             display: inline-block;
+            transition: all 0.5s ease;
+            text-shadow: 2px 2px 0px rgba(255, 255, 255, 0.8);
+        }
+        .uv-tag-small {
+            font-size: 11px;
+            margin-top: 6px;
+            color: #666;
+            text-transform: uppercase;
         }
         
-        .payout-pulse {
-            animation: goldGlow 1s ease;
-        }
-
+        .payout-pulse { animation: goldGlow 1s ease; }
         @keyframes goldGlow {
             0% { transform: scale(1); text-shadow: 0 0 0px var(--header-pink); }
             50% { transform: scale(1.05); text-shadow: 0 0 15px var(--header-pink); }
@@ -406,13 +452,20 @@
 <body>
 <div class="phone-mockup">
     <header>
-        <div class="greeting-line">Hello,<span class="beloved">Victoria</span><span id="uvDisplay" class="uv-tag" style="display:none;"></span></div>
+        <div class="greeting-line"><span id="daytimeGreeting">Hello</span>,<span class="beloved">Victoria</span></div>
         <div class="date-strip" id="dateStrip"></div>
     </header>
     
-    <div class="earnings-container">
-        <span class="earnings-label">Current Balance</span>
-        <span class="earnings-value" id="moneyDisplay">$0.00</span>
+    <div class="header-status-row">
+        <div class="earnings-mini-card">
+            <span class="earnings-label">Current Balance</span>
+            <span class="earnings-value-small" id="moneyDisplay">$0.00</span>
+        </div>
+
+        <div class="weather-mini-card">
+            <div id="weatherInfo">--°F</div>
+            <div id="uvDisplay" class="uv-tag-small">UV: --</div>
+        </div>
     </div>
 
     <div class="tier-cards">
