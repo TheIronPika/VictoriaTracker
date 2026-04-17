@@ -27,7 +27,7 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        let habits = [];
+let habits = [];
         let viewingDate = new Date();
         let collapsed = {};
         let activeFilter = null;
@@ -75,10 +75,17 @@
             const h = habits.find(x => x.id === id);
             const dIdx = getDayIdx(viewingDate);
             const oldQty = h.history[dIdx];
+            
+            // Toggle down if clicking the current high mark, else set to val
             const newVal = (oldQty === val) ? val - 1 : val;
             const oldTier = getTier(h, oldQty);
             const newTier = getTier(h, newVal);
-            for (let i = dIdx; i < 7; i++) h.history[i] = newVal;
+            
+            // FIX: Force progress to stick for all days forward in the week
+            for (let i = dIdx; i < 7; i++) {
+                h.history[i] = newVal;
+            }
+            
             await syncToFirebase();
             if (newVal > oldQty && newTier !== 'punish' && newTier !== oldTier) triggerFanfare(newTier);
         };
@@ -100,7 +107,6 @@
             const weeklyRoot = document.getElementById('weeklyRoot');
             const manageRoot = document.getElementById('manageRoot');
             const dIdx = getDayIdx(viewingDate);
-            const daysRem = 7 - dIdx;
             
             todayRoot.innerHTML = ''; priorityRoot.innerHTML = ''; weeklyRoot.innerHTML = ''; manageRoot.innerHTML = '';
             let totalMoney = 0; let counts = { punish: 0, low: 0, goal: 0, bonus: 0 };
@@ -109,10 +115,9 @@
             categories.forEach(cat => {
                 const items = habits.filter(h => h.cat === cat);
                 const isCol = collapsed[cat];
-                const dots = items.map(h => `<div class="mini-dot" style="background:var(--color-${getTier(h, h.history[dIdx])})"></div>`).join('');
                 
                 todayRoot.innerHTML += `<div class="category-header" onclick="window.toggleCol('${cat}')">
-                    <div style="flex:1"><span class="cat-label">${cat}</span>${isCol ? `<div class="status-mini-bar">${dots}</div>` : ''}</div>
+                    <div style="flex:1"><span class="cat-label">${cat}</span></div>
                     <span style="color:var(--header-pink); font-size:12px; font-weight:bold;">${isCol ? 'SHOW ✦' : 'HIDE ✧'}</span>
                 </div>`;
                 
@@ -129,30 +134,32 @@
                     const tier = getTier(h, cur);
                     counts[tier]++;
                     totalMoney += (tier==='punish'?h.valPunish : tier==='low'?h.valLow : tier==='goal'?h.valGoal : h.valBonus);
-                    const isUrgent = (h.goal - cur) >= daysRem && (h.goal - cur) > 0;
-                    
+
                     let bubblesHtml = '';
                     for (let i = 1; i <= (h.max || 7); i++) {
                         const stepTier = getTier(h, i);
                         bubblesHtml += `<div class="bubble ${i <= cur ? 'filled ' + stepTier : ''}" style="border-color:var(--color-${stepTier})" onclick="window.toggleBubble('${h.id}',${i})"></div>`;
                     }
 
-                    const card = `<div class="habit-card ${isUrgent?'priority-border':''}">
-                        <div style="font-size:24px; margin-right:15px;">${h.icon}</div>
-                        <div style="flex:1">
-                            ${isUrgent?'<span class="priority-tag">✦ Goal at Risk</span>':''}
-                            <p style="margin:0; font-weight:600;">${h.name}</p>
-                            <div class="bubbles">${bubblesHtml}</div>
-                        </div></div>`;
-
-                    if (!isCol) {
-                        if (!activeFilter || activeFilter === tier) {
-                            todayRoot.innerHTML += card;
-                        }
+                    if (!isCol && (!activeFilter || activeFilter === tier)) {
+                        todayRoot.innerHTML += `<div class="habit-card">
+                            <div style="font-size:24px; margin-right:15px;">${h.icon}</div>
+                            <div style="flex:1">
+                                <p style="margin:0; font-weight:600;">${h.name}</p>
+                                <div class="bubbles">${bubblesHtml}</div>
+                            </div></div>`;
                     }
 
-                    if (isUrgent) priorityRoot.innerHTML += card;
-                    weekSectionHtml += `<div class="weekly-row"><span class="weekly-task-name">${h.name}</span><div class="weekly-dots-row">${h.history.map((c)=>`<div class="weekly-dot" style="background:${c>0?'var(--color-'+getTier(h,c)+')':'#eee'}"></div>`).join('')}</div></div>`;
+                    // CALENDAR FIX: Dot is only colored if value CHANGED from the previous day
+                    const weeklyDotsHtml = h.history.map((c, i) => {
+                        const isActionDay = (i === 0 && c > 0) || (i > 0 && c !== h.history[i-1]);
+                        if (isActionDay && c > 0) {
+                            return `<div class="weekly-dot" style="background:var(--color-${getTier(h, c)})"></div>`;
+                        }
+                        return `<div class="weekly-dot" style="background:#eee"></div>`;
+                    }).join('');
+
+                    weekSectionHtml += `<div class="weekly-row"><span class="weekly-task-name">${h.name}</span><div class="weekly-dots-row">${weeklyDotsHtml}</div></div>`;
                     
                     manageRoot.innerHTML += `<div class="manage-card">
                         <h4 class="beloved-small">${h.icon} ${h.name}</h4>
@@ -173,7 +180,6 @@
             const moneyDisplay = document.getElementById('moneyDisplay');
             moneyDisplay.innerText = (totalMoney < 0 ? '-$' : '$') + Math.abs(totalMoney).toFixed(2);
             moneyDisplay.style.color = totalMoney < 0 ? 'var(--color-punish)' : 'var(--text-main)';
-
             ['Punish', 'Low', 'Goal', 'Bonus'].forEach(t => { const el = document.getElementById('count'+t); if(el) el.innerText = counts[t.toLowerCase()]; });
         }
 
@@ -186,7 +192,6 @@
         };
         window.handleManageClick = () => { if (prompt("Passcode:") === "1234") window.switchTab(3); };
         function updateFiltersUI() { ['punish', 'low', 'goal', 'bonus'].forEach(t => { const el = document.getElementById('filter-' + t); if(el) el.className = `tier-card ${activeFilter === t ? 'active-filter' : ''}`; }); }
-        
         function buildDateStrip() {
             const strip = document.getElementById('dateStrip'); strip.innerHTML = '';
             const start = new Date(); start.setDate(start.getDate() - getDayIdx(start));
@@ -201,68 +206,29 @@
         }
         window.setDate = (iso) => { viewingDate = new Date(iso); render(); };
         function triggerFanfare(tier) {
-            const moneyEl = document.getElementById('moneyDisplay');
-            moneyEl.classList.add('payout-pulse');
-            setTimeout(() => moneyEl.classList.remove('payout-pulse'), 1000);
             if (tier === 'low') confetti({ particleCount: 40, spread: 50, origin: { y: 0.8 } });
             else if (tier === 'goal') confetti({ particleCount: 100, spread: 70, origin: { y: 0.7 } });
-            else if (tier === 'bonus') {
-                const end = Date.now() + 2000;
-                (function frame() {
-                    confetti({ particleCount: 5, angle: 60, spread: 55, origin: { x: 0 } });
-                    confetti({ particleCount: 5, angle: 120, spread: 55, origin: { x: 1 } });
-                    if (Date.now() < end) requestAnimationFrame(frame);
-                }());
-            }
         }
+        window.addEventListener('load', () => { updateGreeting(); fetchWeatherAndUV(); });
 
         function updateGreeting() {
             const hour = new Date().getHours();
-            let g = "Hello";
-            if (hour < 12) g = "Good Morning";
-            else if (hour < 17) g = "Good Afternoon";
-            else if (hour < 21) g = "Good Evening";
-            else g = "Good Night";
+            let g = hour < 12 ? "Good Morning" : hour < 17 ? "Good Afternoon" : hour < 21 ? "Good Evening" : "Good Night";
             document.getElementById('daytimeGreeting').innerText = g;
         }
 
         async function fetchWeatherAndUV() {
-            updateGreeting();
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(async (pos) => {
-                    const lat = pos.coords.latitude;
-                    const lon = pos.coords.longitude;
-                    
-                    try {
-                        const uvRes = await fetch(`https://api.openuv.io/api/v1/uv?lat=${lat}&lng=${lon}`, {
-                            headers: { "x-access-token": "openuv-q3onrmo2zfflc-io" }
-                        });
-                        const uvData = await uvRes.json();
-                        if (uvData.result) {
-                            const uv = uvData.result.uv.toFixed(1);
-                            const uvEl = document.getElementById('uvDisplay');
-                            uvEl.innerText = `UV: ${uv}`;
-                            uvEl.style.color = uv > 6 ? 'var(--color-punish)' : uv > 3 ? 'var(--color-low)' : 'var(--color-goal)';
-                        }
-                    } catch (e) { console.error("UV error", e); }
-
+                    const { latitude: lat, longitude: lon } = pos.coords;
                     try {
                         const weatherRes = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=imperial&appid=ff4155f6320e193fc795a67d1b40b6dd`);
-                        if (weatherRes.status === 401) {
-                            document.getElementById('weatherInfo').innerText = "Activating...";
-                            return;
-                        }
                         const wData = await weatherRes.json();
-                        if (wData && wData.main) {
-                            // Map the OpenWeather icon to a cute emoji!
+                        if (wData.main) {
                             const em = { '01d':'☀️','01n':'🌙','02d':'⛅','02n':'☁️','03d':'☁️','03n':'☁️','04d':'☁️','04n':'☁️','09d':'🌧️','09n':'🌧️','10d':'🌦️','10n':'🌧️','11d':'⛈️','11n':'⛈️','13d':'❄️','13n':'❄️','50d':'🌫️','50n':'🌫️' };
-                            const icon = em[wData.weather[0].icon] || '☀️';
-                            document.getElementById('weatherInfo').innerText = `${icon} ${Math.round(wData.main.temp)}°F`;
+                            document.getElementById('weatherInfo').innerText = `${em[wData.weather[0].icon] || '☀️'} ${Math.round(wData.main.temp)}°F`;
                         }
-                    } catch (e) { 
-                        console.error("Weather error", e);
-                        document.getElementById('weatherInfo').innerText = "Error";
-                    }
+                    } catch (e) { console.error(e); }
                 });
             }
         }
