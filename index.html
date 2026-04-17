@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>The Victoria Tracker</title>
+    
     <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@300;400;600&display=swap" rel="stylesheet">
     
     <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
@@ -11,10 +12,12 @@
     
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, doc, setDoc, getDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, query, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
+        // EMAILJS INIT
         emailjs.init("NBsqPD18bw0R4XtcM");
 
+        // FIREBASE CONFIG
         const firebaseConfig = {
             apiKey: "AIzaSyB9ztBUJyUvlyycujmDjbTcKT-GIejpsM4",
             authDomain: "victoria-tracker-1d2ab.firebaseapp.com",
@@ -27,47 +30,100 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
+        // STATE
         let habits = [];
         let viewingDate = new Date();
         let collapsed = {};
-        let activeFilter = null;
+        let activeFilter = null; 
 
-        const getDayIdx = (d) => (d.getDay() + 6) % 7;
-        
-        async function syncToFirebase() { await setDoc(doc(db, "system", "habits_list"), { data: habits }); }
+        const getDayIdx = (d) => {
+            let day = d.getDay(); 
+            return (day === 0) ? 6 : day - 1; 
+        };
 
+        // SYNC
+        async function syncToFirebase() {
+            await setDoc(doc(db, "system", "habits_list"), { data: habits });
+        }
+
+        // WEEKLY REPORT
         window.runWeeklyReport = async (isManual = true) => {
             let totalMoney = 0;
             let summaryParts = [];
+
             habits.forEach(h => {
                 const cur = h.history[6];
                 const tier = getTier(h, cur);
-                const payout = (tier==='punish'?h.valPunish : tier==='low'?h.valLow : tier==='goal'?h.valGoal : h.valBonus);
+                let payout = 0;
+                if(tier === 'punish') payout = h.valPunish;
+                else if(tier === 'low') payout = h.valLow;
+                else if(tier === 'goal') payout = h.valGoal;
+                else if(tier === 'bonus') payout = h.valBonus;
+                
                 totalMoney += payout;
                 summaryParts.push(`${h.icon} ${h.name}: ${tier.toUpperCase()} ($${payout.toFixed(2)})`);
             });
+
+            const templateParams = {
+                date_range: new Date().toLocaleDateString(),
+                total_money: `$${totalMoney.toFixed(2)}`,
+                summary_text: summaryParts.join('\n')
+            };
+
             try {
-                await emailjs.send("service_gj1f9sj", "template_2cyqti5", { date_range: new Date().toLocaleDateString(), total_money: `$${totalMoney.toFixed(2)}`, summary_text: summaryParts.join('\n') });
-                habits = habits.map(h => ({ ...h, history: [0,0,0,0,0,0,0] }));
+                await emailjs.send("service_gj1f9sj", "template_2cyqti5", templateParams);
+                habits = habits.map(h => ({
+                    ...h,
+                    history: [0, 0, 0, 0, 0, 0, 0]
+                }));
                 await syncToFirebase();
-                if(isManual) alert("Weekly report sent!");
-            } catch (err) { console.error("Email failed:", err); }
+                if(isManual) alert("Weekly report sent and habits reset!");
+            } catch (error) {
+                console.error("FAILED...", error);
+                if(isManual) alert("Email failed to send.");
+            }
         };
 
+        // HABIT ACTIONS
         window.addTask = async () => {
             const name = document.getElementById('newName').value;
             const cat = document.getElementById('newCat').value;
-            if(!name || !cat) return alert("Fill name and category");
-            habits.push({ id: Date.now().toString(), name, icon: document.getElementById('newIcon').value || "✨", cat, punish:1, low:3, goal:5, bonus:7, max:7, valPunish:-1.5, valLow:1, valGoal:2, valBonus:3, history:[0,0,0,0,0,0,0] });
+            const icon = document.getElementById('newIcon').value || "✨";
+            if(!name || !cat) return alert("Please enter name and category");
+
+            const newH = {
+                id: Date.now().toString(),
+                name,
+                icon,
+                cat,
+                punish: 1,
+                low: 3,
+                goal: 5,
+                bonus: 7,
+                max: 7,
+                valPunish: -1.50,
+                valLow: 1.00,
+                valGoal: 2.00,
+                valBonus: 3.00,
+                history: [0, 0, 0, 0, 0, 0, 0]
+            };
+
+            habits.push(newH);
             await syncToFirebase();
             document.getElementById('newName').value = '';
         };
 
-        window.deleteTask = async (id) => { if (confirm("Delete?")) { habits = habits.filter(h => h.id !== id); await syncToFirebase(); } };
+        window.deleteTask = async (id) => {
+            if (confirm("Are you sure you want to delete this habit?")) {
+                habits = habits.filter(h => h.id !== id);
+                await syncToFirebase();
+            }
+        };
 
         window.updateField = async (id, field, value) => {
             const h = habits.find(x => x.id === id);
-            h[field] = (field.startsWith('val')) ? parseFloat(value) : parseInt(value);
+            if(field.startsWith('val')) h[field] = parseFloat(value);
+            else h[field] = parseInt(value);
             await syncToFirebase();
         };
 
@@ -76,128 +132,182 @@
             const dIdx = getDayIdx(viewingDate);
             const oldQty = h.history[dIdx];
             
-            const newVal = (oldQty === val) ? val - 1 : val;
+            let newVal = (oldQty === val) ? val - 1 : val;
+
             const oldTier = getTier(h, oldQty);
             const newTier = getTier(h, newVal);
-            
+
             for (let i = dIdx; i < 7; i++) {
                 h.history[i] = newVal;
             }
-            
+
             await syncToFirebase();
-            if (newVal > oldQty && newTier !== 'punish' && newTier !== oldTier) triggerFanfare(newTier);
+
+            if (newVal > oldQty && newTier !== 'punish' && newTier !== oldTier) {
+                triggerFanfare(newTier);
+            }
         };
 
-        onSnapshot(doc(db, "system", "habits_list"), (doc) => { if (doc.exists()) { habits = doc.data().data; render(); } });
+        // LISTENERS
+        onSnapshot(doc(db, "system", "habits_list"), (doc) => {
+            if (doc.exists()) {
+                habits = doc.data().data;
+                render();
+            }
+        });
 
+        // UTILS
         function getTier(h, count) {
-            if (count >= h.bonus) return 'bonus';
-            if (count >= h.goal) return 'goal';
-            if (count >= h.low) return 'low';
+            if (count >= (h.bonus || 7)) return 'bonus';
+            if (count >= (h.goal || 5)) return 'goal';
+            if (count >= (h.low || 3)) return 'low';
             return 'punish'; 
         }
 
         window.render = function() {
             buildDateStrip();
             updateFiltersUI();
+
             const todayRoot = document.getElementById('todayRoot');
             const priorityRoot = document.getElementById('priorityRoot');
             const weeklyRoot = document.getElementById('weeklyRoot');
             const manageRoot = document.getElementById('manageRoot');
-            const dIdx = getDayIdx(viewingDate);
             
-            todayRoot.innerHTML = ''; priorityRoot.innerHTML = ''; weeklyRoot.innerHTML = ''; manageRoot.innerHTML = '';
-            let totalMoney = 0; let counts = { punish: 0, low: 0, goal: 0, bonus: 0 };
+            const dIdx = getDayIdx(viewingDate);
+
+            todayRoot.innerHTML = '';
+            priorityRoot.innerHTML = '';
+            weeklyRoot.innerHTML = '';
+            manageRoot.innerHTML = '';
+
+            let totalMoney = 0;
+            let counts = { punish: 0, low: 0, goal: 0, bonus: 0 };
+
             const categories = [...new Set(habits.map(h => h.cat))];
 
             categories.forEach(cat => {
                 const isCol = collapsed[cat];
+                let items = habits.filter(h => h.cat === cat);
 
-                let items = habits
-                    .map((h, originalIndex) => ({ ...h, originalIndex })) 
-                    .filter(h => h.cat === cat);
-
+                // --- SORTING LOGIC ---
+                // If the habit has any bubbles filled for the selected day, move it to the bottom.
                 items.sort((a, b) => {
-                    const aActed = (dIdx === 0 && a.history[dIdx] > 0) || (dIdx > 0 && a.history[dIdx] !== a.history[dIdx-1]);
-                    const bActed = (dIdx === 0 && b.history[dIdx] > 0) || (dIdx > 0 && b.history[dIdx] !== b.history[dIdx-1]);
-                    if (aActed && !bActed) return 1;
-                    if (!aActed && bActed) return -1;
-                    return a.originalIndex - b.originalIndex;
-                });
-                
-                let miniDotsHtml = '';
-                items.forEach(h => {
-                    const cur = h.history[dIdx];
-                    const tier = getTier(h, cur);
-                    miniDotsHtml += `<div class="mini-dot" style="background:var(--color-${tier})"></div>`;
+                    const aVal = a.history[dIdx];
+                    const bVal = b.history[dIdx];
+                    
+                    const aHasProgress = aVal > 0;
+                    const bHasProgress = bVal > 0;
+
+                    if (aHasProgress && !bHasProgress) return 1;
+                    if (!aHasProgress && bHasProgress) return -1;
+                    return 0;
                 });
 
-                todayRoot.innerHTML += `<div class="category-header" onclick="window.toggleCol('${cat}')">
-                    <div style="flex:1">
-                        <span class="cat-label">${cat}</span>
-                        <div class="status-mini-bar">${miniDotsHtml}</div>
-                    </div>
-                    <span style="color:var(--header-pink); font-size:12px; font-weight:bold;">${isCol ? 'SHOW ✦' : 'HIDE ✧'}</span>
-                </div>`;
-                
-                let weekSectionHtml = `<div class="weekly-cat-section"><h3 class="weekly-cat-label">${cat}</h3><div class="weekly-grid">
-                    <div class="weekly-row day-labels">
-                        <span class="weekly-task-name"></span>
-                        <div class="weekly-dots-row">
-                            <span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span>
+                let miniDotsHtml = items.map(h => {
+                    const t = getTier(h, h.history[dIdx]);
+                    return `<div class="mini-dot" style="background:var(--color-${t})"></div>`;
+                }).join('');
+
+                todayRoot.innerHTML += `
+                    <div class="category-header" onclick="window.toggleCol('${cat}')">
+                        <div style="flex:1">
+                            <span class="cat-label">${cat}</span>
+                            <div class="status-mini-bar">${miniDotsHtml}</div>
                         </div>
-                    </div>`;
+                        <span style="color:var(--header-pink); font-size:12px; font-weight:bold;">${isCol ? 'SHOW ✦' : 'HIDE ✧'}</span>
+                    </div>
+                `;
+
+                let weekSectionHtml = `
+                    <div class="weekly-cat-section">
+                        <h3 class="weekly-cat-label" style="font-family:'Playfair Display'; font-size:14px; margin: 20px 0 10px 5px; color:var(--header-pink); text-transform:uppercase; letter-spacing:1px;">${cat}</h3>
+                        <div class="weekly-grid">
+                            <div class="weekly-row day-labels">
+                                <span class="weekly-task-name"></span>
+                                <div class="weekly-dots-row">
+                                    <span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span>
+                                </div>
+                            </div>
+                `;
 
                 items.forEach(h => {
                     const cur = h.history[dIdx];
                     const tier = getTier(h, cur);
                     counts[tier]++;
-                    totalMoney += (tier==='punish'?h.valPunish : tier==='low'?h.valLow : tier==='goal'?h.valGoal : h.valBonus);
 
-                    const daysRem = 7 - dIdx;
-                    const isUrgent = (h.goal - cur) >= daysRem && (h.goal - cur) > 0;
+                    let payout = 0;
+                    if(tier === 'punish') payout = h.valPunish;
+                    else if(tier === 'low') payout = h.valLow;
+                    else if(tier === 'goal') payout = h.valGoal;
+                    else if(tier === 'bonus') payout = h.valBonus;
+                    totalMoney += payout;
+
+                    const daysRemainingInWeek = 7 - dIdx;
+                    const isUrgent = (h.goal - cur) >= daysRemainingInWeek && (h.goal - cur) > 0;
 
                     let bubblesHtml = '';
                     for (let i = 1; i <= (h.max || 7); i++) {
                         const stepTier = getTier(h, i);
-                        bubblesHtml += `<div class="bubble ${i <= cur ? 'filled ' + stepTier : ''}" style="border-color:var(--color-${stepTier})" onclick="window.toggleBubble('${h.id}',${i})"></div>`;
+                        const isFilled = i <= cur;
+                        bubblesHtml += `
+                            <div class="bubble ${isFilled ? 'filled ' + stepTier : ''}" 
+                                 style="border-color:var(--color-${stepTier})" 
+                                 onclick="window.toggleBubble('${h.id}',${i})">
+                            </div>`;
                     }
 
-                    const cardHtml = `<div class="habit-card ${isUrgent ? 'priority-border' : ''}">
-                        <div style="font-size:24px; margin-right:15px;">${h.icon}</div>
-                        <div style="flex:1">
-                            ${isUrgent ? '<span class="priority-tag">✦ Goal at Risk</span>' : ''}
-                            <p style="margin:0; font-weight:600;">${h.name}</p>
-                            <div class="bubbles">${bubblesHtml}</div>
-                        </div></div>`;
+                    const cardHtml = `
+                        <div class="habit-card ${isUrgent ? 'priority-border' : ''}">
+                            <div style="font-size:24px; margin-right:15px;">${h.icon}</div>
+                            <div style="flex:1">
+                                ${isUrgent ? '<span class="priority-tag">✦ Goal at Risk</span>' : ''}
+                                <p style="margin:0; font-weight:600;">${h.name}</p>
+                                <div class="bubbles">${bubblesHtml}</div>
+                            </div>
+                        </div>
+                    `;
 
-                    if (!isCol && (!activeFilter || activeFilter === tier)) {
-                        todayRoot.innerHTML += cardHtml;
+                    if (!isCol) {
+                        if (!activeFilter || activeFilter === tier) {
+                            todayRoot.innerHTML += cardHtml;
+                        }
                     }
-                    if (isUrgent) priorityRoot.innerHTML += cardHtml;
+
+                    if (isUrgent) {
+                        priorityRoot.innerHTML += cardHtml;
+                    }
 
                     const weeklyDotsHtml = h.history.map((c, i) => {
                         const isActionDay = (i === 0 && c > 0) || (i > 0 && c !== h.history[i-1]);
-                        if (isActionDay && c > 0) {
-                            return `<div class="weekly-dot" style="background:var(--color-${getTier(h, c)})"></div>`;
-                        }
-                        return `<div class="weekly-dot" style="background:#eee"></div>`;
+                        const dayTier = getTier(h, c);
+                        return isActionDay && c > 0 
+                            ? `<div class="weekly-dot" style="background:var(--color-${dayTier})"></div>` 
+                            : `<div class="weekly-dot" style="background:#eee"></div>`;
                     }).join('');
 
-                    weekSectionHtml += `<div class="weekly-row"><span class="weekly-task-name">${h.name}</span><div class="weekly-dots-row">${weeklyDotsHtml}</div></div>`;
-                    
-                    manageRoot.innerHTML += `<div class="manage-card">
-                        <h4 class="beloved-small">${h.icon} ${h.name}</h4>
-                        <div style="margin-bottom:10px; font-size:12px;">Max Circles: <input type="number" value="${h.max || 7}" style="width:45px;" onchange="window.updateField('${h.id}','max',this.value)"></div>
-                        <table class="matrix-table">
-                            <tr><th>Tier</th><th>Qty</th><th>$ Payout</th></tr>
-                            <tr><td style="color:var(--color-punish)">Debt</td><td><input type="number" value="${h.punish}" onchange="window.updateField('${h.id}','punish',this.value)"></td><td><input type="number" value="${h.valPunish}" onchange="window.updateField('${h.id}','valPunish',this.value)"></td></tr>
-                            <tr><td style="color:var(--color-low)">Low</td><td><input type="number" value="${h.low}" onchange="window.updateField('${h.id}','low',this.value)"></td><td><input type="number" value="${h.valLow}" onchange="window.updateField('${h.id}','valLow',this.value)"></td></tr>
-                            <tr><td style="color:var(--color-goal)">Goal</td><td><input type="number" value="${h.goal}" onchange="window.updateField('${h.id}','goal',this.value)"></td><td><input type="number" value="${h.valGoal}" onchange="window.updateField('${h.id}','valGoal',this.value)"></td></tr>
-                            <tr><td style="color:var(--color-bonus)">Bonus</td><td><input type="number" value="${h.bonus}" onchange="window.updateField('${h.id}','bonus',this.value)"></td><td><input type="number" value="${h.valBonus}" onchange="window.updateField('${h.id}','valBonus',this.value)"></td></tr>
-                        </table><button class="btn-delete" onclick="window.deleteTask('${h.id}')">DELETE TASK</button></div>`;
+                    weekSectionHtml += `
+                        <div class="weekly-row">
+                            <span class="weekly-task-name">${h.name}</span>
+                            <div class="weekly-dots-row">${weeklyDotsHtml}</div>
+                        </div>
+                    `;
+
+                    manageRoot.innerHTML += `
+                        <div class="manage-card">
+                            <h4 class="beloved-small" style="font-family:'Great Vibes'; font-size:24px; color:var(--header-pink); margin:0 0 10px 0;">${h.icon} ${h.name}</h4>
+                            <div style="margin-bottom:10px; font-size:12px;">Max Circles: <input type="number" value="${h.max || 7}" style="width:45px;" onchange="window.updateField('${h.id}','max',this.value)"></div>
+                            <table class="matrix-table">
+                                <tr><th>Tier</th><th>Qty</th><th>$ Payout</th></tr>
+                                <tr><td style="color:var(--color-punish)">Debt</td><td><input type="number" value="${h.punish}" onchange="window.updateField('${h.id}','punish',this.value)"></td><td><input type="number" value="${h.valPunish}" onchange="window.updateField('${h.id}','valPunish',this.value)"></td></tr>
+                                <tr><td style="color:var(--color-low)">Low</td><td><input type="number" value="${h.low}" onchange="window.updateField('${h.id}','low',this.value)"></td><td><input type="number" value="${h.valLow}" onchange="window.updateField('${h.id}','valLow',this.value)"></td></tr>
+                                <tr><td style="color:var(--color-goal)">Goal</td><td><input type="number" value="${h.goal}" onchange="window.updateField('${h.id}','goal',this.value)"></td><td><input type="number" value="${h.valGoal}" onchange="window.updateField('${h.id}','valGoal',this.value)"></td></tr>
+                                <tr><td style="color:var(--color-bonus)">Bonus</td><td><input type="number" value="${h.bonus}" onchange="window.updateField('${h.id}','bonus',this.value)"></td><td><input type="number" value="${h.valBonus}" onchange="window.updateField('${h.id}','valBonus',this.value)"></td></tr>
+                            </table>
+                            <button class="btn-delete" onclick="window.deleteTask('${h.id}')">DELETE TASK</button>
+                        </div>
+                    `;
                 });
-                
+
                 weekSectionHtml += `</div></div>`;
                 weeklyRoot.innerHTML += weekSectionHtml;
             });
@@ -205,245 +315,282 @@
             const moneyDisplay = document.getElementById('moneyDisplay');
             moneyDisplay.innerText = (totalMoney < 0 ? '-$' : '$') + Math.abs(totalMoney).toFixed(2);
             moneyDisplay.style.color = totalMoney < 0 ? 'var(--color-punish)' : 'var(--text-main)';
-            ['Punish', 'Low', 'Goal', 'Bonus'].forEach(t => { const el = document.getElementById('count'+t); if(el) el.innerText = counts[t.toLowerCase()]; });
+
+            document.getElementById('countPunish').innerText = counts.punish;
+            document.getElementById('countLow').innerText = counts.low;
+            document.getElementById('countGoal').innerText = counts.goal;
+            document.getElementById('countBonus').innerText = counts.bonus;
         }
 
-        window.toggleCol = (cat) => { collapsed[cat] = !collapsed[cat]; render(); };
-        window.toggleFilter = (tier) => { activeFilter = (activeFilter === tier) ? null : tier; render(); };
-        window.switchTab = (idx) => {
-            document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', i === idx));
-            document.querySelectorAll('.view').forEach((v, i) => v.classList.toggle('active', i === idx));
+        window.toggleCol = (cat) => {
+            collapsed[cat] = !collapsed[cat];
             render();
         };
-        window.handleManageClick = () => { if (prompt("Passcode:") === "1234") window.switchTab(3); };
-        function updateFiltersUI() { ['punish', 'low', 'goal', 'bonus'].forEach(t => { const el = document.getElementById('filter-' + t); if(el) el.className = `tier-card ${activeFilter === t ? 'active-filter' : ''}`; }); }
+
+        window.toggleFilter = (tier) => {
+            activeFilter = (activeFilter === tier) ? null : tier;
+            render();
+        };
+
+        window.switchTab = (idx) => {
+            const tabs = document.querySelectorAll('.tab');
+            const views = document.querySelectorAll('.view');
+            tabs.forEach((t, i) => t.classList.toggle('active', i === idx));
+            views.forEach((v, i) => v.classList.toggle('active', i === idx));
+            render();
+        };
+
+        window.handleManageClick = () => {
+            const pw = prompt("Enter passcode:");
+            if (pw === "1234") {
+                window.switchTab(3);
+            }
+        };
+
+        function updateFiltersUI() {
+            const tiers = ['punish', 'low', 'goal', 'bonus'];
+            tiers.forEach(t => {
+                const el = document.getElementById('filter-' + t);
+                if (activeFilter === t) el.classList.add('active-filter');
+                else el.classList.remove('active-filter');
+            });
+        }
+
         function buildDateStrip() {
-            const strip = document.getElementById('dateStrip'); strip.innerHTML = '';
-            const start = new Date(); start.setDate(start.getDate() - getDayIdx(start));
+            const strip = document.getElementById('dateStrip');
+            strip.innerHTML = '';
+            const startOfWeek = new Date();
+            startOfWeek.setDate(startOfWeek.getDate() - getDayIdx(startOfWeek));
+
             for (let i = 0; i < 7; i++) {
-                const d = new Date(start); d.setDate(start.getDate() + i);
-                const active = d.toDateString() === viewingDate.toDateString();
-                strip.innerHTML += `<div class="date-item ${active?'active':''}" onclick="window.setDate('${d.toISOString()}')">
-                    <div class="day-label">${d.toLocaleDateString('en-US',{weekday:'short'}).toUpperCase()}</div>
-                    <div class="day-num">${d.getDate()}</div>
-                </div>`;
+                const d = new Date(startOfWeek);
+                d.setDate(startOfWeek.getDate() + i);
+                const isActive = d.toDateString() === viewingDate.toDateString();
+                
+                strip.innerHTML += `
+                    <div class="date-item ${isActive ? 'active' : ''}" onclick="window.setDate('${d.toISOString()}')">
+                        <div class="day-label">${d.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase()}</div>
+                        <div class="day-num">${d.getDate()}</div>
+                    </div>
+                `;
             }
         }
-        window.setDate = (iso) => { viewingDate = new Date(iso); render(); };
+
+        window.setDate = (iso) => {
+            viewingDate = new Date(iso);
+            render();
+        };
+
         function triggerFanfare(tier) {
-            if (tier === 'low') confetti({ particleCount: 40, spread: 50, origin: { y: 0.8 } });
-            else if (tier === 'goal') confetti({ particleCount: 100, spread: 70, origin: { y: 0.7 } });
+            if (tier === 'low') {
+                confetti({ particleCount: 40, spread: 50, origin: { y: 0.8 } });
+            } else if (tier === 'goal') {
+                confetti({ particleCount: 100, spread: 70, origin: { y: 0.7 } });
+            } else if (tier === 'bonus') {
+                const duration = 3 * 1000;
+                const end = Date.now() + duration;
+                (function frame() {
+                    confetti({ particleCount: 3, angle: 60, spread: 55, origin: { x: 0 } });
+                    confetti({ particleCount: 3, angle: 120, spread: 55, origin: { x: 1 } });
+                    if (Date.now() < end) requestAnimationFrame(frame);
+                }());
+            }
         }
-        window.addEventListener('load', () => { updateGreeting(); fetchWeatherAndUV(); });
+
+        window.addEventListener('load', () => {
+            updateGreeting();
+            fetchWeatherAndUV();
+        });
 
         function updateGreeting() {
             const hour = new Date().getHours();
-            let g = hour < 12 ? "Good Morning" : hour < 17 ? "Good Afternoon" : hour < 21 ? "Good Evening" : "Good Night";
-            document.getElementById('daytimeGreeting').innerText = g;
+            let greeting = "Good Morning";
+            if (hour >= 12 && hour < 17) greeting = "Good Afternoon";
+            else if (hour >= 17 && hour < 21) greeting = "Good Evening";
+            else if (hour >= 21 || hour < 5) greeting = "Good Night";
+            document.getElementById('daytimeGreeting').innerText = greeting;
         }
 
         async function fetchWeatherAndUV() {
             if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(async (pos) => {
-                    const { latitude: lat, longitude: lon } = pos.coords;
+                navigator.geolocation.getCurrentPosition(async (position) => {
+                    const lat = position.coords.latitude;
+                    const lon = position.coords.longitude;
                     
                     try {
                         const weatherRes = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=imperial&appid=ff4155f6320e193fc795a67d1b40b6dd`);
                         const wData = await weatherRes.json();
                         if (wData.main) {
-                            const em = { '01d':'☀️','01n':'🌙','02d':'⛅','02n':'☁️','03d':'☁️','03n':'☁️','04d':'☁️','04n':'☁️','09d':'🌧️','09n':'🌧️','10d':'🌦️','10n':'🌧️','11d':'⛈️','11n':'⛈️','13d':'❄️','13n':'❄️','50d':'🌫️','50n':'🌫️' };
-                            document.getElementById('weatherInfo').innerText = `${em[wData.weather[0].icon] || '☀️'} ${Math.round(wData.main.temp)}°F`;
+                            const iconMap = {
+                                '01d': '☀️', '01n': '🌙', '02d': '⛅', '02n': '☁️',
+                                '03d': '☁️', '03n': '☁️', '04d': '☁️', '04n': '☁️',
+                                '09d': '🌧️', '09n': '🌧️', '10d': '🌦️', '10n': '🌧️',
+                                '11d': '⛈️', '11n': '⛈️', '13d': '❄️', '13n': '❄️', '50d': '🌫️'
+                            };
+                            const icon = iconMap[wData.weather[0].icon] || '☀️';
+                            document.getElementById('weatherInfo').innerText = `${icon} ${Math.round(wData.main.temp)}°F`;
                         }
-                    } catch (e) { console.error("Weather error:", e); }
+                    } catch (e) {}
 
                     try {
                         const uvRes = await fetch(`https://api.openuv.io/api/v1/uv?lat=${lat}&lng=${lon}`, {
-                            headers: { "x-access-token": "openuv-q3onrmo2zfflc-io" } 
+                            headers: { "x-access-token": "openuv-q3onrmo2zfflc-io" }
                         });
                         const uvData = await uvRes.json();
                         const uvIdx = Math.round(uvData.result.uv);
                         const uvEl = document.getElementById('uvDisplay');
-                        
-                        uvEl.innerText = `UV: ${uvIdx}`;
+                        uvEl.innerText = `UV Index: ${uvIdx}`;
                         if (uvIdx <= 2) uvEl.style.color = "#27ae60";
                         else if (uvIdx <= 5) uvEl.style.color = "#f1c40f";
                         else if (uvIdx <= 7) uvEl.style.color = "#e67e22";
                         else uvEl.style.color = "#d9534f";
-                    } catch (e) { 
-                        console.error("UV error:", e); 
-                        document.getElementById('uvDisplay').innerText = "UV: --";
+                    } catch (e) {
+                        document.getElementById('uvDisplay').innerText = "UV Index: --";
                     }
                 });
             }
         }
     </script>
+
     <style>
-        :root { 
-            --bg-color: #f8f6f2; 
-            --header-pink: #d4a3a3; 
-            --soft-rose: #f9ecec; 
-            --text-main: #4a3a3a; 
-            --color-punish: #d9534f; 
-            --color-low: #e67e22; 
-            --color-goal: #27ae60; 
-            --color-bonus: #8e44ad; 
+        :root {
+            --bg-color: #f8f6f2;
+            --header-pink: #d4a3a3;
+            --soft-rose: #f9ecec;
+            --text-main: #4a3a3a;
+            --color-punish: #d9534f;
+            --color-low: #e67e22;
+            --color-goal: #27ae60;
+            --color-bonus: #8e44ad;
         }
-        
-        body { 
-            font-family: 'Montserrat', sans-serif; 
+
+        body {
+            font-family: 'Montserrat', sans-serif;
             background-color: var(--bg-color);
             background-image: url("background.jpg");
             background-size: cover;
             background-position: center;
             background-attachment: fixed;
-            background-repeat: no-repeat;
-            margin: 0; 
-            color: var(--text-main); 
+            margin: 0;
+            color: var(--text-main);
+            -webkit-tap-highlight-color: transparent;
         }
 
-        .phone-mockup { width: 100%; max-width: 480px; margin: auto; padding: 25px; box-sizing: border-box; }
-        
-        .tabs { 
-            display: flex; 
-            justify-content: center; 
-            gap: 15px; 
-            margin-bottom: 20px; 
-            background: rgba(255, 255, 255, 0.45); 
-            padding: 12px 10px;
-            border-radius: 50px;
-            backdrop-filter: blur(6px);
-            -webkit-backdrop-filter: blur(6px);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-        }
-        .tab { 
-            font-family: 'Playfair Display', serif; 
-            color: #555; 
-            cursor: pointer; 
-            font-size: 14px; 
-            font-weight: 700; 
-            transition: all 0.2s ease;
-            text-shadow: 0 1px 1px rgba(255,255,255,0.8);
-        }
-        .tab.active { 
-            color: var(--header-pink); 
-            text-shadow: 0 0 8px rgba(212, 163, 163, 0.3);
+        .phone-mockup {
+            width: 100%;
+            max-width: 480px;
+            margin: auto;
+            min-height: 100vh;
+            padding: 25px;
+            box-sizing: border-box;
+            position: relative;
         }
 
+        header { margin-bottom: 30px; }
         .greeting-line { font-family: 'Montserrat'; font-size: 24px; margin-bottom: 20px; text-shadow: 0 1px 2px white; }
         .beloved { font-family: 'Great Vibes', cursive; font-size: 38px; color: var(--header-pink); margin-left: 5px; }
+
         .date-strip { display: flex; justify-content: space-between; margin-bottom: 25px; }
-        .date-item { text-align: center; cursor: pointer; padding: 10px 5px; min-width: 45px; color: #666; font-weight: 600; }
+        .date-item { text-align: center; cursor: pointer; padding: 10px 5px; min-width: 45px; transition: all 0.3s ease; color: #666; }
         .date-item.active { background: white; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); color: var(--header-pink); }
-        
-        .header-status-row {
-            display: flex;
-            gap: 12px;
-            margin-bottom: 25px;
-        }
-        .earnings-mini-card, .weather-mini-card {
+        .day-label { font-size: 10px; font-weight: 600; margin-bottom: 5px; }
+        .day-num { font-size: 16px; font-weight: 700; }
+
+        .header-status-row { display: flex; gap: 12px; margin-bottom: 25px; }
+        .earnings-mini-card {
+            flex: 2;
             background: rgba(255, 255, 255, 0.6);
             backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
             border-radius: 20px 5px;
             padding: 15px;
             border: 1px solid rgba(255, 255, 255, 0.4);
             display: flex;
             flex-direction: column;
             justify-content: center;
-            box-shadow: 0 10px 25px rgba(212, 163, 163, 0.2);
         }
-        .earnings-mini-card { flex: 2; text-align: left; position: relative; overflow: hidden; }
-        .earnings-mini-card::before {
-            content: "✿";
-            position: absolute;
-            top: 5px;
-            left: 10px;
-            color: rgba(212, 163, 163, 0.3);
-            font-size: 18px;
-        }
-        .weather-mini-card { flex: 1; text-align: center; font-weight: 700; font-size: 16px; }
-        
-        .earnings-label {
-            font-family: 'Montserrat', sans-serif;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            font-size: 10px;
+        .earnings-label { font-size: 10px; font-weight: 700; color: var(--header-pink); text-transform: uppercase; letter-spacing: 2px; }
+        .earnings-value-small { font-family: 'Great Vibes', cursive; font-size: 38px; color: var(--header-pink); line-height: 1; margin-top: 5px; }
+
+        .weather-mini-card {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.6);
+            backdrop-filter: blur(8px);
+            border-radius: 20px 5px;
+            padding: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            text-align: center;
             font-weight: 700;
-            color: var(--header-pink);
-            display: block;
-            margin-bottom: 5px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
         }
-        .earnings-value-small { 
-            font-family: 'Great Vibes', cursive; 
-            font-size: 38px; 
-            color: var(--header-pink);
-            display: inline-block;
-            transition: all 0.5s ease;
-            text-shadow: 2px 2px 0px rgba(255, 255, 255, 0.8);
-        }
-        .uv-tag-small {
-            font-size: 11px;
-            margin-top: 6px;
-            color: #666;
-            text-transform: uppercase;
-        }
-        
-        .payout-pulse { animation: goldGlow 1s ease; }
-        @keyframes goldGlow {
-            0% { transform: scale(1); text-shadow: 0 0 0px var(--header-pink); }
-            50% { transform: scale(1.05); text-shadow: 0 0 15px var(--header-pink); }
-            100% { transform: scale(1); text-shadow: 0 0 0px var(--header-pink); }
-        }
-        
+
         .tier-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 25px; }
-        .tier-card { background: rgba(255, 255, 255, 0.7); border-radius: 12px; padding: 10px 5px; text-align: center; cursor: pointer; backdrop-filter: blur(2px); }
+        .tier-card {
+            background: rgba(255, 255, 255, 0.7);
+            border-radius: 12px;
+            padding: 12px 5px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: 1px solid transparent;
+        }
         .tier-card.active-filter { background: white; border: 1.5px solid var(--header-pink); box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
-        
-        .view { display: none; } .view.active { display: block; }
-        
-        .category-header { 
-            display: flex; 
-            padding: 15px 10px; 
-            cursor: pointer; 
-            border-bottom: 1px solid rgba(212,163,163,0.15); 
-            background: rgba(255,255,255,0.4);
-            border-radius: 8px;
-            margin-bottom: 5px;
+        .tier-card .tier-title { font-family: 'Great Vibes'; font-size: 22px; margin-bottom: 2px; }
+        .tier-card .tier-count { font-weight: 700; font-size: 14px; }
+
+        .tabs {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 20px;
+            background: rgba(255, 255, 255, 0.45);
+            padding: 12px 10px;
+            border-radius: 50px;
+            backdrop-filter: blur(6px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        .tab {
+            font-family: 'Playfair Display', serif;
+            color: #555;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 700;
+            transition: all 0.2s ease;
+            padding: 2px 8px;
+        }
+        .tab.active { color: var(--header-pink); }
+
+        .view { display: none; padding-bottom: 100px; }
+        .view.active { display: block; animation: fadeIn 0.4s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .category-header {
+            display: flex;
+            padding: 15px 10px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            background: rgba(255, 255, 255, 0.4);
+            border-radius: 12px;
             align-items: center;
         }
-        .cat-label { font-family: 'Playfair Display'; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; text-transform: uppercase; }
+        .cat-label { font-family: 'Playfair Display'; font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: 1.5px; }
+        .status-mini-bar { display: flex; gap: 4px; margin-top: 6px; }
+        .mini-dot { width: 6px; height: 6px; border-radius: 50%; }
 
-        .status-mini-bar { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
-        .mini-dot {
-            width: 7px;
-            height: 7px;
-            border-radius: 50%;
-            opacity: 0.85;
-            transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            cursor: pointer;
-            user-select: none;
+        .habit-card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px 5px;
+            padding: 20px;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            box-shadow: 5px 5px 15px rgba(212,163,163,0.08);
+            position: relative;
         }
-        .mini-dot:hover  { transform: scale(1.1); }
-        .mini-dot:active { transform: scale(0.85); }
+        .priority-border { border: 1.5px solid #d4af37; box-shadow: 0 0 15px rgba(212,175,55,0.2); }
+        .priority-tag { position: absolute; top: 10px; right: 15px; font-size: 9px; color: #b8860b; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; }
 
-        .habit-card { background: rgba(255, 255, 255, 0.95); border-radius: 20px 5px; padding: 20px; margin-bottom: 15px; display: flex; align-items: center; box-shadow: 5px 5px 15px rgba(212,163,163,0.08); position: relative; }
-        .priority-border { border: 1.5px solid #d4af37; background: rgba(255, 254, 251, 0.98); }
-        
-        .priority-tag { 
-            position: absolute; 
-            top: 10px; 
-            right: 15px;
-            font-size: 9px; 
-            background: rgba(212, 175, 55, 0.1);
-            color: #b8860b; 
-            padding: 4px 8px;
-            border-radius: 20px;
-            font-weight: 800; 
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        
         .bubbles { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
         .bubble {
             width: 24px;
@@ -452,64 +599,71 @@
             border: 2.5px solid;
             background: white;
             cursor: pointer;
-            transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            user-select: none;
+            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
-        .bubble:hover  { transform: scale(1.1); }
-        .bubble:active { transform: scale(0.85); }
         .bubble.filled.punish { background: var(--color-punish); border-color: var(--color-punish); }
         .bubble.filled.low { background: var(--color-low); border-color: var(--color-low); }
         .bubble.filled.goal { background: var(--color-goal); border-color: var(--color-goal); }
         .bubble.filled.bonus { background: var(--color-bonus); border-color: var(--color-bonus); }
-        
-        .weekly-grid { background: rgba(255, 255, 255, 0.85); border-radius: 15px; padding: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.03); }
-        .weekly-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #f2f2f2; }
-        .day-labels { border-bottom: 1.5px solid var(--soft-rose); color: #888; font-weight: 700; font-size: 10px; }
-        .weekly-task-name { font-size: 12px; font-weight: 600; width: 35%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .weekly-dots-row { display: flex; justify-content: space-between; flex: 1; margin-left: 10px; }
+
+        .weekly-grid { background: white; border-radius: 15px; padding: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.03); }
+        .weekly-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f2f2f2; }
+        .day-labels span { font-size: 9px; font-weight: 800; color: #aaa; width: 14%; text-align: center; }
+        .weekly-task-name { font-size: 12px; font-weight: 600; width: 35%; color: var(--text-main); }
+        .weekly-dots-row { display: flex; justify-content: space-between; flex: 1; }
         .weekly-dot { width: 11px; height: 11px; border-radius: 50%; }
 
-        .manage-card { background: rgba(255, 255, 255, 0.95); padding: 15px; border-radius: 15px; margin-bottom: 15px; border-left: 4px solid var(--header-pink); }
-        .matrix-table input { width: 100%; border: 1px solid #eee; padding: 5px; text-align: center; background: white; }
-        .btn-delete { margin-top: 15px; color: #d9534f; background: none; border: 1px solid; border-radius: 8px; padding: 8px; width: 100%; font-size: 10px; font-weight: bold; cursor: pointer; }
-        footer { text-align: center; margin-top: 40px; font-family: 'Great Vibes'; color: var(--header-pink); font-size: 24px; padding-bottom: 20px; text-shadow: 0 1px 1px white; }
+        .manage-card {
+            background: white;
+            padding: 15px;
+            border-radius: 15px;
+            margin-bottom: 15px;
+            border-left: 4px solid var(--header-pink);
+        }
+        .matrix-table { width: 100%; margin-top: 10px; border-collapse: collapse; }
+        .matrix-table th { font-size: 10px; color: #888; text-transform: uppercase; text-align: left; padding-bottom: 5px; }
+        .matrix-table td { padding: 5px 0; }
+        .matrix-table input { width: 50px; border: 1px solid #eee; padding: 4px; border-radius: 4px; font-family: 'Montserrat'; font-size: 12px; }
+        .btn-delete { background: none; border: 1px solid #ffcfcf; color: #d9534f; padding: 5px 10px; border-radius: 6px; font-size: 10px; font-weight: 700; cursor: pointer; margin-top: 10px; }
+
+        footer { text-align: center; margin-top: 40px; font-family: 'Great Vibes'; color: var(--header-pink); font-size: 24px; padding-bottom: 40px; }
     </style>
 </head>
 <body>
+
 <div class="phone-mockup">
     <header>
-        <div class="greeting-line"><span id="daytimeGreeting">Hello</span>,<span class="beloved">Victoria</span></div>
+        <div class="greeting-line"><span id="daytimeGreeting">Good Morning</span>,<span class="beloved">Victoria</span></div>
         <div class="date-strip" id="dateStrip"></div>
     </header>
-    
+
     <div class="header-status-row">
         <div class="earnings-mini-card">
-            <span class="earnings-label">Current Balance</span>
+            <span class="earnings-label">This Week's Balance</span>
             <span class="earnings-value-small" id="moneyDisplay">$0.00</span>
         </div>
-
         <div class="weather-mini-card">
             <div id="weatherInfo">--°F</div>
-            <div id="uvDisplay" class="uv-tag-small">UV: --</div>
+            <div id="uvDisplay" style="font-size:11px; margin-top:6px; color:#666; font-weight:normal;">UV Index: --</div>
         </div>
     </div>
 
     <div class="tier-cards">
-        <div class="tier-card" id="filter-punish" style="color: var(--color-punish);" onclick="window.toggleFilter('punish')">
-            <div style="font-family:'Great Vibes'; font-size:22px;">Debt</div>
-            <div id="countPunish" style="opacity: 0.7; font-weight: bold; font-size: 14px;">0</div>
+        <div class="tier-card" id="filter-punish" style="color:var(--color-punish)" onclick="window.toggleFilter('punish')">
+            <div class="tier-title">Debt</div>
+            <div class="tier-count" id="countPunish">0</div>
         </div>
-        <div class="tier-card" id="filter-low" style="color: var(--color-low);" onclick="window.toggleFilter('low')">
-            <div style="font-family:'Great Vibes'; font-size:22px;">Low</div>
-            <div id="countLow" style="opacity: 0.7; font-weight: bold; font-size: 14px;">0</div>
+        <div class="tier-card" id="filter-low" style="color:var(--color-low)" onclick="window.toggleFilter('low')">
+            <div class="tier-title">Low</div>
+            <div class="tier-count" id="countLow">0</div>
         </div>
-        <div class="tier-card" id="filter-goal" style="color: var(--color-goal);" onclick="window.toggleFilter('goal')">
-            <div style="font-family:'Great Vibes'; font-size:22px;">Goal</div>
-            <div id="countGoal" style="opacity: 0.7; font-weight: bold; font-size: 14px;">0</div>
+        <div class="tier-card" id="filter-goal" style="color:var(--color-goal)" onclick="window.toggleFilter('goal')">
+            <div class="tier-title">Goal</div>
+            <div class="tier-count" id="countGoal">0</div>
         </div>
-        <div class="tier-card" id="filter-bonus" style="color: var(--color-bonus);" onclick="window.toggleFilter('bonus')">
-            <div style="font-family:'Great Vibes'; font-size:22px;">Bonus</div>
-            <div id="countBonus" style="opacity: 0.7; font-weight: bold; font-size: 14px;">0</div>
+        <div class="tier-card" id="filter-bonus" style="color:var(--color-bonus)" onclick="window.toggleFilter('bonus')">
+            <div class="tier-title">Bonus</div>
+            <div class="tier-count" id="countBonus">0</div>
         </div>
     </div>
 
@@ -519,22 +673,37 @@
         <div class="tab" onclick="window.switchTab(2)">Weekly</div>
         <div class="tab" onclick="window.handleManageClick()">Manage 🔒</div>
     </nav>
-    <div id="view-today" class="view active"><div id="todayRoot"></div></div>
-    <div id="view-priority" class="view"><div id="priorityRoot"></div></div>
-    <div id="view-weekly" class="view"><div id="weeklyRoot"></div></div>
+
+    <div id="view-today" class="view active">
+        <div id="todayRoot"></div>
+    </div>
+
+    <div id="view-priority" class="view">
+        <div id="priorityRoot"></div>
+    </div>
+
+    <div id="view-weekly" class="view">
+        <div id="weeklyRoot"></div>
+    </div>
+
     <div id="view-manage" class="view">
-        <div class="manage-card" style="margin-bottom:20px;">
+        <div class="manage-card">
+            <h4 class="beloved-small" style="font-family:'Great Vibes'; font-size:28px; color:var(--header-pink); margin:0 0 15px 0;">Add New Habit</h4>
             <div style="display:flex; gap:10px; margin-bottom:10px;">
-                <input type="text" id="newIcon" placeholder="Icon" style="width:25%;">
-                <input type="text" id="newName" placeholder="Habit Name" style="flex:1;">
+                <input type="text" id="newIcon" placeholder="Icon (e.g. 🧘)" style="width:20%; padding:10px; border:1px solid #eee; border-radius:8px;">
+                <input type="text" id="newName" placeholder="Habit Name" style="flex:1; padding:10px; border:1px solid #eee; border-radius:8px;">
             </div>
-            <input type="text" id="newCat" placeholder="Category" style="width:100%; margin-bottom:10px;">
-            <button onclick="window.addTask()" style="width:100%; background:var(--header-pink); color:white; border:none; padding:10px; border-radius:8px;">Add Habit</button>
+            <input type="text" id="newCat" placeholder="Category" style="width:100%; padding:10px; border:1px solid #eee; border-radius:8px; box-sizing:border-box; margin-bottom:10px;">
+            <button onclick="window.addTask()" style="width:100%; background:var(--header-pink); color:white; border:none; padding:12px; border-radius:10px; font-weight:bold; cursor:pointer;">Create Habit</button>
         </div>
-        <button style="width:100%; padding:15px; margin-bottom:20px; background:var(--text-main); color:white; border:none; border-radius:12px;" onclick="window.runWeeklyReport(true)">Send Weekly Report</button>
+
+        <button onclick="window.runWeeklyReport(true)" style="width:100%; padding:15px; background:#4a3a3a; color:white; border-radius:12px; margin-bottom:20px; border:none; font-weight:bold; cursor:pointer; font-family:'Playfair Display'; letter-spacing:1px;">SUBMIT WEEKLY REPORT & RESET</button>
+        
         <div id="manageRoot"></div>
     </div>
+
     <footer>Victoria Tracker</footer>
 </div>
+
 </body>
 </html>
