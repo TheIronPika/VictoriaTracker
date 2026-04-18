@@ -297,8 +297,8 @@
                         const isActionDay = (i === 0 && c > 0) || (i > 0 && c !== h.history[i-1]);
                         const dayTier = getTier(h, c);
                         return isActionDay && c > 0 
-                            ? `<div class="weekly-dot" style="background:var(--grad-${dayTier})"></div>` 
-                            : `<div class="weekly-dot" style="background:#eee"></div>`;
+                            ? `<div class="weekly-dot-container"><div class="weekly-dot" style="background:var(--grad-${dayTier})"></div></div>` 
+                            : `<div class="weekly-dot-container"><div class="weekly-dot" style="background:#eee"></div></div>`;
                     }).join('');
 
                     weekSectionHtml += `
@@ -657,12 +657,55 @@
             animation: cardArrive 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
         }
 
-        .weekly-grid { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(5px); border-radius: 15px; padding: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.03); }
-        .weekly-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid rgba(242,242,242,0.5); }
-        .day-labels span { font-size: 9px; font-weight: 800; color: #aaa; width: 14%; text-align: center; }
-        .weekly-task-name { font-size: 12px; font-weight: 600; width: 35%; color: var(--text-main); }
-        .weekly-dots-row { display: flex; justify-content: space-between; flex: 1; }
-        .weekly-dot { width: 11px; height: 11px; border-radius: 50%; }
+        /* WEEKLY VIEW ALIGNMENT FIX */
+        .weekly-grid { 
+            background: rgba(255, 255, 255, 0.8); 
+            backdrop-filter: blur(5px); 
+            border-radius: 15px; 
+            padding: 15px; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.03); 
+        }
+        .weekly-row { 
+            display: flex; 
+            align-items: center; 
+            justify-content: space-between; 
+            padding: 10px 0; 
+            border-bottom: 1px solid rgba(242,242,242,0.5); 
+        }
+        .weekly-task-name { 
+            font-size: 12px; 
+            font-weight: 600; 
+            width: 35%; 
+            color: var(--text-main); 
+            white-space: nowrap; 
+            overflow: hidden; 
+            text-overflow: ellipsis; 
+            padding-right: 5px;
+        }
+        .weekly-dots-row { 
+            display: flex; 
+            justify-content: space-around; 
+            width: 65%; 
+        }
+        .weekly-dot-container {
+            width: 14%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .weekly-dot { 
+            width: 11px; 
+            height: 11px; 
+            border-radius: 50%; 
+            flex-shrink: 0;
+        }
+        .day-labels span { 
+            font-size: 9px; 
+            font-weight: 800; 
+            color: #aaa; 
+            width: 14%; 
+            text-align: center; 
+        }
 
         .manage-card {
             background: rgba(255, 255, 255, 0.9);
