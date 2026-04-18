@@ -34,7 +34,10 @@
         let habits = [];
         let viewingDate = new Date();
         let collapsed = {};
-        let activeFilter = null; 
+        let activeFilter = null;
+
+        // ── NEW: tracks which card should play the arrive animation ──
+        let lastActedId = null;
 
         const getDayIdx = (d) => {
             let day = d.getDay(); 
@@ -127,6 +130,7 @@
             await syncToFirebase();
         };
 
+        // ── MODIFIED: animates the card leaving before Firebase sync ──
         window.toggleBubble = async (id, val) => {
             const h = habits.find(x => x.id === id);
             const dIdx = getDayIdx(viewingDate);
@@ -136,6 +140,19 @@
 
             const oldTier = getTier(h, oldQty);
             const newTier = getTier(h, newVal);
+
+            // Animate out only when the card will change sorted position
+            const willMove = (oldQty === 0 && newVal > 0) || (newVal === 0 && oldQty > 0);
+
+            if (willMove) {
+                const cardEl = document.querySelector(`.habit-card[data-habit-id="${id}"]`);
+                if (cardEl) {
+                    cardEl.classList.add('card-leaving');
+                    await new Promise(r => setTimeout(r, 260));
+                }
+            }
+
+            lastActedId = willMove ? id : null;
 
             for (let i = dIdx; i < 7; i++) {
                 h.history[i] = newVal;
@@ -189,8 +206,6 @@
                 const isCol = collapsed[cat];
                 let items = habits.filter(h => h.cat === cat);
 
-                // --- SORTING LOGIC ---
-                // If the habit has any bubbles filled for the selected day, move it to the bottom.
                 items.sort((a, b) => {
                     const aVal = a.history[dIdx];
                     const bVal = b.history[dIdx];
@@ -245,6 +260,9 @@
                     const daysRemainingInWeek = 7 - dIdx;
                     const isUrgent = (h.goal - cur) >= daysRemainingInWeek && (h.goal - cur) > 0;
 
+                    // ── NEW: card gets arrive animation if it just moved ──
+                    const isArriving = h.id === lastActedId;
+
                     let bubblesHtml = '';
                     for (let i = 1; i <= (h.max || 7); i++) {
                         const stepTier = getTier(h, i);
@@ -256,8 +274,10 @@
                             </div>`;
                     }
 
+                    // ── NEW: data-habit-id for targeting, card-arriving class ──
                     const cardHtml = `
-                        <div class="habit-card ${isUrgent ? 'priority-border' : ''}">
+                        <div class="habit-card ${isUrgent ? 'priority-border' : ''} ${isArriving ? 'card-arriving' : ''}"
+                             data-habit-id="${h.id}">
                             <div style="font-size:24px; margin-right:15px;">${h.icon}</div>
                             <div style="flex:1">
                                 ${isUrgent ? '<span class="priority-tag">✦ Goal at Risk</span>' : ''}
@@ -311,6 +331,9 @@
                 weekSectionHtml += `</div></div>`;
                 weeklyRoot.innerHTML += weekSectionHtml;
             });
+
+            // ── NEW: reset after render so animation only plays once ──
+            lastActedId = null;
 
             const moneyDisplay = document.getElementById('moneyDisplay');
             moneyDisplay.innerText = (totalMoney < 0 ? '-$' : '$') + Math.abs(totalMoney).toFixed(2);
@@ -576,7 +599,16 @@
         }
         .cat-label { font-family: 'Playfair Display'; font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: 1.5px; }
         .status-mini-bar { display: flex; gap: 4px; margin-top: 6px; }
-        .mini-dot { width: 6px; height: 6px; border-radius: 50%; }
+        .mini-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            cursor: pointer;
+            user-select: none;
+        }
+        .mini-dot:hover  { transform: scale(1.1); }
+        .mini-dot:active { transform: scale(0.85); }
 
         .habit-card {
             background: rgba(255, 255, 255, 0.95);
@@ -599,12 +631,33 @@
             border: 2.5px solid;
             background: white;
             cursor: pointer;
-            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            user-select: none;
         }
+        .bubble:hover  { transform: scale(1.1); }
+        .bubble:active { transform: scale(0.85); }
         .bubble.filled.punish { background: var(--color-punish); border-color: var(--color-punish); }
-        .bubble.filled.low { background: var(--color-low); border-color: var(--color-low); }
-        .bubble.filled.goal { background: var(--color-goal); border-color: var(--color-goal); }
-        .bubble.filled.bonus { background: var(--color-bonus); border-color: var(--color-bonus); }
+        .bubble.filled.low    { background: var(--color-low);    border-color: var(--color-low); }
+        .bubble.filled.goal   { background: var(--color-goal);   border-color: var(--color-goal); }
+        .bubble.filled.bonus  { background: var(--color-bonus);  border-color: var(--color-bonus); }
+
+        /* ── NEW: card sort animations ── */
+        @keyframes cardLeave {
+            0%   { opacity: 1; transform: translateY(0) scale(1); }
+            50%  { opacity: 0.6; transform: translateY(10px) scale(0.97); }
+            100% { opacity: 0; transform: translateY(18px) scale(0.96); }
+        }
+        @keyframes cardArrive {
+            0%   { opacity: 0; transform: translateY(-18px) scale(0.97); }
+            100% { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .card-leaving {
+            animation: cardLeave 0.28s cubic-bezier(0.4, 0, 0.6, 1) forwards;
+            pointer-events: none;
+        }
+        .card-arriving {
+            animation: cardArrive 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
 
         .weekly-grid { background: white; border-radius: 15px; padding: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.03); }
         .weekly-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f2f2f2; }
