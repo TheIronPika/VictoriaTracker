@@ -152,6 +152,7 @@
 
             lastActedId = willMove ? id : null;
 
+            // PERSISTENCE FIX: Propagate change to future days
             for (let i = dIdx; i < 7; i++) {
                 h.history[i] = newVal;
             }
@@ -204,13 +205,12 @@
                 const isCol = collapsed[cat];
                 let items = habits.filter(h => h.cat === cat);
 
+                // SORTING FIX: Completed tasks to bottom
                 items.sort((a, b) => {
                     const aVal = a.history[dIdx];
                     const bVal = b.history[dIdx];
-                    
                     const aHasProgress = aVal > 0;
                     const bHasProgress = bVal > 0;
-
                     if (aHasProgress && !bHasProgress) return 1;
                     if (!aHasProgress && bHasProgress) return -1;
                     return 0;
@@ -246,7 +246,6 @@
                 items.forEach(h => {
                     const cur = h.history[dIdx];
                     const tier = getTier(h, cur);
-                    counts[tier]++;
 
                     let payout = 0;
                     if(tier === 'punish') payout = h.valPunish;
@@ -255,9 +254,15 @@
                     else if(tier === 'bonus') payout = h.valBonus;
                     totalMoney += payout;
 
+                    // DEBT FILTER LOGIC: Only count toward "Debt" if payout is negative
+                    if(tier === 'punish' && h.valPunish < 0) {
+                        counts.punish++;
+                    } else if (tier !== 'punish') {
+                        counts[tier]++;
+                    }
+
                     const daysRemainingInWeek = 7 - dIdx;
                     const isUrgent = (h.goal - cur) >= daysRemainingInWeek && (h.goal - cur) > 0;
-
                     const isArriving = h.id === lastActedId;
 
                     let bubblesHtml = '';
@@ -284,7 +289,14 @@
                     `;
 
                     if (!isCol) {
-                        if (!activeFilter || activeFilter === tier) {
+                        if (!activeFilter) {
+                            todayRoot.innerHTML += cardHtml;
+                        } else if (activeFilter === 'punish') {
+                            // Only show in Debt filter if it's actually negative payout
+                            if (tier === 'punish' && h.valPunish < 0) {
+                                todayRoot.innerHTML += cardHtml;
+                            }
+                        } else if (activeFilter === tier) {
                             todayRoot.innerHTML += cardHtml;
                         }
                     }
@@ -293,6 +305,7 @@
                         priorityRoot.innerHTML += cardHtml;
                     }
 
+                    // WEEKLY SYNC FIX: Dot shows activity day (where count changed or first day progress)
                     const weeklyDotsHtml = h.history.map((c, i) => {
                         const isActionDay = (i === 0 && c > 0) || (i > 0 && c !== h.history[i-1]);
                         const dayTier = getTier(h, c);
@@ -603,11 +616,7 @@
             height: 6px;
             border-radius: 50%;
             transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            cursor: pointer;
-            user-select: none;
         }
-        .mini-dot:hover  { transform: scale(1.1); }
-        .mini-dot:active { transform: scale(0.85); }
 
         .habit-card {
             background: rgba(255, 255, 255, 0.6);
@@ -642,70 +651,22 @@
 
         @keyframes cardLeave {
             0%   { opacity: 1; transform: translateY(0) scale(1); }
-            50%  { opacity: 0.6; transform: translateY(10px) scale(0.97); }
             100% { opacity: 0; transform: translateY(18px) scale(0.96); }
         }
         @keyframes cardArrive {
             0%   { opacity: 0; transform: translateY(-18px) scale(0.97); }
             100% { opacity: 1; transform: translateY(0) scale(1); }
         }
-        .card-leaving {
-            animation: cardLeave 0.28s cubic-bezier(0.4, 0, 0.6, 1) forwards;
-            pointer-events: none;
-        }
-        .card-arriving {
-            animation: cardArrive 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
-        }
+        .card-leaving { animation: cardLeave 0.28s forwards; pointer-events: none; }
+        .card-arriving { animation: cardArrive 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
 
-        /* WEEKLY VIEW ALIGNMENT FIX */
-        .weekly-grid { 
-            background: rgba(255, 255, 255, 0.8); 
-            backdrop-filter: blur(5px); 
-            border-radius: 15px; 
-            padding: 15px; 
-            box-shadow: 0 4px 15px rgba(0,0,0,0.03); 
-        }
-        .weekly-row { 
-            display: flex; 
-            align-items: center; 
-            justify-content: space-between; 
-            padding: 10px 0; 
-            border-bottom: 1px solid rgba(242,242,242,0.5); 
-        }
-        .weekly-task-name { 
-            font-size: 12px; 
-            font-weight: 600; 
-            width: 35%; 
-            color: var(--text-main); 
-            white-space: nowrap; 
-            overflow: hidden; 
-            text-overflow: ellipsis; 
-            padding-right: 5px;
-        }
-        .weekly-dots-row { 
-            display: flex; 
-            justify-content: space-around; 
-            width: 65%; 
-        }
-        .weekly-dot-container {
-            width: 14%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-        .weekly-dot { 
-            width: 11px; 
-            height: 11px; 
-            border-radius: 50%; 
-            flex-shrink: 0;
-        }
-        .day-labels span { 
-            font-size: 9px; 
-            font-weight: 800; 
-            color: #aaa; 
-            width: 14%; 
-            text-align: center; 
-        }
+        .weekly-grid { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(5px); border-radius: 15px; padding: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.03); }
+        .weekly-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid rgba(242,242,242,0.5); }
+        .weekly-task-name { font-size: 12px; font-weight: 600; width: 35%; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 5px; }
+        .weekly-dots-row { display: flex; justify-content: space-around; width: 65%; }
+        .weekly-dot-container { width: 14%; display: flex; justify-content: center; align-items: center; }
+        .weekly-dot { width: 11px; height: 11px; border-radius: 50%; }
+        .day-labels span { font-size: 9px; font-weight: 800; color: #aaa; width: 14%; text-align: center; }
 
         .manage-card {
             background: rgba(255, 255, 255, 0.9);
