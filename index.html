@@ -36,7 +36,7 @@
         let collapsed = {};
         let activeFilter = null;
 
-        // ── NEW: tracks which card should play the arrive animation ──
+        // tracks which card should play the arrive animation
         let lastActedId = null;
 
         const getDayIdx = (d) => {
@@ -130,7 +130,6 @@
             await syncToFirebase();
         };
 
-        // ── MODIFIED: animates the card leaving before Firebase sync ──
         window.toggleBubble = async (id, val) => {
             const h = habits.find(x => x.id === id);
             const dIdx = getDayIdx(viewingDate);
@@ -141,7 +140,6 @@
             const oldTier = getTier(h, oldQty);
             const newTier = getTier(h, newVal);
 
-            // Animate out only when the card will change sorted position
             const willMove = (oldQty === 0 && newVal > 0) || (newVal === 0 && oldQty > 0);
 
             if (willMove) {
@@ -260,7 +258,6 @@
                     const daysRemainingInWeek = 7 - dIdx;
                     const isUrgent = (h.goal - cur) >= daysRemainingInWeek && (h.goal - cur) > 0;
 
-                    // ── NEW: card gets arrive animation if it just moved ──
                     const isArriving = h.id === lastActedId;
 
                     let bubblesHtml = '';
@@ -274,7 +271,6 @@
                             </div>`;
                     }
 
-                    // ── NEW: data-habit-id for targeting, card-arriving class ──
                     const cardHtml = `
                         <div class="habit-card ${isUrgent ? 'priority-border' : ''} ${isArriving ? 'card-arriving' : ''}"
                              data-habit-id="${h.id}">
@@ -332,7 +328,6 @@
                 weeklyRoot.innerHTML += weekSectionHtml;
             });
 
-            // ── NEW: reset after render so animation only plays once ──
             lastActedId = null;
 
             const moneyDisplay = document.getElementById('moneyDisplay');
@@ -615,7 +610,10 @@
         .mini-dot:active { transform: scale(0.85); }
 
         .habit-card {
-            background: rgba(255, 255, 255, 0.95);
+            background: rgba(255, 255, 255, 0.6);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.4);
             border-radius: 20px 5px;
             padding: 20px;
             margin-bottom: 15px;
@@ -633,7 +631,7 @@
             height: 24px;
             border-radius: 50%;
             border: 2.5px solid;
-            background: white;
+            background: rgba(255, 255, 255, 0.5);
             cursor: pointer;
             transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
@@ -642,7 +640,6 @@
         .bubble.filled.goal   { background: var(--grad-goal);   border-color: var(--color-goal); }
         .bubble.filled.bonus  { background: var(--grad-bonus);  border-color: var(--color-bonus); }
 
-        /* ── NEW: card sort animations ── */
         @keyframes cardLeave {
             0%   { opacity: 1; transform: translateY(0) scale(1); }
             50%  { opacity: 0.6; transform: translateY(10px) scale(0.97); }
@@ -660,15 +657,15 @@
             animation: cardArrive 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
         }
 
-        .weekly-grid { background: white; border-radius: 15px; padding: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.03); }
-        .weekly-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f2f2f2; }
+        .weekly-grid { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(5px); border-radius: 15px; padding: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.03); }
+        .weekly-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid rgba(242,242,242,0.5); }
         .day-labels span { font-size: 9px; font-weight: 800; color: #aaa; width: 14%; text-align: center; }
         .weekly-task-name { font-size: 12px; font-weight: 600; width: 35%; color: var(--text-main); }
         .weekly-dots-row { display: flex; justify-content: space-between; flex: 1; }
         .weekly-dot { width: 11px; height: 11px; border-radius: 50%; }
 
         .manage-card {
-            background: white;
+            background: rgba(255, 255, 255, 0.9);
             padding: 15px;
             border-radius: 15px;
             margin-bottom: 15px;
