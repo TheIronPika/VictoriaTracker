@@ -220,7 +220,7 @@
 
                 let miniDotsHtml = items.map(h => {
                     const t = getTier(h, h.history[dIdx]);
-                    return `<div class="mini-dot" style="background:var(--color-${t})"></div>`;
+                    return `<div class="mini-dot" style="background:var(--grad-${t})"></div>`;
                 }).join('');
 
                 todayRoot.innerHTML += `
@@ -301,7 +301,7 @@
                         const isActionDay = (i === 0 && c > 0) || (i > 0 && c !== h.history[i-1]);
                         const dayTier = getTier(h, c);
                         return isActionDay && c > 0 
-                            ? `<div class="weekly-dot" style="background:var(--color-${dayTier})"></div>` 
+                            ? `<div class="weekly-dot" style="background:var(--grad-${dayTier})"></div>` 
                             : `<div class="weekly-dot" style="background:#eee"></div>`;
                     }).join('');
 
@@ -485,6 +485,10 @@
             --color-low: #e67e22;
             --color-goal: #27ae60;
             --color-bonus: #8e44ad;
+            --grad-punish: linear-gradient(135deg, #ff9a9e 0%, #d9534f 100%);
+            --grad-low: linear-gradient(135deg, #f6d365 0%, #e67e22 100%);
+            --grad-goal: linear-gradient(135deg, #84fab0 0%, #27ae60 100%);
+            --grad-bonus: linear-gradient(135deg, #d4a0fc 0%, #8e44ad 100%);
         }
 
         body {
@@ -631,15 +635,12 @@
             border: 2.5px solid;
             background: white;
             cursor: pointer;
-            transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            user-select: none;
+            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
-        .bubble:hover  { transform: scale(1.1); }
-        .bubble:active { transform: scale(0.85); }
-        .bubble.filled.punish { background: var(--color-punish); border-color: var(--color-punish); }
-        .bubble.filled.low    { background: var(--color-low);    border-color: var(--color-low); }
-        .bubble.filled.goal   { background: var(--color-goal);   border-color: var(--color-goal); }
-        .bubble.filled.bonus  { background: var(--color-bonus);  border-color: var(--color-bonus); }
+        .bubble.filled.punish { background: var(--grad-punish); border-color: var(--color-punish); }
+        .bubble.filled.low    { background: var(--grad-low);    border-color: var(--color-low); }
+        .bubble.filled.goal   { background: var(--grad-goal);   border-color: var(--color-goal); }
+        .bubble.filled.bonus  { background: var(--grad-bonus);  border-color: var(--color-bonus); }
 
         /* ── NEW: card sort animations ── */
         @keyframes cardLeave {
