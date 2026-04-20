@@ -55,11 +55,10 @@
         // WEEKLY REPORT
         window.runWeeklyReport = async (isManual = true) => {
             let totalMoney = 0;
-            let habitRows  = '';
+            let lines = [];
 
+            const tierLabels = { punish:'DEBT', low:'LOW', goal:'GOAL ✓', bonus:'BONUS ★' };
             const emojiDot   = { punish:'🔴', low:'🟡', goal:'🟢', bonus:'🟣' };
-            const tierColors = { punish:'#d9534f', low:'#e67e22', goal:'#27ae60', bonus:'#8e44ad' };
-            const tierLabels = { punish:'DEBT', low:'LOW', goal:'GOAL', bonus:'BONUS' };
 
             habits.forEach(h => {
                 const cur  = h.history ? h.history[6] : 0;
@@ -71,60 +70,33 @@
                 else if(tier === 'bonus') payout = h.valBonus || 0;
                 totalMoney += payout;
 
-                const dots     = (h.history || []).map(c => c > 0 ? emojiDot[getTier(h, c)] : '⚪').join(' ');
-                const color    = tierColors[tier];
-                const label    = tierLabels[tier];
-                const payColor = payout < 0 ? '#d9534f' : '#27ae60';
-                const payStr   = (payout < 0 ? '-$' : '$') + Math.abs(payout).toFixed(2);
+                const dots   = (h.history || []).map(c => c > 0 ? emojiDot[getTier(h, c)] : '⚪').join(' ');
+                const label  = tierLabels[tier];
+                const payStr = (payout < 0 ? '-$' : '+$') + Math.abs(payout).toFixed(2);
 
-                habitRows +=
-                    '<tr style="border-bottom:1px solid #f0f0f0;">' +
-                    '<td style="padding:10px 6px;font-size:18px;text-align:center;">' + h.icon + '</td>' +
-                    '<td style="padding:10px 6px;font-size:13px;font-weight:600;color:#4a3a3a;">' + h.name + '</td>' +
-                    '<td style="padding:10px 6px;text-align:center;font-size:14px;letter-spacing:1px;">' + dots + '</td>' +
-                    '<td style="padding:10px 6px;text-align:center;font-size:12px;font-weight:700;color:' + color + ';">' + label + '</td>' +
-                    '<td style="padding:10px 6px;text-align:right;font-size:13px;font-weight:700;color:' + payColor + ';">' + payStr + '</td>' +
-                    '</tr>';
+                lines.push(h.icon + '  ' + h.name);
+                lines.push('   Week: ' + dots);
+                lines.push('   Tier: ' + label + '   |   Payout: ' + payStr);
+                lines.push('');
             });
 
-            const now     = new Date();
-            const months  = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-            const dateStr = months[now.getMonth()] + ' ' + now.getDate() + ', ' + now.getFullYear();
-            const totalStr = (totalMoney < 0 ? '-$' : '$') + Math.abs(totalMoney).toFixed(2);
+            const now      = new Date();
+            const months   = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+            const dateStr  = months[now.getMonth()] + ' ' + now.getDate() + ', ' + now.getFullYear();
+            const totalStr = (totalMoney < 0 ? '-$' : '+$') + Math.abs(totalMoney).toFixed(2);
+            const divider  = '----------------------------------------';
 
-            // No DOCTYPE/html/head/body — EmailJS wraps in its own shell and strips those.
-            // Just send the inner styled content.
-            const emailBody =
-                '<div style="font-family:Arial,sans-serif;background:#f8f6f2;padding:30px 20px;">' +
-                  '<div style="max-width:600px;margin:0 auto;background:#fff;border-radius:16px;padding:32px;">' +
-
-                  '<div style="text-align:center;padding-bottom:20px;margin-bottom:20px;border-bottom:2px solid #f5eded;">' +
-                  '<h1 style="font-family:Georgia,serif;color:#d4a3a3;margin:0 0 6px 0;font-size:28px;font-weight:400;">Victoria\'s Weekly Report</h1>' +
-                  '<p style="color:#aaa;margin:0;font-size:13px;">Week ending ' + dateStr + '</p>' +
-                  '</div>' +
-
-                  '<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:24px;">' +
-                  '<tr style="background:#f9ecec;">' +
-                  '<th style="padding:9px 6px;font-size:10px;color:#888;text-transform:uppercase;text-align:center;">Habit</th>' +
-                  '<th style="padding:9px 6px;font-size:10px;color:#888;text-transform:uppercase;text-align:left;">Name</th>' +
-                  '<th style="padding:9px 6px;font-size:10px;color:#888;text-transform:uppercase;text-align:center;">M T W T F S S</th>' +
-                  '<th style="padding:9px 6px;font-size:10px;color:#888;text-transform:uppercase;text-align:center;">Tier</th>' +
-                  '<th style="padding:9px 6px;font-size:10px;color:#888;text-transform:uppercase;text-align:right;">Payout</th>' +
-                  '</tr>' +
-                  habitRows +
-                  '</table>' +
-
-                  '<div style="background:#d4a3a3;color:#fff;padding:22px;border-radius:12px;text-align:center;">' +
-                  '<div style="font-size:11px;text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;">Total Weekly Balance</div>' +
-                  '<div style="font-size:40px;font-weight:700;">' + totalStr + '</div>' +
-                  '</div>' +
-
-                  '<p style="text-align:center;color:#ccc;font-size:11px;margin-top:20px;">Victoria Tracker &bull; Automated Weekly Summary</p>' +
-                  '</div>' +
-                '</div>';
+            const reportText =
+                '📋  VICTORIA\'S WEEKLY REPORT\n' +
+                'Week ending ' + dateStr + '\n' +
+                divider + '\n\n' +
+                lines.join('\n') +
+                divider + '\n' +
+                '💰  TOTAL WEEKLY BALANCE: ' + totalStr + '\n' +
+                divider;
 
             const templateParams = {
-                summary_html: emailBody
+                summary_text: reportText
             };
 
             try {
