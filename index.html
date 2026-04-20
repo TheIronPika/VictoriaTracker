@@ -92,12 +92,11 @@
             const totalColor  = totalMoney < 0 ? '#d9534f' : '#27ae60';
             const totalStr    = `${totalMoney < 0 ? '-' : ''}$${Math.abs(totalMoney).toFixed(2)}`;
 
-            // Only pass the small dynamic pieces — the full email wrapper lives in the EmailJS template
+            // summary_html matches the variable already in your EmailJS template
             const templateParams = {
                 date_range:   dateStr,
                 total_money:  totalStr,
-                total_color:  totalColor,
-                habit_rows:   habitRows
+                summary_html: habitRows
             };
 
             try {
@@ -109,8 +108,9 @@
                 await syncToFirebase();
                 if(isManual) alert("Weekly report sent and habits reset!");
             } catch (error) {
-                console.error("FAILED...", error);
-                if(isManual) alert("Email failed to send.");
+                const msg = error?.text || error?.message || JSON.stringify(error);
+                console.error("EmailJS send failed:", error);
+                if(isManual) alert("Email failed to send.\n\nError: " + msg);
             }
         };
 
