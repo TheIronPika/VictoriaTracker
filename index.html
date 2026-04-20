@@ -55,57 +55,66 @@
         // WEEKLY REPORT - Enhanced HTML Version
         window.runWeeklyReport = async (isManual = true) => {
             let totalMoney = 0;
-            let habitRows = '';
+            let habitRows  = '';
 
-            // Emoji dots: one character each instead of ~85 chars of inline HTML per dot
-            // This keeps the payload well under EmailJS's 50KB variable limit
-            const emojiDot  = { punish:'\u{1F534}', low:'\u{1F7E1}', goal:'\u{1F7E2}', bonus:'\u{1F7E3}' };
+            const emojiDot   = { punish:'🔴', low:'🟡', goal:'🟢', bonus:'🟣' };
             const tierColors = { punish:'#d9534f', low:'#e67e22', goal:'#27ae60', bonus:'#8e44ad' };
             const tierLabels = { punish:'DEBT', low:'LOW', goal:'GOAL', bonus:'BONUS' };
 
             habits.forEach(h => {
-                const cur = h.history[6];
-                const tier = getTier(h, cur);
+                const cur  = h.history ? h.history[6] : 0;
+                const tier = getTier(h, cur || 0);
                 let payout = 0;
-                if(tier === 'punish') payout = h.valPunish;
-                else if(tier === 'low') payout = h.valLow;
-                else if(tier === 'goal') payout = h.valGoal;
-                else if(tier === 'bonus') payout = h.valBonus;
+                if(tier === 'punish') payout = h.valPunish || 0;
+                else if(tier === 'low')   payout = h.valLow   || 0;
+                else if(tier === 'goal')  payout = h.valGoal  || 0;
+                else if(tier === 'bonus') payout = h.valBonus || 0;
                 totalMoney += payout;
 
-                // Each dot is a single emoji character — massively smaller than a styled span
-                const dots = h.history.map(c => c > 0 ? emojiDot[getTier(h, c)] : '\u26AA').join(' ');
-
-                const color = tierColors[tier];
-                const label = tierLabels[tier];
-                const sign  = payout < 0 ? '-' : '';
+                const dots     = (h.history || []).map(c => c > 0 ? emojiDot[getTier(h, c)] : '⚪').join(' ');
+                const color    = tierColors[tier];
+                const label    = tierLabels[tier];
                 const payColor = payout < 0 ? '#d9534f' : '#27ae60';
+                const payStr   = (payout < 0 ? '-$' : '$') + Math.abs(payout).toFixed(2);
 
-                habitRows += `<tr style="border-bottom:1px solid #f0f0f0;">` +
-                    `<td style="padding:10px 6px;font-size:18px;text-align:center;">${h.icon}</td>` +
-                    `<td style="padding:10px 6px;font-size:13px;font-weight:600;color:#4a3a3a;">${h.name}</td>` +
-                    `<td style="padding:10px 6px;text-align:center;font-size:14px;letter-spacing:2px;">${dots}</td>` +
-                    `<td style="padding:10px 6px;text-align:center;font-size:11px;font-weight:700;color:${color};">${label}</td>` +
-                    `<td style="padding:10px 6px;text-align:right;font-size:13px;font-weight:700;color:${payColor};">${sign}$${Math.abs(payout).toFixed(2)}</td>` +
-                    `</tr>`;
+                // Build <tr> rows for a self-contained table assembled below
+                habitRows +=
+                    '<tr style="border-bottom:1px solid #f0f0f0;">' +
+                    '<td style="padding:10px 6px;font-size:18px;text-align:center;">' + h.icon + '</td>' +
+                    '<td style="padding:10px 6px;font-size:13px;font-weight:600;color:#4a3a3a;">' + h.name + '</td>' +
+                    '<td style="padding:10px 6px;text-align:center;font-size:14px;letter-spacing:1px;">' + dots + '</td>' +
+                    '<td style="padding:10px 6px;text-align:center;font-size:12px;font-weight:700;color:' + color + ';">' + label + '</td>' +
+                    '<td style="padding:10px 6px;text-align:right;font-size:13px;font-weight:700;color:' + payColor + ';">' + payStr + '</td>' +
+                    '</tr>';
             });
 
-            const dateStr  = new Date().toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric' });
-            const totalStr = `${totalMoney < 0 ? '-' : ''}$${Math.abs(totalMoney).toFixed(2)}`;
+            // Send a COMPLETE self-contained <table> as the variable.
+            // EmailJS strips <tr>/<td> injected into an existing template table,
+            // but a full <table>...</table> block passes through untouched.
+            const fullTable =
+                '<table style="width:100%;border-collapse:collapse;font-family:Arial,sans-serif;margin-bottom:25px;">' +
+                '<tr style="background:#f9ecec;">' +
+                '<th style="padding:9px 6px;font-size:10px;color:#888;text-transform:uppercase;text-align:center;">Habit</th>' +
+                '<th style="padding:9px 6px;font-size:10px;color:#888;text-transform:uppercase;text-align:left;">Name</th>' +
+                '<th style="padding:9px 6px;font-size:10px;color:#888;text-transform:uppercase;text-align:center;">M T W T F S S</th>' +
+                '<th style="padding:9px 6px;font-size:10px;color:#888;text-transform:uppercase;text-align:center;">Tier</th>' +
+                '<th style="padding:9px 6px;font-size:10px;color:#888;text-transform:uppercase;text-align:right;">Payout</th>' +
+                '</tr>' +
+                habitRows +
+                '</table>';
 
-            // summary_html matches the {{{summary_html}}} variable in your EmailJS template
+            const dateStr  = new Date().toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric' });
+            const totalStr = (totalMoney < 0 ? '-$' : '$') + Math.abs(totalMoney).toFixed(2);
+
             const templateParams = {
                 date_range:   dateStr,
                 total_money:  totalStr,
-                summary_html: habitRows
+                summary_html: fullTable
             };
 
             try {
                 await emailjs.send("service_gj1f9sj", "template_2cyqti5", templateParams);
-                habits = habits.map(h => ({
-                    ...h,
-                    history: [0, 0, 0, 0, 0, 0, 0]
-                }));
+                habits = habits.map(h => ({ ...h, history: [0,0,0,0,0,0,0] }));
                 await syncToFirebase();
                 if(isManual) alert("Weekly report sent and habits reset!");
             } catch (error) {
