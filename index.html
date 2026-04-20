@@ -57,12 +57,16 @@
             let totalMoney = 0;
             let lines = [];
 
-            const tierLabels = { punish:'DEBT', low:'LOW', goal:'GOAL ✓', bonus:'BONUS ★' };
-            const emojiDot   = { punish:'🔴', low:'🟡', goal:'🟢', bonus:'🟣' };
+            // Single ASCII chars — emoji get JSON-encoded as 12-char escape sequences
+            // which can push the payload over EmailJS's 50KB limit
+            const dotChar   = { punish:'D', low:'L', goal:'G', bonus:'B' };
+            const tierLabels = { punish:'DEBT', low:'LOW', goal:'GOAL', bonus:'BONUS' };
 
             habits.forEach(h => {
-                const cur  = h.history ? h.history[6] : 0;
-                const tier = getTier(h, cur || 0);
+                // Slice to 7 — Firebase history arrays can grow longer and bloat the payload
+                const hist = (h.history || []).slice(0, 7);
+                const cur  = hist[6] !== undefined ? hist[6] : (hist[hist.length - 1] || 0);
+                const tier = getTier(h, cur);
                 let payout = 0;
                 if(tier === 'punish') payout = h.valPunish || 0;
                 else if(tier === 'low')   payout = h.valLow   || 0;
@@ -70,30 +74,37 @@
                 else if(tier === 'bonus') payout = h.valBonus || 0;
                 totalMoney += payout;
 
-                const dots   = (h.history || []).map(c => c > 0 ? emojiDot[getTier(h, c)] : '⚪').join(' ');
-                const label  = tierLabels[tier];
+                // e.g.  M:G T:G W:L T:. F:. S:. S:.
+                const days  = ['M','T','W','T','F','S','S'];
+                const dots  = days.map((d, i) => {
+                    const c = hist[i] || 0;
+                    return d + ':' + (c > 0 ? dotChar[getTier(h, c)] : '.');
+                }).join('  ');
+
                 const payStr = (payout < 0 ? '-$' : '+$') + Math.abs(payout).toFixed(2);
 
-                lines.push(h.icon + '  ' + h.name);
-                lines.push('   Week: ' + dots);
-                lines.push('   Tier: ' + label + '   |   Payout: ' + payStr);
+                lines.push(h.icon + ' ' + h.name);
+                lines.push('  ' + dots);
+                lines.push('  ' + tierLabels[tier] + ' | ' + payStr);
                 lines.push('');
             });
 
-            const now      = new Date();
-            const months   = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-            const dateStr  = months[now.getMonth()] + ' ' + now.getDate() + ', ' + now.getFullYear();
+            const now     = new Date();
+            const months  = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+            const dateStr = months[now.getMonth()] + ' ' + now.getDate() + ', ' + now.getFullYear();
             const totalStr = (totalMoney < 0 ? '-$' : '+$') + Math.abs(totalMoney).toFixed(2);
-            const divider  = '----------------------------------------';
+            const line    = '--------------------------------';
 
+            // Key: D=Debt  L=Low  G=Goal  B=Bonus  .=No activity
             const reportText =
-                '📋  VICTORIA\'S WEEKLY REPORT\n' +
+                'VICTORIA\'S WEEKLY REPORT\n' +
                 'Week ending ' + dateStr + '\n' +
-                divider + '\n\n' +
+                'Key: D=Debt  L=Low  G=Goal  B=Bonus  .=No activity\n' +
+                line + '\n\n' +
                 lines.join('\n') +
-                divider + '\n' +
-                '💰  TOTAL WEEKLY BALANCE: ' + totalStr + '\n' +
-                divider;
+                line + '\n' +
+                'TOTAL BALANCE: ' + totalStr + '\n' +
+                line;
 
             const templateParams = {
                 summary_text: reportText
