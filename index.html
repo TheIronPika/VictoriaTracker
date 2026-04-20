@@ -57,8 +57,11 @@
             let totalMoney = 0;
             let habitRows = '';
 
-            const tierColors  = { punish:'#d9534f', low:'#e67e22', goal:'#27ae60', bonus:'#8e44ad' };
-            const tierLabels  = { punish:'DEBT',    low:'LOW',      goal:'GOAL',    bonus:'BONUS'   };
+            // Emoji dots: one character each instead of ~85 chars of inline HTML per dot
+            // This keeps the payload well under EmailJS's 50KB variable limit
+            const emojiDot  = { punish:'\u{1F534}', low:'\u{1F7E1}', goal:'\u{1F7E2}', bonus:'\u{1F7E3}' };
+            const tierColors = { punish:'#d9534f', low:'#e67e22', goal:'#27ae60', bonus:'#8e44ad' };
+            const tierLabels = { punish:'DEBT', low:'LOW', goal:'GOAL', bonus:'BONUS' };
 
             habits.forEach(h => {
                 const cur = h.history[6];
@@ -70,29 +73,27 @@
                 else if(tier === 'bonus') payout = h.valBonus;
                 totalMoney += payout;
 
-                // 7 compact colored dots — one per day
-                const dots = h.history.map(c => {
-                    const col = c > 0 ? tierColors[getTier(h, c)] : '#ddd';
-                    return `<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${col};margin:0 2px;"></span>`;
-                }).join('');
+                // Each dot is a single emoji character — massively smaller than a styled span
+                const dots = h.history.map(c => c > 0 ? emojiDot[getTier(h, c)] : '\u26AA').join(' ');
 
-                const badge = `<span style="background:${tierColors[tier]};color:#fff;padding:3px 9px;border-radius:10px;font-size:11px;font-weight:700;">${tierLabels[tier]}</span>`;
-                const amt   = `<span style="color:${payout<0?'#d9534f':'#27ae60'};font-weight:700;">${payout<0?'-':''}$${Math.abs(payout).toFixed(2)}</span>`;
+                const color = tierColors[tier];
+                const label = tierLabels[tier];
+                const sign  = payout < 0 ? '-' : '';
+                const payColor = payout < 0 ? '#d9534f' : '#27ae60';
 
-                habitRows += `<tr style="border-bottom:1px solid #f5f5f5;">
-                    <td style="padding:12px 8px;font-size:20px;text-align:center;">${h.icon}</td>
-                    <td style="padding:12px 8px;font-size:13px;font-weight:600;color:#4a3a3a;">${h.name}</td>
-                    <td style="padding:12px 8px;text-align:center;white-space:nowrap;">${dots}</td>
-                    <td style="padding:12px 8px;text-align:center;">${badge}</td>
-                    <td style="padding:12px 8px;text-align:right;">${amt}</td>
-                </tr>`;
+                habitRows += `<tr style="border-bottom:1px solid #f0f0f0;">` +
+                    `<td style="padding:10px 6px;font-size:18px;text-align:center;">${h.icon}</td>` +
+                    `<td style="padding:10px 6px;font-size:13px;font-weight:600;color:#4a3a3a;">${h.name}</td>` +
+                    `<td style="padding:10px 6px;text-align:center;font-size:14px;letter-spacing:2px;">${dots}</td>` +
+                    `<td style="padding:10px 6px;text-align:center;font-size:11px;font-weight:700;color:${color};">${label}</td>` +
+                    `<td style="padding:10px 6px;text-align:right;font-size:13px;font-weight:700;color:${payColor};">${sign}$${Math.abs(payout).toFixed(2)}</td>` +
+                    `</tr>`;
             });
 
-            const dateStr     = new Date().toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric' });
-            const totalColor  = totalMoney < 0 ? '#d9534f' : '#27ae60';
-            const totalStr    = `${totalMoney < 0 ? '-' : ''}$${Math.abs(totalMoney).toFixed(2)}`;
+            const dateStr  = new Date().toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric' });
+            const totalStr = `${totalMoney < 0 ? '-' : ''}$${Math.abs(totalMoney).toFixed(2)}`;
 
-            // summary_html matches the variable already in your EmailJS template
+            // summary_html matches the {{{summary_html}}} variable in your EmailJS template
             const templateParams = {
                 date_range:   dateStr,
                 total_money:  totalStr,
