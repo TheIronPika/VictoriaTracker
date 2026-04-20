@@ -87,47 +87,44 @@
                     '</tr>';
             });
 
-            // Months array avoids locale/slash issues in the subject line
-            const now      = new Date();
-            const months   = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-            const dateStr  = months[now.getMonth()] + ' ' + now.getDate() + ', ' + now.getFullYear();
+            const now     = new Date();
+            const months  = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+            const dateStr = months[now.getMonth()] + ' ' + now.getDate() + ', ' + now.getFullYear();
             const totalStr = (totalMoney < 0 ? '-$' : '$') + Math.abs(totalMoney).toFixed(2);
 
-            // Build the ENTIRE email in JS — this is ~5KB with emoji dots, well under the 50KB limit.
-            // Sending complete HTML avoids all EmailJS template structure conflicts.
-            const emailHtml =
-                '<!DOCTYPE html><html><head><meta charset="UTF-8"></head>' +
-                '<body style="margin:0;padding:0;background:#f8f6f2;font-family:Arial,sans-serif;">' +
-                '<div style="max-width:620px;margin:0 auto;padding:30px 20px;">' +
-                '<div style="background:#fff;border-radius:18px;padding:35px;box-shadow:0 4px 20px rgba(0,0,0,0.07);">' +
+            // No DOCTYPE/html/head/body — EmailJS wraps in its own shell and strips those.
+            // Just send the inner styled content.
+            const emailBody =
+                '<div style="font-family:Arial,sans-serif;background:#f8f6f2;padding:30px 20px;">' +
+                  '<div style="max-width:600px;margin:0 auto;background:#fff;border-radius:16px;padding:32px;">' +
 
-                '<div style="text-align:center;margin-bottom:30px;padding-bottom:25px;border-bottom:1px solid #f5eded;">' +
-                '<h1 style="font-family:Georgia,serif;color:#d4a3a3;margin:0 0 6px 0;font-size:32px;font-weight:400;">Victoria\'s Weekly Report</h1>' +
-                '<p style="color:#aaa;margin:0;font-size:13px;">Week ending ' + dateStr + '</p>' +
-                '</div>' +
+                  '<div style="text-align:center;padding-bottom:20px;margin-bottom:20px;border-bottom:2px solid #f5eded;">' +
+                  '<h1 style="font-family:Georgia,serif;color:#d4a3a3;margin:0 0 6px 0;font-size:28px;font-weight:400;">Victoria\'s Weekly Report</h1>' +
+                  '<p style="color:#aaa;margin:0;font-size:13px;">Week ending ' + dateStr + '</p>' +
+                  '</div>' +
 
-                '<table style="width:100%;border-collapse:collapse;margin-bottom:25px;">' +
-                '<tr style="background:#f9ecec;">' +
-                '<th style="padding:9px 6px;font-size:10px;color:#888;text-transform:uppercase;text-align:center;">Habit</th>' +
-                '<th style="padding:9px 6px;font-size:10px;color:#888;text-transform:uppercase;text-align:left;">Name</th>' +
-                '<th style="padding:9px 6px;font-size:10px;color:#888;text-transform:uppercase;text-align:center;">M T W T F S S</th>' +
-                '<th style="padding:9px 6px;font-size:10px;color:#888;text-transform:uppercase;text-align:center;">Tier</th>' +
-                '<th style="padding:9px 6px;font-size:10px;color:#888;text-transform:uppercase;text-align:right;">Payout</th>' +
-                '</tr>' +
-                habitRows +
-                '</table>' +
+                  '<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:24px;">' +
+                  '<tr style="background:#f9ecec;">' +
+                  '<th style="padding:9px 6px;font-size:10px;color:#888;text-transform:uppercase;text-align:center;">Habit</th>' +
+                  '<th style="padding:9px 6px;font-size:10px;color:#888;text-transform:uppercase;text-align:left;">Name</th>' +
+                  '<th style="padding:9px 6px;font-size:10px;color:#888;text-transform:uppercase;text-align:center;">M T W T F S S</th>' +
+                  '<th style="padding:9px 6px;font-size:10px;color:#888;text-transform:uppercase;text-align:center;">Tier</th>' +
+                  '<th style="padding:9px 6px;font-size:10px;color:#888;text-transform:uppercase;text-align:right;">Payout</th>' +
+                  '</tr>' +
+                  habitRows +
+                  '</table>' +
 
-                '<div style="background:linear-gradient(135deg,#d4a3a3,#c49090);color:#fff;padding:25px;border-radius:14px;text-align:center;">' +
-                '<div style="font-size:11px;text-transform:uppercase;letter-spacing:3px;opacity:0.9;margin-bottom:6px;font-weight:600;">Total Weekly Balance</div>' +
-                '<div style="font-size:44px;font-weight:700;">' + totalStr + '</div>' +
-                '</div>' +
+                  '<div style="background:#d4a3a3;color:#fff;padding:22px;border-radius:12px;text-align:center;">' +
+                  '<div style="font-size:11px;text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;">Total Weekly Balance</div>' +
+                  '<div style="font-size:40px;font-weight:700;">' + totalStr + '</div>' +
+                  '</div>' +
 
-                '<div style="margin-top:25px;text-align:center;color:#ccc;font-size:11px;">Victoria Tracker &bull; Automated Weekly Summary</div>' +
-                '</div></div></body></html>';
+                  '<p style="text-align:center;color:#ccc;font-size:11px;margin-top:20px;">Victoria Tracker &bull; Automated Weekly Summary</p>' +
+                  '</div>' +
+                '</div>';
 
             const templateParams = {
-                subject:      'Victoria\'s Weekly Report - ' + dateStr,
-                summary_html: emailHtml
+                summary_html: emailBody
             };
 
             try {
