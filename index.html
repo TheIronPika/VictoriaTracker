@@ -52,13 +52,13 @@
             await setDoc(doc(db, "system", "habits_list"), { data: habits });
         }
 
-        // WEEKLY REPORT
+        // WEEKLY REPORT - Enhanced HTML Version
         window.runWeeklyReport = async (isManual = true) => {
             let totalMoney = 0;
-            let summaryParts = [];
+            let htmlRows = '';
 
             habits.forEach(h => {
-                const cur = h.history[6];
+                const cur = h.history[6]; // Sunday's final count
                 const tier = getTier(h, cur);
                 let payout = 0;
                 if(tier === 'punish') payout = h.valPunish;
@@ -67,13 +67,91 @@
                 else if(tier === 'bonus') payout = h.valBonus;
                 
                 totalMoney += payout;
-                summaryParts.push(`${h.icon} ${h.name}: ${tier.toUpperCase()} ($${payout.toFixed(2)})`);
+
+                // Build weekly dots visualization (matching the app's weekly view)
+                let dotsHtml = '';
+                h.history.forEach((count, dayIdx) => {
+                    const dayTier = getTier(h, count);
+                    const colors = {
+                        'punish': '#d9534f',
+                        'low': '#e67e22',
+                        'goal': '#27ae60',
+                        'bonus': '#8e44ad'
+                    };
+                    const color = count > 0 ? colors[dayTier] : '#e0e0e0';
+                    dotsHtml += `<span style="display:inline-block; width:14px; height:14px; border-radius:50%; background:${color}; margin:0 3px;"></span>`;
+                });
+
+                // Tier badge with color
+                const tierColors = {
+                    'punish': '#d9534f',
+                    'low': '#e67e22',
+                    'goal': '#27ae60',
+                    'bonus': '#8e44ad'
+                };
+                const tierLabels = {
+                    'punish': 'DEBT',
+                    'low': 'LOW',
+                    'goal': 'GOAL',
+                    'bonus': 'BONUS'
+                };
+                const tierBadge = `<span style="display:inline-block; padding:5px 12px; border-radius:15px; background:${tierColors[tier]}; color:white; font-weight:bold; font-size:11px; text-transform:uppercase; letter-spacing:0.5px;">${tierLabels[tier]}</span>`;
+
+                // Payout display with color
+                const payoutColor = payout < 0 ? '#d9534f' : '#27ae60';
+                const payoutDisplay = `<span style="color:${payoutColor}; font-weight:bold; font-size:15px;">${payout < 0 ? '-' : ''}$${Math.abs(payout).toFixed(2)}</span>`;
+
+                htmlRows += `
+                    <tr style="border-bottom: 1px solid #f0f0f0;">
+                        <td style="padding:15px 10px; text-align:center; font-size:24px;">${h.icon}</td>
+                        <td style="padding:15px 10px; font-weight:600; color:#4a3a3a; font-size:14px;">${h.name}</td>
+                        <td style="padding:15px 10px; text-align:center; white-space:nowrap;">${dotsHtml}</td>
+                        <td style="padding:15px 10px; text-align:center;">${tierBadge}</td>
+                        <td style="padding:15px 10px; text-align:right;">${payoutDisplay}</td>
+                    </tr>
+                `;
             });
 
+            // Build complete HTML email
+            const htmlContent = `
+                <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 650px; margin: 0 auto; background: #f8f6f2; padding: 30px;">
+                    <div style="background: white; border-radius: 20px; padding: 40px; box-shadow: 0 8px 25px rgba(0,0,0,0.08);">
+                        <div style="text-align: center; margin-bottom: 35px;">
+                            <h1 style="font-family: Georgia, serif; color: #d4a3a3; margin: 0 0 8px 0; font-size: 36px; font-weight: 400;">Victoria's Weekly Report</h1>
+                            <p style="color: #999; margin: 0; font-size: 15px; letter-spacing: 1px;">Week ending ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+                        </div>
+                        
+                        <table style="width: 100%; border-collapse: collapse; background: white; margin-bottom: 30px; border-radius: 12px; overflow: hidden;">
+                            <thead>
+                                <tr style="background: linear-gradient(135deg, #f9ecec 0%, #f5e5e5 100%);">
+                                    <th style="padding: 14px 10px; text-align: center; font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 1px; font-weight: 700;">Icon</th>
+                                    <th style="padding: 14px 10px; text-align: left; font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 1px; font-weight: 700;">Habit</th>
+                                    <th style="padding: 14px 10px; text-align: center; font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 1px; font-weight: 700;">M · T · W · T · F · S · S</th>
+                                    <th style="padding: 14px 10px; text-align: center; font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 1px; font-weight: 700;">Tier</th>
+                                    <th style="padding: 14px 10px; text-align: right; font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 1px; font-weight: 700;">Payout</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${htmlRows}
+                            </tbody>
+                        </table>
+                        
+                        <div style="background: linear-gradient(135deg, #d4a3a3 0%, #c49090 100%); color: white; padding: 30px; border-radius: 15px; text-align: center; box-shadow: 0 4px 15px rgba(212,163,163,0.3);">
+                            <div style="font-size: 13px; text-transform: uppercase; letter-spacing: 3px; opacity: 0.95; margin-bottom: 8px; font-weight: 600;">Total Weekly Balance</div>
+                            <div style="font-size: 48px; font-weight: bold; letter-spacing: -1px;">${totalMoney < 0 ? '-' : ''}$${Math.abs(totalMoney).toFixed(2)}</div>
+                        </div>
+                        
+                        <div style="margin-top: 30px; padding-top: 25px; border-top: 1px solid #f0f0f0; text-align: center; color: #aaa; font-size: 12px;">
+                            <p style="margin: 0;">Victoria Tracker • Automated Weekly Summary</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+
             const templateParams = {
-                date_range: new Date().toLocaleDateString(),
+                date_range: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
                 total_money: `$${totalMoney.toFixed(2)}`,
-                summary_text: summaryParts.join('\n')
+                summary_html: htmlContent
             };
 
             try {
