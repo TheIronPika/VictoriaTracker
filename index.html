@@ -41,6 +41,8 @@
 
         // tracks whether the first Firebase load has been processed (for Monday reset check)
         let initialLoadDone = false;
+        let weeklyHistory   = [];
+        let historyLoaded   = false;
 
         const getDayIdx = (d) => {
             let day = d.getDay(); 
@@ -112,8 +114,10 @@
 
             try {
                 await emailjs.send('service_gj1f9sj', 'template_2cyqti5', templateParams);
+                await saveWeekSnapshot(habits, totalMoney, dateStr);
                 habits = habits.map(h => ({ ...h, history: [0,0,0,0,0,0,0] }));
                 await syncToFirebase();
+                historyLoaded = false;
                 if(isManual) alert('Weekly report sent and habits reset!');
             } catch (error) {
                 const msg = error?.text || error?.message || JSON.stringify(error);
@@ -125,6 +129,160 @@
         // MONDAY AUTO-RESET CHECK
         // Runs once on first data load. If it's Monday and we haven't reset yet
         // this Monday, fire the weekly report silently and save the date to localStorage.
+
+        // ── HISTORY: save weekly snapshot ────────────────────────────────────
+        async function saveWeekSnapshot(habitsArr, totalBalance, dateStr) {
+            try {
+                const histRef  = doc(db, 'system', 'weekly_history');
+                const histSnap = await getDoc(histRef);
+                let weeks = histSnap.exists() ? (histSnap.data().weeks || []) : [];
+                const entry = {
+                    id: Date.now().toString(), weekEnding: dateStr,
+                    timestamp: Date.now(), totalBalance: totalBalance,
+                    habits: habitsArr.map(h => {
+                        const hist = (h.history || []).slice(0, 7);
+                        const cur  = hist[6] !== undefined ? hist[6] : (hist[hist.length-1] || 0);
+                        const tier = getTier(h, cur);
+                        let payout = 0;
+                        if (tier==='punish') payout = h.valPunish || 0;
+                        else if (tier==='low')   payout = h.valLow   || 0;
+                        else if (tier==='goal')  payout = h.valGoal  || 0;
+                        else if (tier==='bonus') payout = h.valBonus || 0;
+                        return { id:h.id, name:h.name, icon:h.icon, cat:h.cat,
+                                 tier, payout, history:hist,
+                                 thresh:{punish:h.punish||1,low:h.low||3,goal:h.goal||5,bonus:h.bonus||7} };
+                    })
+                };
+                weeks.unshift(entry);
+                if (weeks.length > 52) weeks = weeks.slice(0, 52);
+                await setDoc(histRef, { weeks });
+            } catch(e) { console.error('saveWeekSnapshot:', e); }
+        }
+
+        // ── HISTORY: trend SVG ────────────────────────────────────────────────
+        function renderBalanceTrendSVG(weeks) {
+            const show = weeks.slice(0,12).reverse();
+            if (!show.length) return '';
+            const W=300,H=90,pL=4,pR=4,pT=8,pB=18;
+            const midY = pT + (H-pT-pB)/2;
+            const maxA = Math.max(...show.map(w=>Math.abs(w.totalBalance)), 0.01);
+            const step = (W-pL-pR)/show.length;
+            const bw   = Math.max(6, step-4);
+            let bars='', labels='';
+            show.forEach((wk,i) => {
+                const x   = pL + i*step + (step-bw)/2;
+                const scH = Math.round((Math.abs(wk.totalBalance)/maxA)*((H-pT-pB)/2-4));
+                const isP = wk.totalBalance >= 0;
+                const col = isP ? '#27ae60' : '#d9534f';
+                bars += '<rect x="'+x.toFixed(1)+'" y="'+(isP?midY-scH:midY)+'" width="'+bw.toFixed(1)+'" height="'+Math.max(2,scH)+'" rx="2" fill="'+col+'" opacity="0.85"/>';
+                const d=new Date(wk.timestamp), lbl=(d.getMonth()+1)+'/'+(d.getDate());
+                labels += '<text x="'+(x+bw/2).toFixed(1)+'" y="'+(H-3)+'" text-anchor="middle" font-size="7" fill="#bbb">'+lbl+'</text>';
+            });
+            return '<div style="background:rgba(255,255,255,0.5);border-radius:10px;padding:6px 4px 2px;">'
+                 + '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;display:block;">'
+                 + '<line x1="'+pL+'" y1="'+midY+'" x2="'+(W-pR)+'" y2="'+midY+'" stroke="#e8e8e8" stroke-width="1.5"/>'
+                 + bars+labels+'</svg></div>';
+        }
+
+        // ── HISTORY: load + render ────────────────────────────────────────────
+        function renderHistory() {
+            const root = document.getElementById('historyRoot');
+            if (!root) return;
+            if (historyLoaded) { _paintHistory(root); return; }
+            root.innerHTML = '<p style="text-align:center;color:#bbb;padding:40px 0;font-size:13px;">Loading history&#8230;</p>';
+            getDoc(doc(db,'system','weekly_history')).then(snap => {
+                weeklyHistory = snap.exists() ? (snap.data().weeks||[]) : [];
+                historyLoaded = true;
+                _paintHistory(root);
+            }).catch(() => {
+                root.innerHTML = '<p style="text-align:center;color:#bbb;padding:40px 0;">Could not load history.</p>';
+            });
+        }
+
+        function _paintHistory(root) {
+            const TC = {punish:'var(--color-punish)',low:'var(--color-low)',goal:'var(--color-goal)',bonus:'var(--color-bonus)'};
+            const TL = {punish:'DEBT',low:'LOW',goal:'GOAL',bonus:'BONUS'};
+            function dTier(c,t){ if(c>=(t.bonus||7))return'bonus'; if(c>=(t.goal||5))return'goal'; if(c>=(t.low||3))return'low'; return'punish'; }
+
+            if (!weeklyHistory.length) {
+                root.innerHTML = '<div style="text-align:center;padding:50px 20px;color:#bbb;">'
+                    +'<div style="font-size:32px;margin-bottom:12px;">&#128197;</div>'
+                    +'<div style="font-family:\'Playfair Display\';font-size:16px;color:#c0a0a0;margin-bottom:8px;">No history yet</div>'
+                    +'<div style="font-size:12px;">Complete your first weekly reset<br>to start seeing trends here.</div></div>';
+                return;
+            }
+
+            let html = '';
+
+            // Trend chart
+            html += '<div class="history-card">'
+                  + '<h3 class="history-section-title">Balance Trend</h3>'
+                  + renderBalanceTrendSVG(weeklyHistory)
+                  + '<div style="display:flex;justify-content:center;gap:16px;margin-top:8px;font-size:10px;font-weight:600;">'
+                  + '<span style="color:#27ae60;">&#9646; Profit</span>'
+                  + '<span style="color:#d9534f;">&#9646; Debt</span>'
+                  + '</div></div>';
+
+            // Stats strip
+            const allT = weeklyHistory.reduce((s,w)=>s+w.totalBalance,0);
+            const best = weeklyHistory.reduce((b,w)=>w.totalBalance>b.totalBalance?w:b, weeklyHistory[0]);
+            const aC   = allT>=0?'#27ae60':'#d9534f';
+            html += '<div class="history-card" style="display:flex;">'
+                  + '<div style="flex:1;text-align:center;border-right:1px solid #f0eded;">'
+                  + '<div style="font-size:10px;font-weight:700;color:#aaa;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">All-Time</div>'
+                  + '<div style="font-family:\'Great Vibes\';font-size:28px;color:'+aC+';">'+(allT<0?'-$':'$')+Math.abs(allT).toFixed(2)+'</div></div>'
+                  + '<div style="flex:1;text-align:center;">'
+                  + '<div style="font-size:10px;font-weight:700;color:#aaa;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Best Week</div>'
+                  + '<div style="font-family:\'Great Vibes\';font-size:28px;color:#27ae60;">'+(best.totalBalance>0?'+$'+best.totalBalance.toFixed(2):'$0.00')+'</div></div></div>';
+
+            html += '<h3 class="history-section-title" style="margin:8px 4px 10px;">Past Weeks</h3>';
+
+            weeklyHistory.forEach(wk => {
+                const isP  = wk.totalBalance >= 0;
+                const tCol = isP ? '#27ae60' : '#d9534f';
+                const tStr = (isP?'+$':'-$')+Math.abs(wk.totalBalance).toFixed(2);
+                const cats = [...new Set(wk.habits.map(h=>h.cat))];
+                let body   = '';
+                cats.forEach(cat => {
+                    body += '<div style="font-size:9px;font-weight:800;color:#bbb;text-transform:uppercase;letter-spacing:1px;margin:10px 0 4px;">'+cat+'</div>';
+                    wk.habits.filter(h=>h.cat===cat).forEach(h => {
+                        const dots = (h.history||[]).slice(0,7).map(c =>
+                            !c ? '<div class="hist-dot" style="background:#ebebeb;"></div>'
+                               : '<div class="hist-dot" style="background:'+TC[dTier(c,h.thresh||{})]+'"></div>'
+                        ).join('');
+                        const pC = h.payout<0?'var(--color-punish)':'var(--color-goal)';
+                        const pS = (h.payout<0?'-$':'+$')+Math.abs(h.payout).toFixed(2);
+                        body += '<div class="hist-habit-row">'
+                              + '<span class="hist-habit-icon">'+h.icon+'</span>'
+                              + '<span class="hist-habit-name">'+h.name+'</span>'
+                              + '<div class="hist-dots-row">'+dots+'</div>'
+                              + '<span class="hist-tier-badge" style="color:'+TC[h.tier]+';">'+TL[h.tier]+'</span>'
+                              + '<span class="hist-payout" style="color:'+pC+';">'+pS+'</span></div>';
+                    });
+                });
+                html += '<div class="history-week-card">'
+                      + '<div class="history-week-header" onclick="window.toggleHistoryWeek(\''+wk.id+'\')">'
+                      + '<div><div style="font-family:\'Playfair Display\';font-size:13px;font-weight:700;">Week of '+wk.weekEnding+'</div>'
+                      + '<div style="font-size:10px;color:#bbb;margin-top:2px;">'+wk.habits.length+' habits</div></div>'
+                      + '<div style="display:flex;align-items:center;gap:8px;">'
+                      + '<div style="font-family:\'Great Vibes\';font-size:26px;color:'+tCol+';">'+tStr+'</div>'
+                      + '<div id="chv-'+wk.id+'" style="color:#ccc;font-size:18px;transition:transform 0.2s;">&#8250;</div>'
+                      + '</div></div>'
+                      + '<div id="hwkbody-'+wk.id+'" class="history-week-body" style="display:none;">'+body+'</div>'
+                      + '</div>';
+            });
+            root.innerHTML = html;
+        }
+
+        window.toggleHistoryWeek = (id) => {
+            const b = document.getElementById('hwkbody-'+id);
+            const c = document.getElementById('chv-'+id);
+            if (!b) return;
+            const open = b.style.display === 'none';
+            b.style.display = open ? 'block' : 'none';
+            if (c) c.style.transform = open ? 'rotate(90deg)' : '';
+        };
+
         async function checkMondayReset() {
             const now = new Date();
             if (now.getDay() !== 1) return; // 0=Sun, 1=Mon … only proceed on Monday
@@ -429,13 +587,13 @@
             const views = document.querySelectorAll('.view');
             tabs.forEach((t, i) => t.classList.toggle('active', i === idx));
             views.forEach((v, i) => v.classList.toggle('active', i === idx));
-            render();
+            if (idx === 3) renderHistory(); else render();
         };
 
         window.handleManageClick = () => {
             const pw = prompt("Enter passcode:");
             if (pw === "1234") {
-                window.switchTab(3);
+                window.switchTab(4);
             }
         };
 
@@ -742,6 +900,67 @@
         .matrix-table input { width: 50px; border: 1px solid #eee; padding: 4px; border-radius: 4px; font-family: 'Montserrat'; font-size: 12px; }
         .btn-delete { background: none; border: 1px solid #ffcfcf; color: #d9534f; padding: 5px 10px; border-radius: 6px; font-size: 10px; font-weight: 700; cursor: pointer; margin-top: 10px; }
 
+
+        /* ── HISTORY TAB ─────────────────────────────────────────────────── */
+        .history-card {
+            background: rgba(255,255,255,0.85);
+            backdrop-filter: blur(8px);
+            border-radius: 16px;
+            padding: 18px;
+            margin-bottom: 14px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.04);
+        }
+        .history-section-title {
+            font-family: 'Playfair Display', serif;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: var(--header-pink);
+            margin: 0 0 12px 0;
+            font-weight: 700;
+        }
+        .history-week-card {
+            background: rgba(255,255,255,0.85);
+            border-radius: 16px;
+            margin-bottom: 10px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+        }
+        .history-week-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px 16px;
+            cursor: pointer;
+        }
+        .history-week-body {
+            padding: 0 14px 14px;
+            border-top: 1px solid rgba(0,0,0,0.05);
+        }
+        .hist-habit-row {
+            display: flex;
+            align-items: center;
+            padding: 7px 0;
+            border-bottom: 1px solid rgba(0,0,0,0.04);
+            gap: 6px;
+        }
+        .hist-habit-row:last-child { border-bottom: none; }
+        .hist-habit-icon { font-size: 15px; flex-shrink: 0; }
+        .hist-habit-name {
+            font-size: 11px; font-weight: 600; color: var(--text-main);
+            flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .hist-dots-row { display: flex; gap: 3px; flex-shrink: 0; }
+        .hist-dot { width: 9px; height: 9px; border-radius: 50%; }
+        .hist-tier-badge {
+            font-size: 9px; font-weight: 800; text-transform: uppercase;
+            letter-spacing: 0.5px; flex-shrink: 0; min-width: 32px; text-align: center;
+        }
+        .hist-payout {
+            font-size: 11px; font-weight: 700; flex-shrink: 0;
+            min-width: 42px; text-align: right;
+        }
+
         footer { text-align: center; margin-top: 40px; font-family: 'Great Vibes'; color: var(--header-pink); font-size: 24px; padding-bottom: 40px; }
     </style>
 </head>
@@ -787,6 +1006,7 @@
         <div class="tab active" onclick="window.switchTab(0)">Today</div>
         <div class="tab" onclick="window.switchTab(1)">Priorities</div>
         <div class="tab" onclick="window.switchTab(2)">Weekly</div>
+        <div class="tab" onclick="window.switchTab(3)">History</div>
         <div class="tab" onclick="window.handleManageClick()">Manage 🔒</div>
     </nav>
 
@@ -800,6 +1020,10 @@
 
     <div id="view-weekly" class="view">
         <div id="weeklyRoot"></div>
+    </div>
+
+    <div id="view-history" class="view">
+        <div id="historyRoot"></div>
     </div>
 
     <div id="view-manage" class="view">
