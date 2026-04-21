@@ -205,14 +205,29 @@
             function dTier(c,t){ if(c>=(t.bonus||7))return'bonus'; if(c>=(t.goal||5))return'goal'; if(c>=(t.low||3))return'low'; return'punish'; }
 
             if (!weeklyHistory.length) {
-                root.innerHTML = '<div style="text-align:center;padding:50px 20px;color:#bbb;">'
-                    +'<div style="font-size:32px;margin-bottom:12px;">&#128197;</div>'
-                    +'<div style="font-family:\'Playfair Display\';font-size:16px;color:#c0a0a0;margin-bottom:8px;">No history yet</div>'
-                    +'<div style="font-size:12px;">Complete your first weekly reset<br>to start seeing trends here.</div></div>';
+                const mBtn = '<div style="text-align:right;margin-bottom:14px;">'
+                    + '<button onclick="window.handleManageClick()" '
+                    + 'style="background:none;border:1px solid var(--header-pink);color:var(--header-pink);'
+                    + 'padding:7px 14px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;'
+                    + 'font-family:\"Montserrat\",sans-serif;letter-spacing:1px;">'
+                    + 'MANAGE &#128274;</button></div>';
+                root.innerHTML = mBtn
+                    + '<div style="text-align:center;padding:50px 20px;color:#bbb;">'
+                    + '<div style="font-size:32px;margin-bottom:12px;">&#128197;</div>'
+                    + '<div style="font-family:\'Playfair Display\';font-size:16px;color:#c0a0a0;margin-bottom:8px;">No history yet</div>'
+                    + '<div style="font-size:12px;">Complete your first weekly reset<br>to start seeing trends here.</div></div>';
                 return;
             }
 
             let html = '';
+
+            // Manage button at top of history tab
+            html += '<div style="text-align:right;margin-bottom:14px;">'
+                  + '<button onclick="window.handleManageClick()" '
+                  + 'style="background:none;border:1px solid var(--header-pink);color:var(--header-pink);'
+                  + 'padding:7px 14px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;'
+                  + 'font-family:\'Montserrat\',sans-serif;letter-spacing:1px;">'
+                  + 'MANAGE &#128274;</button></div>';
 
             // Trend chart
             html += '<div class="history-card">'
@@ -593,7 +608,12 @@
         window.handleManageClick = () => {
             const pw = prompt("Enter passcode:");
             if (pw === "1234") {
-                window.switchTab(4);
+                // Switch to History tab, then reveal the manage panel inside it
+                window.switchTab(3);
+                setTimeout(() => {
+                    const panel = document.getElementById('managePanel');
+                    if (panel) { panel.style.display = 'block'; panel.scrollIntoView({behavior:'smooth'}); }
+                }, 80);
             }
         };
 
@@ -1007,7 +1027,6 @@
         <div class="tab" onclick="window.switchTab(1)">Priorities</div>
         <div class="tab" onclick="window.switchTab(2)">Weekly</div>
         <div class="tab" onclick="window.switchTab(3)">History</div>
-        <div class="tab" onclick="window.handleManageClick()">Manage 🔒</div>
     </nav>
 
     <div id="view-today" class="view active">
@@ -1023,24 +1042,24 @@
     </div>
 
     <div id="view-history" class="view">
+        <!-- Manage panel lives here, hidden until unlocked -->
+        <div id="managePanel" style="display:none; margin-bottom:20px;">
+            <div class="manage-card">
+                <h4 style="font-family:'Great Vibes'; font-size:28px; color:var(--header-pink); margin:0 0 15px 0;">Add New Habit</h4>
+                <div style="display:flex; gap:10px; margin-bottom:10px;">
+                    <input type="text" id="newIcon" placeholder="Icon (e.g. 🧘)" style="width:20%; padding:10px; border:1px solid #eee; border-radius:8px;">
+                    <input type="text" id="newName" placeholder="Habit Name" style="flex:1; padding:10px; border:1px solid #eee; border-radius:8px;">
+                </div>
+                <input type="text" id="newCat" placeholder="Category" style="width:100%; padding:10px; border:1px solid #eee; border-radius:8px; box-sizing:border-box; margin-bottom:10px;">
+                <button onclick="window.addTask()" style="width:100%; background:var(--header-pink); color:white; border:none; padding:12px; border-radius:10px; font-weight:bold; cursor:pointer;">Create Habit</button>
+            </div>
+            <button onclick="window.runWeeklyReport(true)" style="width:100%; padding:15px; background:#4a3a3a; color:white; border-radius:12px; margin-bottom:20px; border:none; font-weight:bold; cursor:pointer; font-family:'Playfair Display'; letter-spacing:1px;">SUBMIT WEEKLY REPORT &amp; RESET</button>
+            <div id="manageRoot"></div>
+        </div>
         <div id="historyRoot"></div>
     </div>
 
-    <div id="view-manage" class="view">
-        <div class="manage-card">
-            <h4 class="beloved-small" style="font-family:'Great Vibes'; font-size:28px; color:var(--header-pink); margin:0 0 15px 0;">Add New Habit</h4>
-            <div style="display:flex; gap:10px; margin-bottom:10px;">
-                <input type="text" id="newIcon" placeholder="Icon (e.g. 🧘)" style="width:20%; padding:10px; border:1px solid #eee; border-radius:8px;">
-                <input type="text" id="newName" placeholder="Habit Name" style="flex:1; padding:10px; border:1px solid #eee; border-radius:8px;">
-            </div>
-            <input type="text" id="newCat" placeholder="Category" style="width:100%; padding:10px; border:1px solid #eee; border-radius:8px; box-sizing:border-box; margin-bottom:10px;">
-            <button onclick="window.addTask()" style="width:100%; background:var(--header-pink); color:white; border:none; padding:12px; border-radius:10px; font-weight:bold; cursor:pointer;">Create Habit</button>
-        </div>
 
-        <button onclick="window.runWeeklyReport(true)" style="width:100%; padding:15px; background:#4a3a3a; color:white; border-radius:12px; margin-bottom:20px; border:none; font-weight:bold; cursor:pointer; font-family:'Playfair Display'; letter-spacing:1px;">SUBMIT WEEKLY REPORT & RESET</button>
-        
-        <div id="manageRoot"></div>
-    </div>
 
     <footer>Victoria Tracker</footer>
 </div>
