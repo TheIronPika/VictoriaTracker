@@ -10,6 +10,7 @@
     <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, query, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
@@ -43,6 +44,7 @@
         let initialLoadDone = false;
         let weeklyHistory   = [];
         let historyLoaded   = false;
+        let historyCharts   = [];
 
         const getDayIdx = (d) => {
             let day = d.getDay(); 
@@ -159,35 +161,18 @@
             } catch(e) { console.error('saveWeekSnapshot:', e); }
         }
 
-        // ── HISTORY: trend SVG ────────────────────────────────────────────────
-        function renderBalanceTrendSVG(weeks) {
-            const show = weeks.slice(0,12).reverse();
-            if (!show.length) return '';
-            const W=300,H=90,pL=4,pR=4,pT=8,pB=18;
-            const midY = pT + (H-pT-pB)/2;
-            const maxA = Math.max(...show.map(w=>Math.abs(w.totalBalance)), 0.01);
-            const step = (W-pL-pR)/show.length;
-            const bw   = Math.max(6, step-4);
-            let bars='', labels='';
-            show.forEach((wk,i) => {
-                const x   = pL + i*step + (step-bw)/2;
-                const scH = Math.round((Math.abs(wk.totalBalance)/maxA)*((H-pT-pB)/2-4));
-                const isP = wk.totalBalance >= 0;
-                const col = isP ? '#27ae60' : '#d9534f';
-                bars += '<rect x="'+x.toFixed(1)+'" y="'+(isP?midY-scH:midY)+'" width="'+bw.toFixed(1)+'" height="'+Math.max(2,scH)+'" rx="2" fill="'+col+'" opacity="0.85"/>';
-                const d=new Date(wk.timestamp), lbl=(d.getMonth()+1)+'/'+(d.getDate());
-                labels += '<text x="'+(x+bw/2).toFixed(1)+'" y="'+(H-3)+'" text-anchor="middle" font-size="7" fill="#bbb">'+lbl+'</text>';
-            });
-            return '<div style="background:rgba(255,255,255,0.5);border-radius:10px;padding:6px 4px 2px;">'
-                 + '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;display:block;">'
-                 + '<line x1="'+pL+'" y1="'+midY+'" x2="'+(W-pR)+'" y2="'+midY+'" stroke="#e8e8e8" stroke-width="1.5"/>'
-                 + bars+labels+'</svg></div>';
+
+        // ── HISTORY: destroy all Chart.js instances ──────────────────────────
+        function destroyHistoryCharts() {
+            historyCharts.forEach(c => { try { c.destroy(); } catch(e) {} });
+            historyCharts = [];
         }
 
         // ── HISTORY: load + render ────────────────────────────────────────────
         function renderHistory() {
             const root = document.getElementById('historyRoot');
             if (!root) return;
+            destroyHistoryCharts();
             if (historyLoaded) { _paintHistory(root); return; }
             root.innerHTML = '<p style="text-align:center;color:#bbb;padding:40px 0;font-size:13px;">Loading history&#8230;</p>';
             getDoc(doc(db,'system','weekly_history')).then(snap => {
@@ -200,18 +185,19 @@
         }
 
         function _paintHistory(root) {
-            const TC = {punish:'var(--color-punish)',low:'var(--color-low)',goal:'var(--color-goal)',bonus:'var(--color-bonus)'};
+            const TC = {punish:'#d9534f',low:'#e67e22',goal:'#27ae60',bonus:'#8e44ad'};
             const TL = {punish:'DEBT',low:'LOW',goal:'GOAL',bonus:'BONUS'};
             function dTier(c,t){ if(c>=(t.bonus||7))return'bonus'; if(c>=(t.goal||5))return'goal'; if(c>=(t.low||3))return'low'; return'punish'; }
 
+            const MANAGE_BTN = '<div style="text-align:right;margin-bottom:14px;">'
+                + '<button onclick="window.handleManageClick()" '
+                + 'style="background:none;border:1px solid var(--header-pink);color:var(--header-pink);'
+                + 'padding:7px 14px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;'
+                + 'font-family:\'Montserrat\',sans-serif;letter-spacing:1px;">'
+                + 'MANAGE &#128274;</button></div>';
+
             if (!weeklyHistory.length) {
-                const mBtn = '<div style="text-align:right;margin-bottom:14px;">'
-                    + '<button onclick="window.handleManageClick()" '
-                    + 'style="background:none;border:1px solid var(--header-pink);color:var(--header-pink);'
-                    + 'padding:7px 14px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;'
-                    + 'font-family:\"Montserrat\",sans-serif;letter-spacing:1px;">'
-                    + 'MANAGE &#128274;</button></div>';
-                root.innerHTML = mBtn
+                root.innerHTML = MANAGE_BTN
                     + '<div style="text-align:center;padding:50px 20px;color:#bbb;">'
                     + '<div style="font-size:32px;margin-bottom:12px;">&#128197;</div>'
                     + '<div style="font-family:\'Playfair Display\';font-size:16px;color:#c0a0a0;margin-bottom:8px;">No history yet</div>'
@@ -219,53 +205,110 @@
                 return;
             }
 
-            let html = '';
+            const wks = weeklyHistory.slice().sort((a,b) => a.timestamp - b.timestamp);
 
-            // Manage button at top of history tab
-            html += '<div style="text-align:right;margin-bottom:14px;">'
-                  + '<button onclick="window.handleManageClick()" '
-                  + 'style="background:none;border:1px solid var(--header-pink);color:var(--header-pink);'
-                  + 'padding:7px 14px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;'
-                  + 'font-family:\'Montserrat\',sans-serif;letter-spacing:1px;">'
-                  + 'MANAGE &#128274;</button></div>';
+            // Stats
+            const allT  = wks.reduce((s,w) => s+w.totalBalance, 0);
+            const best  = wks.reduce((b,w) => w.totalBalance>b.totalBalance?w:b, wks[0]);
+            const profW = wks.filter(w => w.totalBalance>=0).length;
+            const aC    = allT>=0 ? '#27ae60' : '#d9534f';
 
-            // Trend chart
-            html += '<div class="history-card">'
-                  + '<h3 class="history-section-title">Balance Trend</h3>'
-                  + renderBalanceTrendSVG(weeklyHistory)
+            let html = MANAGE_BTN;
+
+            // ── Stats strip ───────────────────────────────────────────────────
+            html += '<div class="history-card" style="display:flex;gap:0;padding:14px 10px;margin-bottom:12px;">'
+                  + '<div style="flex:1;text-align:center;border-right:1px solid rgba(0,0,0,0.06);">'
+                  + '<div class="hist-stat-lbl">All-Time</div>'
+                  + '<div class="hist-stat-val" style="color:'+aC+';">'+(allT<0?'-$':'$')+Math.abs(allT).toFixed(2)+'</div></div>'
+                  + '<div style="flex:1;text-align:center;border-right:1px solid rgba(0,0,0,0.06);">'
+                  + '<div class="hist-stat-lbl">Best Week</div>'
+                  + '<div class="hist-stat-val" style="color:#27ae60;">'+(best.totalBalance>0?'+$'+best.totalBalance.toFixed(2):'$0.00')+'</div></div>'
+                  + '<div style="flex:1;text-align:center;">'
+                  + '<div class="hist-stat-lbl">Profit Weeks</div>'
+                  + '<div class="hist-stat-val">'+profW+' / '+wks.length+'</div></div></div>';
+
+            // ── Chart tab bar ─────────────────────────────────────────────────
+            const chartTabs = ['balance','heatmap','earners','category'];
+            const chartLabels = ['Balance','Heatmap','Top Earners','By Category'];
+            const tabBtns = chartTabs.map((t,i) =>
+                '<button class="hist-tab-btn'+(i===0?' hist-tab-active':'')+'" onclick="window.switchHistoryTab(\''+t+'\')" id="htab-'+t+'">'+chartLabels[i]+'</button>'
+            ).join('');
+            html += '<div class="hist-tab-bar">'+tabBtns+'</div>';
+
+            // ── Chart panels ──────────────────────────────────────────────────
+            // Balance trend
+            html += '<div id="hpanel-balance" class="hist-chart-panel history-card">'
+                  + '<div class="history-section-title">Weekly balance</div>'
+                  + '<div style="position:relative;height:180px;"><canvas id="hchart-balance" role="img" aria-label="Weekly balance bar chart">Weekly balances.</canvas></div>'
                   + '<div style="display:flex;justify-content:center;gap:16px;margin-top:8px;font-size:10px;font-weight:600;">'
-                  + '<span style="color:#27ae60;">&#9646; Profit</span>'
-                  + '<span style="color:#d9534f;">&#9646; Debt</span>'
+                  + '<span style="display:flex;align-items:center;gap:4px;"><span style="width:8px;height:8px;border-radius:2px;background:#27ae60;display:inline-block;"></span>Profit</span>'
+                  + '<span style="display:flex;align-items:center;gap:4px;"><span style="width:8px;height:8px;border-radius:2px;background:#d9534f;display:inline-block;"></span>Debt</span>'
                   + '</div></div>';
 
-            // Stats strip
-            const allT = weeklyHistory.reduce((s,w)=>s+w.totalBalance,0);
-            const best = weeklyHistory.reduce((b,w)=>w.totalBalance>b.totalBalance?w:b, weeklyHistory[0]);
-            const aC   = allT>=0?'#27ae60':'#d9534f';
-            html += '<div class="history-card" style="display:flex;">'
-                  + '<div style="flex:1;text-align:center;border-right:1px solid #f0eded;">'
-                  + '<div style="font-size:10px;font-weight:700;color:#aaa;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">All-Time</div>'
-                  + '<div style="font-family:\'Great Vibes\';font-size:28px;color:'+aC+';">'+(allT<0?'-$':'$')+Math.abs(allT).toFixed(2)+'</div></div>'
-                  + '<div style="flex:1;text-align:center;">'
-                  + '<div style="font-size:10px;font-weight:700;color:#aaa;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Best Week</div>'
-                  + '<div style="font-family:\'Great Vibes\';font-size:28px;color:#27ae60;">'+(best.totalBalance>0?'+$'+best.totalBalance.toFixed(2):'$0.00')+'</div></div></div>';
+            // Heatmap
+            const hmWkLabels = wks.map(w => { const d=new Date(w.timestamp); return (d.getMonth()+1)+'/'+(d.getDate()); });
+            const allHabitIds = [];
+            const habitMeta = {};
+            wks.forEach(w => (w.habits||[]).forEach(h => {
+                if (!habitMeta[h.id]) { habitMeta[h.id]={name:h.name,icon:h.icon}; allHabitIds.push(h.id); }
+            }));
+            const hmLblRow = '<div class="hm-label-spacer"></div>'
+                + hmWkLabels.map(l => '<div class="hm-wlbl">'+l+'</div>').join('');
+            const hmRows = allHabitIds.slice(0,25).map(id => {
+                const cells = wks.map(w => {
+                    const h = (w.habits||[]).find(x=>x.id===id);
+                    const t = h ? h.tier : 'punish';
+                    return '<div class="hm-cell" title="'+(h?TL[t]:'—')+'" style="background:'+(h?TC[t]:'#eee')+';opacity:0.82;"></div>';
+                }).join('');
+                return '<div class="hm-row"><span class="hm-label">'+(habitMeta[id].icon)+' '+(habitMeta[id].name)+'</span>'+cells+'</div>';
+            }).join('');
+            const hmLegend = Object.entries(TL).map(([k,v]) =>
+                '<span style="display:flex;align-items:center;gap:4px;font-size:10px;color:#888;">'
+                +'<span style="width:8px;height:8px;border-radius:2px;background:'+TC[k]+';display:inline-block;opacity:.85;"></span>'+v+'</span>'
+            ).join('');
+            html += '<div id="hpanel-heatmap" class="hist-chart-panel history-card" style="display:none;">'
+                  + '<div class="history-section-title">Tier per habit per week</div>'
+                  + '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;">'+hmLegend+'</div>'
+                  + '<div style="overflow-x:auto;">'
+                  + '<div class="hm-header-row">'+hmLblRow+'</div>'
+                  + hmRows
+                  + '</div></div>';
 
-            html += '<h3 class="history-section-title" style="margin:8px 4px 10px;">Past Weeks</h3>';
+            // Top earners
+            const earnerTotals = {};
+            wks.forEach(w => (w.habits||[]).forEach(h => {
+                if (!earnerTotals[h.name]) earnerTotals[h.name] = {name:h.name,icon:h.icon||'',val:0};
+                earnerTotals[h.name].val += (h.payout||0);
+            }));
+            const earnerList = Object.values(earnerTotals).sort((a,b) => b.val-a.val);
+            const earnH = Math.max(180, earnerList.length*22+50);
+            html += '<div id="hpanel-earners" class="hist-chart-panel history-card" style="display:none;">'
+                  + '<div class="history-section-title">Cumulative payout per habit</div>'
+                  + '<div style="position:relative;height:'+earnH+'px;"><canvas id="hchart-earners" role="img" aria-label="Cumulative payout per habit chart">Cumulative payouts.</canvas></div>'
+                  + '</div>';
 
+            // By category
+            html += '<div id="hpanel-category" class="hist-chart-panel history-card" style="display:none;">'
+                  + '<div class="history-section-title">Average payout per category per week</div>'
+                  + '<div style="position:relative;height:200px;"><canvas id="hchart-category" role="img" aria-label="Average payout by category">Category payouts.</canvas></div>'
+                  + '</div>';
+
+            // ── Past weeks (collapsible) ───────────────────────────────────────
+            html += '<h3 class="history-section-title" style="margin:16px 4px 10px;">Past Weeks</h3>';
             weeklyHistory.forEach(wk => {
                 const isP  = wk.totalBalance >= 0;
                 const tCol = isP ? '#27ae60' : '#d9534f';
                 const tStr = (isP?'+$':'-$')+Math.abs(wk.totalBalance).toFixed(2);
-                const cats = [...new Set(wk.habits.map(h=>h.cat))];
+                const cats = [...new Set((wk.habits||[]).map(h=>h.cat))];
                 let body   = '';
                 cats.forEach(cat => {
                     body += '<div style="font-size:9px;font-weight:800;color:#bbb;text-transform:uppercase;letter-spacing:1px;margin:10px 0 4px;">'+cat+'</div>';
-                    wk.habits.filter(h=>h.cat===cat).forEach(h => {
+                    (wk.habits||[]).filter(h=>h.cat===cat).forEach(h => {
                         const dots = (h.history||[]).slice(0,7).map(c =>
                             !c ? '<div class="hist-dot" style="background:#ebebeb;"></div>'
                                : '<div class="hist-dot" style="background:'+TC[dTier(c,h.thresh||{})]+'"></div>'
                         ).join('');
-                        const pC = h.payout<0?'var(--color-punish)':'var(--color-goal)';
+                        const pC = h.payout<0?'#d9534f':'#27ae60';
                         const pS = (h.payout<0?'-$':'+$')+Math.abs(h.payout).toFixed(2);
                         body += '<div class="hist-habit-row">'
                               + '<span class="hist-habit-icon">'+h.icon+'</span>'
@@ -278,7 +321,7 @@
                 html += '<div class="history-week-card">'
                       + '<div class="history-week-header" onclick="window.toggleHistoryWeek(\''+wk.id+'\')">'
                       + '<div><div style="font-family:\'Playfair Display\';font-size:13px;font-weight:700;">Week of '+wk.weekEnding+'</div>'
-                      + '<div style="font-size:10px;color:#bbb;margin-top:2px;">'+wk.habits.length+' habits</div></div>'
+                      + '<div style="font-size:10px;color:#bbb;margin-top:2px;">'+(wk.habits||[]).length+' habits</div></div>'
                       + '<div style="display:flex;align-items:center;gap:8px;">'
                       + '<div style="font-family:\'Great Vibes\';font-size:26px;color:'+tCol+';">'+tStr+'</div>'
                       + '<div id="chv-'+wk.id+'" style="color:#ccc;font-size:18px;transition:transform 0.2s;">&#8250;</div>'
@@ -286,8 +329,88 @@
                       + '<div id="hwkbody-'+wk.id+'" class="history-week-body" style="display:none;">'+body+'</div>'
                       + '</div>';
             });
+
             root.innerHTML = html;
+
+            // Draw charts after DOM is set
+            setTimeout(() => {
+                _drawBalanceChart(wks);
+                _storeEarnerData(earnerList);
+                _storeCategoryData(wks);
+            }, 0);
         }
+
+        // Chart data cache for tab switching
+        let _earnersData = null, _categoryData = null, _wksData = null;
+        function _storeEarnerData(list) { _earnersData = list; }
+        function _storeCategoryData(wks) { _categoryData = wks; _wksData = wks; }
+
+        function _drawBalanceChart(wks) {
+            const el = document.getElementById('hchart-balance'); if(!el) return;
+            const labels = wks.map(w => { const d=new Date(w.timestamp); return (d.getMonth()+1)+'/'+(d.getDate()); });
+            const data   = wks.map(w => +w.totalBalance.toFixed(2));
+            const c = new Chart(el, {
+                type:'bar',
+                data:{ labels, datasets:[{ data, backgroundColor:data.map(v=>v>=0?'rgba(39,174,96,.8)':'rgba(217,83,79,.8)'), borderRadius:3 }] },
+                options:{ responsive:true, maintainAspectRatio:false,
+                    plugins:{ legend:{display:false}, tooltip:{callbacks:{label:c=>(c.raw<0?'-$':'$')+Math.abs(c.raw).toFixed(2)}} },
+                    scales:{ y:{ticks:{callback:v=>(v<0?'-$':'$')+Math.abs(v),font:{size:10}}, grid:{color:'rgba(0,0,0,.05)'}},
+                              x:{ticks:{font:{size:9},autoSkip:false,maxRotation:45}} } }
+            });
+            historyCharts.push(c);
+        }
+
+        function _drawEarnersChart() {
+            const el = document.getElementById('hchart-earners'); if(!el||!_earnersData) return;
+            const c = new Chart(el, {
+                type:'bar',
+                data:{ labels:_earnersData.map(d=>d.name),
+                       datasets:[{ data:_earnersData.map(d=>+d.val.toFixed(2)),
+                                   backgroundColor:_earnersData.map(d=>d.val>=0?'rgba(39,174,96,.75)':'rgba(217,83,79,.75)'), borderRadius:3 }] },
+                options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
+                    plugins:{ legend:{display:false}, tooltip:{callbacks:{label:c=>(c.raw<0?'-$':'$')+Math.abs(c.raw).toFixed(2)}} },
+                    scales:{ x:{ticks:{callback:v=>(v<0?'-$':'$')+Math.abs(v),font:{size:9}}, grid:{color:'rgba(0,0,0,.05)'}},
+                              y:{ticks:{font:{size:9}}} } }
+            });
+            historyCharts.push(c);
+        }
+
+        function _drawCategoryChart() {
+            const el = document.getElementById('hchart-category'); if(!el||!_categoryData) return;
+            const cats = {};
+            _categoryData.forEach(w => (w.habits||[]).forEach(h => {
+                if (!cats[h.cat]) cats[h.cat]=0;
+                cats[h.cat]+=(h.payout||0);
+            }));
+            const n = _categoryData.length||1;
+            const labels = Object.keys(cats);
+            const avgs   = labels.map(c => +(cats[c]/n).toFixed(2));
+            const c = new Chart(el, {
+                type:'bar',
+                data:{ labels, datasets:[{ data:avgs, backgroundColor:avgs.map(v=>v>=0?'rgba(83,74,183,.75)':'rgba(217,83,79,.75)'), borderRadius:4 }] },
+                options:{ responsive:true, maintainAspectRatio:false,
+                    plugins:{ legend:{display:false}, tooltip:{callbacks:{label:c=>(c.raw<0?'-$':'$')+Math.abs(c.raw).toFixed(2)+'/wk avg'}} },
+                    scales:{ y:{ticks:{callback:v=>(v<0?'-$':'$')+Math.abs(v),font:{size:10}}, grid:{color:'rgba(0,0,0,.05)'}},
+                              x:{ticks:{font:{size:11}}} } }
+            });
+            historyCharts.push(c);
+        }
+
+        // ── HISTORY: switch chart tab ─────────────────────────────────────────
+        window.switchHistoryTab = (id) => {
+            destroyHistoryCharts();
+            ['balance','heatmap','earners','category'].forEach(t => {
+                const p = document.getElementById('hpanel-'+t);
+                const b = document.getElementById('htab-'+t);
+                if (p) p.style.display = t===id ? '' : 'none';
+                if (b) { b.classList.toggle('hist-tab-active', t===id); }
+            });
+            setTimeout(() => {
+                if (id==='balance' && _wksData) _drawBalanceChart(_wksData);
+                if (id==='earners') _drawEarnersChart();
+                if (id==='category') _drawCategoryChart();
+            }, 0);
+        };
 
         window.toggleHistoryWeek = (id) => {
             const b = document.getElementById('hwkbody-'+id);
@@ -980,6 +1103,25 @@
             font-size: 11px; font-weight: 700; flex-shrink: 0;
             min-width: 42px; text-align: right;
         }
+
+
+        /* ── HISTORY CHARTS ──────────────────────────────────────────────── */
+        .hist-stat-lbl { font-size:9px; font-weight:700; color:#aaa; text-transform:uppercase; letter-spacing:1px; margin-bottom:3px; }
+        .hist-stat-val { font-family:'Great Vibes', cursive; font-size:26px; color:var(--text-main); line-height:1.1; }
+        .hist-tab-bar { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
+        .hist-tab-btn {
+            padding:6px 12px; font-size:11px; font-family:'Montserrat',sans-serif; font-weight:600;
+            border:1px solid rgba(212,163,163,0.4); border-radius:20px; cursor:pointer;
+            background:rgba(255,255,255,0.5); color:#999; transition:all .15s;
+        }
+        .hist-tab-btn.hist-tab-active { background:var(--header-pink); color:white; border-color:var(--header-pink); }
+        .hist-chart-panel { }
+        .hm-header-row { display:flex; align-items:center; gap:3px; margin-bottom:3px; padding-left:0; }
+        .hm-label-spacer { width:112px; flex-shrink:0; }
+        .hm-wlbl { flex:1; font-size:8px; color:#bbb; text-align:center; min-width:0; }
+        .hm-row { display:flex; align-items:center; gap:3px; margin-bottom:2px; }
+        .hm-label { font-size:9px; color:#888; width:112px; flex-shrink:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .hm-cell { height:14px; border-radius:2px; flex:1; min-width:0; }
 
         footer { text-align: center; margin-top: 40px; font-family: 'Great Vibes'; color: var(--header-pink); font-size: 24px; padding-bottom: 40px; }
     </style>
