@@ -457,11 +457,13 @@
             const icon = document.getElementById('newIcon').value || "✨";
             if(!name || !cat) return alert("Please enter name and category");
 
+            const noteVal = document.getElementById('newNote');
             const newH = {
                 id: Date.now().toString(),
                 name,
                 icon,
                 cat,
+                note: noteVal ? noteVal.value.trim() : '',
                 punish: 1,
                 low: 3,
                 goal: 5,
@@ -488,8 +490,9 @@
 
         window.updateField = async (id, field, value) => {
             const h = habits.find(x => x.id === id);
-            if(field.startsWith('val')) h[field] = parseFloat(value);
-            else h[field] = parseInt(value);
+            if (field === 'note')              h[field] = value;
+            else if (field.startsWith('val'))  h[field] = parseFloat(value);
+            else                               h[field] = parseInt(value);
             await syncToFirebase();
         };
 
@@ -649,13 +652,17 @@
 
                     const cardHtml = `
                         <div class="habit-card ${isUrgent ? 'priority-border' : ''} ${isArriving ? 'card-arriving' : ''}"
-                             data-habit-id="${h.id}">
+                             data-habit-id="${h.id}"
+                             ontouchstart="window.startLongPress('${h.id}')"
+                             ontouchend="window.cancelLongPress()"
+                             ontouchmove="window.cancelLongPress()">
                             <div style="font-size:24px; margin-right:15px;">${h.icon}</div>
                             <div style="flex:1">
                                 ${isUrgent ? '<span class="priority-tag">✦ Goal at Risk</span>' : ''}
                                 <div style="display:flex;align-items:center;gap:8px;">
                                     <p style="margin:0; font-weight:600;">${h.name}</p>
                                     ${(h.streak >= 2) ? `<span class="streak-badge">🔥 ${h.streak}</span>` : ''}
+                                    ${h.note ? `<button class="info-btn" onclick="event.stopPropagation();window.showDefinition('${h.id}')">ⓘ</button>` : ''}
                                 </div>
                                 <div class="bubbles">${bubblesHtml}</div>
                             </div>
@@ -706,6 +713,13 @@
                                 <tr><td style="color:var(--color-goal)">Goal</td><td><input type="number" value="${h.goal}" onchange="window.updateField('${h.id}','goal',this.value)"></td><td><input type="number" value="${h.valGoal}" onchange="window.updateField('${h.id}','valGoal',this.value)"></td></tr>
                                 <tr><td style="color:var(--color-bonus)">Bonus</td><td><input type="number" value="${h.bonus}" onchange="window.updateField('${h.id}','bonus',this.value)"></td><td><input type="number" value="${h.valBonus}" onchange="window.updateField('${h.id}','valBonus',this.value)"></td></tr>
                             </table>
+                            <div style="margin-top:10px;">
+                                <div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Definition / Rules</div>
+                                <textarea
+                                    placeholder="Describe exactly what counts for this habit…"
+                                    style="width:100%;padding:8px;border:1px solid #eee;border-radius:8px;font-family:'Montserrat';font-size:12px;resize:vertical;min-height:60px;box-sizing:border-box;"
+                                    onchange="window.updateField('${h.id}','note',this.value)">${h.note || ''}</textarea>
+                            </div>
                             <button class="btn-delete" onclick="window.deleteTask('${h.id}')">DELETE TASK</button>
                         </div>
                     `;
@@ -805,6 +819,34 @@
             }
         }
 
+
+        // ── HABIT DEFINITION MODAL ───────────────────────────────────────
+        let longPressTimer = null;
+
+        window.showDefinition = (id) => {
+            const h = habits.find(x => x.id === id);
+            if (!h) return;
+            const overlay = document.getElementById('defOverlay');
+            const title   = document.getElementById('defTitle');
+            const body    = document.getElementById('defBody');
+            title.innerText = h.icon + '  ' + h.name;
+            body.innerText  = h.note && h.note.trim()
+                ? h.note
+                : 'No definition set yet. Add one in Manage.';
+            overlay.classList.add('def-open');
+        };
+
+        window.closeDefinition = () => {
+            document.getElementById('defOverlay').classList.remove('def-open');
+        };
+
+        window.startLongPress = (id) => {
+            longPressTimer = setTimeout(() => { window.showDefinition(id); }, 500);
+        };
+
+        window.cancelLongPress = () => {
+            if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+        };
 
         // ── TIME-BASED COLOR SHIFT ────────────────────────────────────────────
         // Morning  (5–10):  warm pink      #d4a3a3 / rose bg   #f9ecec
@@ -1017,10 +1059,10 @@
             --grad-bonus: linear-gradient(135deg, #d4a0fc 0%, #8e44ad 100%);
         }
 
-        .beloved, .earnings-value-small, .history-section-title, .cat-label,
-        .tab.active, .hist-tab-btn.hist-tab-active, .manage-card,
-        .earnings-label, .earnings-mini-card, .weather-mini-card,
-        .tier-card, .tab, button { transition: color 60s ease, background-color 60s ease, border-color 60s ease; }
+        .beloved, .history-section-title, .cat-label,
+        .tab.active, .hist-tab-btn.hist-tab-active,
+        .earnings-label, .tab { transition: color 60s ease, background-color 60s ease, border-color 60s ease; }
+        #moneyDisplay { transition: color 0.35s ease !important; }
         .bubble, .habit-card { transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important; }
 
         body {
@@ -1298,6 +1340,31 @@
             flex-shrink: 0;
         }
 
+        /* ── DEFINITION MODAL ────────────────────────────────────────── */
+        #defOverlay {
+            position: fixed; inset: 0; background: rgba(74,58,58,0.45);
+            z-index: 9999; display: flex; align-items: flex-end;
+            opacity: 0; pointer-events: none;
+            transition: opacity 0.25s ease;
+        }
+        #defOverlay.def-open { opacity: 1; pointer-events: all; }
+        #defSheet {
+            width: 100%; max-width: 480px; margin: 0 auto;
+            background: #fdf8f8;
+            border-radius: 24px 24px 0 0;
+            padding: 28px 24px 36px;
+            transform: translateY(100%);
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        #defOverlay.def-open #defSheet { transform: translateY(0); }
+        .info-btn {
+            background: none; border: none; color: var(--header-pink);
+            font-size: 15px; cursor: pointer; padding: 0 2px;
+            line-height: 1; flex-shrink: 0; opacity: 0.75;
+            transition: opacity 0.15s;
+        }
+        .info-btn:hover { opacity: 1; }
+
         footer { text-align: center; margin-top: 40px; font-family: 'Great Vibes'; color: var(--header-pink); font-size: 24px; padding-bottom: 40px; }
     </style>
 </head>
@@ -1369,6 +1436,7 @@
                     <input type="text" id="newName" placeholder="Habit Name" style="flex:1; padding:10px; border:1px solid #eee; border-radius:8px;">
                 </div>
                 <input type="text" id="newCat" placeholder="Category" style="width:100%; padding:10px; border:1px solid #eee; border-radius:8px; box-sizing:border-box; margin-bottom:10px;">
+                <textarea id="newNote" placeholder="Definition / rules (optional)" style="width:100%; padding:10px; border:1px solid #eee; border-radius:8px; font-family:'Montserrat'; font-size:13px; resize:vertical; min-height:52px; box-sizing:border-box; margin-bottom:10px;"></textarea>
                 <button onclick="window.addTask()" style="width:100%; background:var(--header-pink); color:white; border:none; padding:12px; border-radius:10px; font-weight:bold; cursor:pointer;">Create Habit</button>
             </div>
             <button onclick="window.runWeeklyReport(true)" style="width:100%; padding:15px; background:#4a3a3a; color:white; border-radius:12px; margin-bottom:20px; border:none; font-weight:bold; cursor:pointer; font-family:'Playfair Display'; letter-spacing:1px;">SUBMIT WEEKLY REPORT &amp; RESET</button>
@@ -1380,6 +1448,15 @@
 
 
     <footer>Victoria Tracker</footer>
+</div>
+
+<!-- Definition modal overlay -->
+<div id="defOverlay" onclick="window.closeDefinition()">
+    <div id="defSheet" onclick="event.stopPropagation()">
+        <div id="defTitle" style="font-family:'Great Vibes';font-size:28px;color:var(--header-pink);margin-bottom:12px;"></div>
+        <div id="defBody" style="font-family:'Montserrat';font-size:14px;line-height:1.7;color:#4a3a3a;white-space:pre-wrap;"></div>
+        <button onclick="window.closeDefinition()" style="margin-top:20px;width:100%;padding:12px;background:var(--header-pink);color:white;border:none;border-radius:12px;font-weight:bold;cursor:pointer;font-family:'Montserrat';">Got it</button>
+    </div>
 </div>
 
 </body>
