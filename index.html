@@ -949,7 +949,7 @@
                 const el = document.getElementById('moneyDisplay');
                 if (el) {
                     el.innerText = (cur < 0 ? '-$' : '$') + Math.abs(cur).toFixed(2);
-                    el.style.color = cur < 0 ? 'var(--color-punish)' : 'var(--text-main)';
+                    el.style.color = cur < 0 ? 'var(--color-punish)' : cur > 0 ? 'var(--color-goal)' : 'var(--text-main)';
                 }
                 if (p < 1) { moneyAnimFrame = requestAnimationFrame(step); }
                 else { displayedMoney = target; moneyAnimFrame = null; }
