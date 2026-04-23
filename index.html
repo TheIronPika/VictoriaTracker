@@ -507,6 +507,7 @@
             const newTier = getTier(h, newVal);
 
             const willMove = (oldQty === 0 && newVal > 0) || (newVal === 0 && oldQty > 0);
+            playBubblePop(newVal >= oldQty); // filling = bright pop, unfilling = soft thud
 
             if (willMove) {
                 const cardEl = document.querySelector(`.habit-card[data-habit-id="${id}"]`);
@@ -662,7 +663,6 @@
                                 <div style="display:flex;align-items:center;gap:8px;">
                                     <p style="margin:0; font-weight:600;">${h.name}</p>
                                     ${(h.streak >= 2) ? `<span class="streak-badge">🔥 ${h.streak}</span>` : ''}
-                                    ${h.note ? `<button class="info-btn" onclick="event.stopPropagation();window.showDefinition('${h.id}')">ⓘ</button>` : ''}
                                 </div>
                                 <div class="bubbles">${bubblesHtml}</div>
                             </div>
@@ -847,6 +847,47 @@
         window.cancelLongPress = () => {
             if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
         };
+
+        // ── BUBBLE POP SOUND ─────────────────────────────────────────────
+        let audioCtx = null;
+        function getAudioCtx() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            return audioCtx;
+        }
+
+        function playBubblePop(isFilling) {
+            try {
+                const ctx  = getAudioCtx();
+                const now  = ctx.currentTime;
+
+                // Two-oscillator pop: a short sine burst that pitches down fast
+                const osc  = ctx.createOscillator();
+                const gain = ctx.createGain();
+                const filt = ctx.createBiquadFilter();
+
+                osc.connect(filt);
+                filt.connect(gain);
+                gain.connect(ctx.destination);
+
+                filt.type = 'bandpass';
+                filt.frequency.value = isFilling ? 1200 : 700;
+                filt.Q.value = 1.2;
+
+                osc.type = 'sine';
+                // filling: bright high pop; unfilling: lower softer thud
+                const startF = isFilling ? 880 : 440;
+                const endF   = isFilling ? 420 : 200;
+                osc.frequency.setValueAtTime(startF, now);
+                osc.frequency.exponentialRampToValueAtTime(endF, now + 0.08);
+
+                gain.gain.setValueAtTime(0.0001, now);
+                gain.gain.exponentialRampToValueAtTime(isFilling ? 0.18 : 0.10, now + 0.01);
+                gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
+
+                osc.start(now);
+                osc.stop(now + 0.15);
+            } catch(e) { /* audio blocked — silently skip */ }
+        }
 
         // ── TIME-BASED COLOR SHIFT ────────────────────────────────────────────
         // Morning  (5–10):  warm pink      #d4a3a3 / rose bg   #f9ecec
