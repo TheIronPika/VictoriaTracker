@@ -47,6 +47,8 @@
         let historyCharts   = [];
         let displayedMoney  = 0;       // for animated counter
         let moneyAnimFrame  = null;
+        // 'goal' or 'bonus' — persisted per-user in localStorage
+        let priorityMode    = localStorage.getItem('priorityMode') || 'goal';
 
         const getDayIdx = (d) => {
             let day = d.getDay(); 
@@ -424,6 +426,16 @@
             }, 0);
         };
 
+        window.togglePriorityMode = (mode) => {
+            priorityMode = mode;
+            localStorage.setItem('priorityMode', mode);
+            // update toggle UI
+            document.querySelectorAll('.pmode-btn').forEach(b => {
+                b.classList.toggle('pmode-active', b.dataset.mode === mode);
+            });
+            render();
+        };
+
         window.toggleHistoryWeek = (id) => {
             const b = document.getElementById('hwkbody-'+id);
             const c = document.getElementById('chv-'+id);
@@ -561,6 +573,10 @@
 
             const todayRoot = document.getElementById('todayRoot');
             const priorityRoot = document.getElementById('priorityRoot');
+            // Sync toggle UI to current priorityMode
+            document.querySelectorAll('.pmode-btn').forEach(b => {
+                b.classList.toggle('pmode-active', b.dataset.mode === priorityMode);
+            });
             const weeklyRoot = document.getElementById('weeklyRoot');
             const manageRoot = document.getElementById('manageRoot');
             
@@ -637,7 +653,8 @@
                     }
 
                     const daysRemainingInWeek = 7 - dIdx;
-                    const isUrgent = (h.goal - cur) >= daysRemainingInWeek && (h.goal - cur) > 0;
+                    const modeThresh = priorityMode === 'bonus' ? h.bonus : h.goal;
+                    const isUrgent = (modeThresh - cur) >= daysRemainingInWeek && (modeThresh - cur) > 0;
                     const isArriving = h.id === lastActedId;
 
                     let bubblesHtml = '';
@@ -659,7 +676,7 @@
                              ontouchmove="window.cancelLongPress()">
                             <div style="font-size:24px; margin-right:15px;">${h.icon}</div>
                             <div style="flex:1">
-                                ${isUrgent ? '<span class="priority-tag">✦ Goal at Risk</span>' : ''}
+                                ${isUrgent ? `<span class="priority-tag">✦ ${priorityMode === 'bonus' ? 'Bonus' : 'Goal'} at Risk</span>` : ''}
                                 <div style="display:flex;align-items:center;gap:8px;">
                                     <p style="margin:0; font-weight:600;">${h.name}</p>
                                     ${(h.streak >= 2) ? `<span class="streak-badge">🔥 ${h.streak}</span>` : ''}
@@ -1406,6 +1423,39 @@
         }
         .info-btn:hover { opacity: 1; }
 
+        /* ── PRIORITY MODE TOGGLE ────────────────────────────────────── */
+        .pmode-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 4px 14px;
+        }
+        .pmode-label {
+            font-size: 11px;
+            color: #aaa;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .pmode-btn {
+            padding: 5px 14px;
+            font-size: 11px;
+            font-weight: 700;
+            font-family: 'Montserrat', sans-serif;
+            letter-spacing: 0.5px;
+            border-radius: 20px;
+            border: 1.5px solid rgba(212,163,163,0.35);
+            background: transparent;
+            color: #bbb;
+            cursor: pointer;
+            transition: all 0.18s ease;
+        }
+        .pmode-btn.pmode-active {
+            background: var(--header-pink);
+            color: white;
+            border-color: var(--header-pink);
+        }
+
         footer { text-align: center; margin-top: 40px; font-family: 'Great Vibes'; color: var(--header-pink); font-size: 24px; padding-bottom: 40px; }
     </style>
 </head>
@@ -1460,6 +1510,11 @@
     </div>
 
     <div id="view-priority" class="view">
+        <div class="pmode-toggle" id="pmodeToggle">
+            <span class="pmode-label">Targeting:</span>
+            <button class="pmode-btn pmode-active" data-mode="goal" onclick="window.togglePriorityMode('goal')">Goal</button>
+            <button class="pmode-btn" data-mode="bonus" onclick="window.togglePriorityMode('bonus')">Bonus</button>
+        </div>
         <div id="priorityRoot"></div>
     </div>
 
