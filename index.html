@@ -34,7 +34,6 @@
         // STATE
         let habits = [];
         let viewingDate = new Date();
-        let collapsed = {};
         let activeFilter = null;
 
         // tracks which card should play the arrive animation
@@ -51,8 +50,13 @@
         let priorityMode    = localStorage.getItem('priorityMode') || 'goal';
         // sort lock — when true, completed tasks stay in place
         let sortLocked      = localStorage.getItem('sortLocked') === '1';
-        // last category interacted with — that one stays open, all others collapse
-        let lastActiveCat   = null;
+        // last category interacted with — persisted so it survives reload
+        let lastActiveCat   = localStorage.getItem('lastActiveCat') || null;
+        // restore which categories were open/closed
+        let collapsed = (() => {
+            try { return JSON.parse(localStorage.getItem('collapsedState') || '{}'); }
+            catch(e) { return {}; }
+        })();
         let seasonalEvents  = [];
         let eventsLoaded    = false;
 
@@ -711,6 +715,7 @@
                 const cats = [...new Set(habits.map(x => x.cat))];
                 cats.forEach(c => { collapsed[c] = (c !== h.cat); });
                 lastActiveCat = h.cat;
+                saveCollapsedState();
             }
             const dIdx = getDayIdx(viewingDate);
             const oldQty = h.history[dIdx];
@@ -967,6 +972,12 @@
             document.getElementById('countBonus').innerText = counts.bonus;
         }
 
+        function saveCollapsedState() {
+            localStorage.setItem('collapsedState', JSON.stringify(collapsed));
+            if (lastActiveCat) localStorage.setItem('lastActiveCat', lastActiveCat);
+            else localStorage.removeItem('lastActiveCat');
+        }
+
         window.toggleSortLock = () => {
             sortLocked = !sortLocked;
             localStorage.setItem('sortLocked', sortLocked ? '1' : '0');
@@ -976,19 +987,17 @@
         };
 
         window.toggleCol = (cat) => {
-            // If it's currently collapsed, expand it and collapse all others
             const wasCollapsed = collapsed[cat] !== false ? true : false;
             if (wasCollapsed) {
-                // collapse everything, then open just this one
                 const cats = [...new Set(habits.map(h => h.cat))];
                 cats.forEach(c => { collapsed[c] = true; });
                 collapsed[cat] = false;
                 lastActiveCat  = cat;
             } else {
-                // it's open — just close it
                 collapsed[cat] = true;
                 if (lastActiveCat === cat) lastActiveCat = null;
             }
+            saveCollapsedState();
             render();
         };
 
