@@ -49,6 +49,8 @@
         let moneyAnimFrame  = null;
         // 'goal' or 'bonus' — persisted per-user in localStorage
         let priorityMode    = localStorage.getItem('priorityMode') || 'goal';
+        let seasonalEvents  = [];
+        let eventsLoaded    = false;
 
         const getDayIdx = (d) => {
             let day = d.getDay(); 
@@ -141,6 +143,196 @@
                 if(isManual) alert('Email failed to send.\n\nError: ' + msg);
             }
         };
+
+
+        // ── SEASONAL EVENTS ──────────────────────────────────────────────────
+
+        const SEASON_META = {
+            spring: { label:'Spring', months:[3,4,5],  accent:'#4a7c1f', bg:'rgba(240,250,232,0.7)', border:'#b8d98a', badge:'#eaf5d8' },
+            summer: { label:'Summer', months:[6,7,8],  accent:'#8a5a00', bg:'rgba(255,248,225,0.7)', border:'#f5cc70', badge:'#fff8e1' },
+            fall:   { label:'Fall',   months:[9,10,11], accent:'#8a3a10', bg:'rgba(253,240,232,0.7)', border:'#f0a880', badge:'#fdeee5' },
+            winter: { label:'Winter', months:[12,1,2], accent:'#1a5c8a', bg:'rgba(232,245,253,0.7)', border:'#90c8f0', badge:'#e6f4fd' }
+        };
+
+        function getCurrentSeason() {
+            const m = new Date().getMonth() + 1;
+            for (const [key, meta] of Object.entries(SEASON_META)) {
+                if (meta.months.includes(m)) return key;
+            }
+            return 'spring';
+        }
+
+        function isEventActive(ev) {
+            const today = new Date();
+            const m = today.getMonth() + 1;
+            const d = today.getDate();
+            const y = today.getFullYear();
+            // date range check (handles wrap-around like Dec–Feb)
+            const start = ev.startMonth * 100 + ev.startDay;
+            const end   = ev.endMonth   * 100 + ev.endDay;
+            const now   = m * 100 + d;
+            let inRange;
+            if (start <= end) {
+                inRange = now >= start && now <= end;
+            } else {
+                // wraps across year boundary (e.g. Dec–Feb)
+                inRange = now >= start || now <= end;
+            }
+            if (!inRange) return false;
+            // auto-reset completions each year
+            if ((ev.resetYear || 0) < y) return true; // will reset on first complete action
+            return ev.completions < ev.maxCompletions;
+        }
+
+        async function loadSeasonalEvents() {
+            try {
+                const snap = await getDoc(doc(db, 'system', 'seasonal_events'));
+                seasonalEvents = snap.exists() ? (snap.data().events || []) : [];
+                eventsLoaded = true;
+                renderSeasonalSection();
+            } catch(e) { console.error('loadSeasonalEvents:', e); }
+        }
+
+        async function syncEvents() {
+            await setDoc(doc(db, 'system', 'seasonal_events'), { events: seasonalEvents });
+        }
+
+        window.completeEvent = async (id) => {
+            const ev = seasonalEvents.find(e => e.id === id);
+            if (!ev) return;
+            const y = new Date().getFullYear();
+            // auto-reset if new year
+            if ((ev.resetYear || 0) < y) { ev.completions = 0; ev.resetYear = y; }
+            if (ev.completions >= ev.maxCompletions) return;
+            ev.completions++;
+            ev.resetYear = y;
+            playBubblePop(true);
+            await syncEvents();
+            renderSeasonalSection();
+            renderEventsManage();
+        };
+
+        window.uncompleteEvent = async (id) => {
+            const ev = seasonalEvents.find(e => e.id === id);
+            if (!ev || ev.completions <= 0) return;
+            ev.completions--;
+            playBubblePop(false);
+            await syncEvents();
+            renderSeasonalSection();
+            renderEventsManage();
+        };
+
+        window.deleteEvent = async (id) => {
+            if (!confirm('Delete this event?')) return;
+            seasonalEvents = seasonalEvents.filter(e => e.id !== id);
+            await syncEvents();
+            renderSeasonalSection();
+            renderEventsManage();
+        };
+
+        window.addEvent = async () => {
+            const icon  = document.getElementById('evIcon')?.value.trim()  || '🗓️';
+            const name  = document.getElementById('evName')?.value.trim();
+            const sm    = parseInt(document.getElementById('evStartM')?.value) || 3;
+            const sd    = parseInt(document.getElementById('evStartD')?.value) || 1;
+            const em    = parseInt(document.getElementById('evEndM')?.value)   || 5;
+            const ed    = parseInt(document.getElementById('evEndD')?.value)   || 31;
+            const max   = parseInt(document.getElementById('evMax')?.value)    || 1;
+            const pay   = parseFloat(document.getElementById('evPay')?.value)  || 5;
+            const note  = document.getElementById('evNote')?.value.trim()     || '';
+            if (!name) { alert('Please enter an event name.'); return; }
+            const ev = {
+                id: Date.now().toString(), name, icon, note,
+                startMonth: sm, startDay: sd, endMonth: em, endDay: ed,
+                maxCompletions: max, completions: 0, payout: pay,
+                resetYear: new Date().getFullYear()
+            };
+            seasonalEvents.push(ev);
+            await syncEvents();
+            // clear form
+            ['evIcon','evName','evNote'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+            renderSeasonalSection();
+            renderEventsManage();
+        };
+
+        function renderSeasonalSection() {
+            const root = document.getElementById('seasonalRoot');
+            if (!root) return;
+            const active = seasonalEvents.filter(isEventActive);
+            if (!active.length) { root.innerHTML = ''; return; }
+
+            // Group by season
+            const bySeason = {};
+            active.forEach(ev => {
+                const m = new Date().getMonth() + 1;
+                let season = 'spring';
+                for (const [k, meta] of Object.entries(SEASON_META)) {
+                    if (meta.months.includes(ev.startMonth)) { season = k; break; }
+                }
+                if (!bySeason[season]) bySeason[season] = [];
+                bySeason[season].push(ev);
+            });
+
+            let html = '';
+            for (const [season, evs] of Object.entries(bySeason)) {
+                const meta = SEASON_META[season];
+                html += `<div class="season-section-header" style="color:${meta.accent}">${meta.label} Events</div>`;
+                evs.forEach(ev => {
+                    const done = ev.completions >= ev.maxCompletions;
+                    const pips = Array.from({length: ev.maxCompletions}, (_, i) =>
+                        `<div class="ev-pip ${i < ev.completions ? 'ev-pip-done' : ''}" style="${i < ev.completions ? 'background:'+meta.accent+';border-color:'+meta.accent : ''}"></div>`
+                    ).join('');
+                    const today = new Date();
+                    const endDate = new Date(today.getFullYear(), ev.endMonth - 1, ev.endDay);
+                    const daysLeft = Math.max(0, Math.ceil((endDate - today) / 86400000));
+                    html += `
+                        <div class="ev-card" style="background:${meta.bg};border-color:${meta.border};${done?'opacity:0.6;':''}"
+                             ontouchstart="window.startLongPress('__ev__${ev.id}')"
+                             ontouchend="window.cancelLongPress()"
+                             ontouchmove="window.cancelLongPress()">
+                            <div class="ev-card-top">
+                                <span class="ev-icon">${ev.icon}</span>
+                                <div class="ev-info">
+                                    <div class="ev-name">${ev.name}${done ? ' <span class="ev-done-badge">Done!</span>' : ''}</div>
+                                    <div class="ev-meta">${ev.completions}/${ev.maxCompletions} complete · ${daysLeft}d left · +$${ev.payout.toFixed(2)}/ea</div>
+                                </div>
+                                <div class="ev-actions">
+                                    ${!done ? `<button class="ev-btn-complete" style="background:${meta.accent}" onclick="window.completeEvent('${ev.id}')">+1</button>` : ''}
+                                    ${ev.completions > 0 ? `<button class="ev-btn-undo" onclick="window.uncompleteEvent('${ev.id}')">↩</button>` : ''}
+                                </div>
+                            </div>
+                            <div class="ev-pips">${pips}</div>
+                        </div>`;
+                });
+            }
+            root.innerHTML = html;
+        }
+
+        function renderEventsManage() {
+            const root = document.getElementById('eventsManageRoot');
+            if (!root) return;
+            if (!seasonalEvents.length) {
+                root.innerHTML = '<div style="font-size:12px;color:#aaa;padding:8px 0;">No events yet.</div>';
+                return;
+            }
+            root.innerHTML = seasonalEvents.map(ev => {
+                const meta = Object.values(SEASON_META).find(m => m.months.includes(ev.startMonth)) || SEASON_META.spring;
+                return `<div class="manage-card" style="border-left:3px solid ${meta.border};">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                        <span style="font-size:18px;">${ev.icon}</span>
+                        <span style="font-family:'Great Vibes';font-size:20px;color:${meta.accent};flex:1;">${ev.name}</span>
+                        <button class="btn-delete" style="padding:4px 10px;font-size:9px;" onclick="window.deleteEvent('${ev.id}')">DELETE</button>
+                    </div>
+                    <div style="font-size:11px;color:#888;">
+                        ${ev.startMonth}/${ev.startDay} – ${ev.endMonth}/${ev.endDay} &nbsp;·&nbsp;
+                        Max: ${ev.maxCompletions} &nbsp;·&nbsp;
+                        Done: ${ev.completions} &nbsp;·&nbsp;
+                        $${ev.payout.toFixed(2)}/ea
+                    </div>
+                    ${ev.note ? `<div style="font-size:11px;color:#aaa;margin-top:4px;">${ev.note}</div>` : ''}
+                </div>`;
+            }).join('');
+        }
 
         // MONDAY AUTO-RESET CHECK
         // Runs once on first data load. If it's Monday and we haven't reset yet
@@ -749,6 +941,7 @@
             lastActedId = null;
 
             animateMoneyDisplay(totalMoney);
+            if (eventsLoaded) renderSeasonalSection();
 
             document.getElementById('countPunish').innerText = counts.punish;
             document.getElementById('countLow').innerText = counts.low;
@@ -781,7 +974,7 @@
                 window.switchTab(3);
                 setTimeout(() => {
                     const panel = document.getElementById('managePanel');
-                    if (panel) { panel.style.display = 'block'; panel.scrollIntoView({behavior:'smooth'}); }
+                    if (panel) { panel.style.display = 'block'; panel.scrollIntoView({behavior:'smooth'}); renderEventsManage(); }
                 }, 80);
             }
         };
@@ -841,6 +1034,16 @@
         let longPressTimer = null;
 
         window.showDefinition = (id) => {
+            // support event long-press
+            if (id.startsWith('__ev__')) {
+                const evId = id.replace('__ev__', '');
+                const ev = seasonalEvents.find(e => e.id === evId);
+                if (!ev || !ev.note) return;
+                document.getElementById('defTitle').innerText = ev.icon + '  ' + ev.name;
+                document.getElementById('defBody').innerText  = ev.note;
+                document.getElementById('defOverlay').classList.add('def-open');
+                return;
+            }
             const h = habits.find(x => x.id === id);
             if (!h) return;
             const overlay = document.getElementById('defOverlay');
@@ -1048,6 +1251,7 @@
             applyTimeColor();
             setInterval(applyTimeColor, 60000);
             initParticles();
+            loadSeasonalEvents();
         });
 
         function updateGreeting() {
@@ -1456,6 +1660,78 @@
             border-color: var(--header-pink);
         }
 
+
+        /* ── SEASONAL EVENTS ─────────────────────────────────────────────── */
+        .season-section-header {
+            font-family: 'Playfair Display', serif;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin: 14px 0 8px 2px;
+        }
+        .ev-card {
+            border-radius: 16px;
+            border: 1px solid;
+            padding: 14px;
+            margin-bottom: 10px;
+        }
+        .ev-card-top {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .ev-icon { font-size: 22px; flex-shrink: 0; margin-top: 1px; }
+        .ev-info { flex: 1; min-width: 0; }
+        .ev-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: #4a3a3a;
+            margin-bottom: 3px;
+        }
+        .ev-meta { font-size: 10px; color: #888; }
+        .ev-done-badge {
+            display: inline-block;
+            font-size: 9px;
+            font-weight: 700;
+            background: #27ae60;
+            color: white;
+            border-radius: 6px;
+            padding: 1px 6px;
+            margin-left: 4px;
+            vertical-align: middle;
+        }
+        .ev-actions { display: flex; gap: 5px; flex-shrink: 0; }
+        .ev-btn-complete {
+            color: white;
+            border: none;
+            border-radius: 10px;
+            padding: 6px 12px;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            font-family: 'Montserrat', sans-serif;
+        }
+        .ev-btn-undo {
+            background: rgba(255,255,255,0.6);
+            border: 1px solid rgba(0,0,0,0.1);
+            border-radius: 10px;
+            padding: 6px 10px;
+            font-size: 12px;
+            cursor: pointer;
+            color: #888;
+        }
+        .ev-pips { display: flex; gap: 6px; }
+        .ev-pip {
+            width: 11px;
+            height: 11px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.5);
+            border: 1.5px solid rgba(0,0,0,0.15);
+        }
+        .ev-pip-done { border-color: transparent; }
+
         footer { text-align: center; margin-top: 40px; font-family: 'Great Vibes'; color: var(--header-pink); font-size: 24px; padding-bottom: 40px; }
     </style>
 </head>
@@ -1506,6 +1782,7 @@
     </nav>
 
     <div id="view-today" class="view active">
+        <div id="seasonalRoot"></div>
         <div id="todayRoot"></div>
     </div>
 
@@ -1535,6 +1812,38 @@
                 <textarea id="newNote" placeholder="Definition / rules (optional)" style="width:100%; padding:10px; border:1px solid #eee; border-radius:8px; font-family:'Montserrat'; font-size:13px; resize:vertical; min-height:52px; box-sizing:border-box; margin-bottom:10px;"></textarea>
                 <button onclick="window.addTask()" style="width:100%; background:var(--header-pink); color:white; border:none; padding:12px; border-radius:10px; font-weight:bold; cursor:pointer;">Create Habit</button>
             </div>
+            <div class="manage-card" style="margin-bottom:14px;">
+                <h4 style="font-family:'Great Vibes'; font-size:28px; color:var(--header-pink); margin:0 0 12px 0;">Add Seasonal Event</h4>
+                <div style="display:flex; gap:8px; margin-bottom:8px;">
+                    <input type="text" id="evIcon" placeholder="Icon" style="width:18%; padding:10px; border:1px solid #eee; border-radius:8px;">
+                    <input type="text" id="evName" placeholder="Event Name" style="flex:1; padding:10px; border:1px solid #eee; border-radius:8px;">
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+                    <div style="font-size:11px;color:#aaa;margin-bottom:2px;">Start (month / day)</div>
+                    <div style="font-size:11px;color:#aaa;margin-bottom:2px;">End (month / day)</div>
+                    <div style="display:flex;gap:4px;">
+                        <input type="number" id="evStartM" placeholder="Mo" min="1" max="12" style="flex:1;padding:8px;border:1px solid #eee;border-radius:8px;font-size:12px;">
+                        <input type="number" id="evStartD" placeholder="Dy" min="1" max="31" style="flex:1;padding:8px;border:1px solid #eee;border-radius:8px;font-size:12px;">
+                    </div>
+                    <div style="display:flex;gap:4px;">
+                        <input type="number" id="evEndM" placeholder="Mo" min="1" max="12" style="flex:1;padding:8px;border:1px solid #eee;border-radius:8px;font-size:12px;">
+                        <input type="number" id="evEndD" placeholder="Dy" min="1" max="31" style="flex:1;padding:8px;border:1px solid #eee;border-radius:8px;font-size:12px;">
+                    </div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+                    <div>
+                        <div style="font-size:11px;color:#aaa;margin-bottom:2px;">Max completions</div>
+                        <input type="number" id="evMax" placeholder="e.g. 3" min="1" style="width:100%;padding:8px;border:1px solid #eee;border-radius:8px;font-size:12px;box-sizing:border-box;">
+                    </div>
+                    <div>
+                        <div style="font-size:11px;color:#aaa;margin-bottom:2px;">$ per completion</div>
+                        <input type="number" id="evPay" placeholder="e.g. 5.00" step="0.50" style="width:100%;padding:8px;border:1px solid #eee;border-radius:8px;font-size:12px;box-sizing:border-box;">
+                    </div>
+                </div>
+                <textarea id="evNote" placeholder="Definition / rules (optional)" style="width:100%;padding:8px;border:1px solid #eee;border-radius:8px;font-family:'Montserrat';font-size:12px;resize:vertical;min-height:48px;box-sizing:border-box;margin-bottom:8px;"></textarea>
+                <button onclick="window.addEvent()" style="width:100%;background:var(--header-pink);color:white;border:none;padding:12px;border-radius:10px;font-weight:bold;cursor:pointer;">Create Event</button>
+            </div>
+            <div id="eventsManageRoot"></div>
             <button onclick="window.runWeeklyReport(true)" style="width:100%; padding:15px; background:#4a3a3a; color:white; border-radius:12px; margin-bottom:20px; border:none; font-weight:bold; cursor:pointer; font-family:'Playfair Display'; letter-spacing:1px;">SUBMIT WEEKLY REPORT &amp; RESET</button>
             <div id="manageRoot"></div>
         </div>
