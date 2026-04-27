@@ -49,6 +49,10 @@
         let moneyAnimFrame  = null;
         // 'goal' or 'bonus' — persisted per-user in localStorage
         let priorityMode    = localStorage.getItem('priorityMode') || 'goal';
+        // sort lock — when true, completed tasks stay in place
+        let sortLocked      = localStorage.getItem('sortLocked') === '1';
+        // last category interacted with — that one stays open, all others collapse
+        let lastActiveCat   = null;
         let seasonalEvents  = [];
         let eventsLoaded    = false;
 
@@ -702,6 +706,12 @@
 
         window.toggleBubble = async (id, val) => {
             const h = habits.find(x => x.id === id);
+            // Auto-expand this habit's category, collapse all others
+            if (h && h.cat) {
+                const cats = [...new Set(habits.map(x => x.cat))];
+                cats.forEach(c => { collapsed[c] = (c !== h.cat); });
+                lastActiveCat = h.cat;
+            }
             const dIdx = getDayIdx(viewingDate);
             const oldQty = h.history[dIdx];
             
@@ -785,19 +795,22 @@
             const categories = [...new Set(habits.map(h => h.cat))];
 
             categories.forEach(cat => {
-                const isCol = collapsed[cat];
+                // Unknown cats default to collapsed; use explicit value if set
+                const isCol = collapsed[cat] !== false;
                 let items = habits.filter(h => h.cat === cat);
 
-                // SORTING FIX: Completed tasks to bottom
-                items.sort((a, b) => {
-                    const aVal = a.history[dIdx];
-                    const bVal = b.history[dIdx];
-                    const aHasProgress = aVal > 0;
-                    const bHasProgress = bVal > 0;
-                    if (aHasProgress && !bHasProgress) return 1;
-                    if (!aHasProgress && bHasProgress) return -1;
-                    return 0;
-                });
+                // Sort completed tasks to bottom — unless sortLocked is on
+                if (!sortLocked) {
+                    items.sort((a, b) => {
+                        const aVal = a.history[dIdx];
+                        const bVal = b.history[dIdx];
+                        const aHasProgress = aVal > 0;
+                        const bHasProgress = bVal > 0;
+                        if (aHasProgress && !bHasProgress) return 1;
+                        if (!aHasProgress && bHasProgress) return -1;
+                        return 0;
+                    });
+                }
 
                 let miniDotsHtml = items.map(h => {
                     const t = getTier(h, h.history[dIdx]);
@@ -942,6 +955,11 @@
 
             animateMoneyDisplay(totalMoney);
             if (eventsLoaded) renderSeasonalSection();
+            const slb = document.getElementById('sortLockBtn');
+            if (slb) {
+                slb.classList.toggle('sort-lock-on', sortLocked);
+                slb.title = sortLocked ? 'Tasks stay in place (locked)' : 'Completed tasks move to bottom';
+            }
 
             document.getElementById('countPunish').innerText = counts.punish;
             document.getElementById('countLow').innerText = counts.low;
@@ -949,8 +967,28 @@
             document.getElementById('countBonus').innerText = counts.bonus;
         }
 
+        window.toggleSortLock = () => {
+            sortLocked = !sortLocked;
+            localStorage.setItem('sortLocked', sortLocked ? '1' : '0');
+            document.getElementById('sortLockBtn').classList.toggle('sort-lock-on', sortLocked);
+            document.getElementById('sortLockBtn').title = sortLocked ? 'Tasks stay in place (locked)' : 'Completed tasks move to bottom';
+            render();
+        };
+
         window.toggleCol = (cat) => {
-            collapsed[cat] = !collapsed[cat];
+            // If it's currently collapsed, expand it and collapse all others
+            const wasCollapsed = collapsed[cat] !== false ? true : false;
+            if (wasCollapsed) {
+                // collapse everything, then open just this one
+                const cats = [...new Set(habits.map(h => h.cat))];
+                cats.forEach(c => { collapsed[c] = true; });
+                collapsed[cat] = false;
+                lastActiveCat  = cat;
+            } else {
+                // it's open — just close it
+                collapsed[cat] = true;
+                if (lastActiveCat === cat) lastActiveCat = null;
+            }
             render();
         };
 
@@ -1732,6 +1770,26 @@
         }
         .ev-pip-done { border-color: transparent; }
 
+        /* ── SORT LOCK TOGGLE ────────────────────────────────────────── */
+        .sort-lock-btn {
+            font-size: 11px;
+            font-weight: 700;
+            font-family: 'Montserrat', sans-serif;
+            letter-spacing: 0.5px;
+            padding: 5px 12px;
+            border-radius: 20px;
+            border: 1.5px solid rgba(212,163,163,0.35);
+            background: transparent;
+            color: #bbb;
+            cursor: pointer;
+            transition: all 0.18s ease;
+        }
+        .sort-lock-btn.sort-lock-on {
+            background: var(--header-pink);
+            color: white;
+            border-color: var(--header-pink);
+        }
+
         footer { text-align: center; margin-top: 40px; font-family: 'Great Vibes'; color: var(--header-pink); font-size: 24px; padding-bottom: 40px; }
     </style>
 </head>
@@ -1782,6 +1840,9 @@
     </nav>
 
     <div id="view-today" class="view active">
+        <div style="display:flex;justify-content:flex-end;padding:8px 2px 4px;">
+            <button id="sortLockBtn" class="sort-lock-btn" onclick="window.toggleSortLock()" title="Completed tasks move to bottom">⇅ Sort</button>
+        </div>
         <div id="seasonalRoot"></div>
         <div id="todayRoot"></div>
     </div>
