@@ -509,16 +509,14 @@
 
             // ── Past weeks (collapsible) ───────────────────────────────────────
             html += '<h3 class="history-section-title" style="margin:16px 4px 10px;">Past Weeks</h3>';
-            // Determine which entry is the current week (most recent, within last 7 days)
-            const nowMs   = Date.now();
-            const sevenDays = 7 * 24 * 60 * 60 * 1000;
+            // Only the single most recent entry is labelled Current Week
+            const mostRecentId = weeklyHistory.length ? weeklyHistory[0].id : null;
             weeklyHistory.forEach(wk => {
                 const isP  = wk.totalBalance >= 0;
                 const tCol = isP ? '#27ae60' : '#d9534f';
                 const tStr = (isP?'+$':'-$')+Math.abs(wk.totalBalance).toFixed(2);
                 const cats = [...new Set((wk.habits||[]).map(h=>h.cat))];
-                // Label the most recent entry as Current Week if it was reset this week
-                const isCurrent = (nowMs - (wk.timestamp||0)) < sevenDays;
+                const isCurrent = wk.id === mostRecentId;
                 const weekLabel = isCurrent ? 'Current Week' : 'Week of ' + wk.weekEnding;
                 const weekSub   = isCurrent ? wk.weekEnding : '';
                 let body   = '';
@@ -568,8 +566,8 @@
 
         function _drawBalanceChart(wks) {
             const el = document.getElementById('hchart-balance'); if(!el) return;
-            const nowMs2  = Date.now(), sevenD = 7*24*60*60*1000;
-            const labels = wks.map(w => (nowMs2-(w.timestamp||0))<sevenD ? 'Now' : (()=>{const d=new Date(w.timestamp);return (d.getMonth()+1)+'/'+(d.getDate());})());
+            const newestId = wks.length ? wks[wks.length-1].id : null;
+            const labels = wks.map(w => w.id===newestId ? 'Now' : (()=>{const d=new Date(w.timestamp);return (d.getMonth()+1)+'/'+(d.getDate());})());
             const data   = wks.map(w => +w.totalBalance.toFixed(2));
             const c = new Chart(el, {
                 type:'bar',
