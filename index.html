@@ -690,6 +690,7 @@
                 icon,
                 cat,
                 note: noteVal ? noteVal.value.trim() : '',
+                dailyMax: 1,
                 punish: 1,
                 low: 3,
                 goal: 5,
@@ -718,7 +719,7 @@
             const h = habits.find(x => x.id === id);
             if (field === 'note')              h[field] = value;
             else if (field.startsWith('val'))  h[field] = parseFloat(value);
-            else                               h[field] = parseInt(value);
+            else                               h[field] = parseInt(value) || 1;
             await syncToFirebase();
         };
 
@@ -877,8 +878,11 @@
                     }
 
                     const daysRemainingInWeek = 7 - dIdx;
-                    const modeThresh = priorityMode === 'bonus' ? h.bonus : h.goal;
-                    const isUrgent = (modeThresh - cur) >= daysRemainingInWeek && (modeThresh - cur) > 0;
+                    const modeThresh  = priorityMode === 'bonus' ? h.bonus : h.goal;
+                    const dailyMax    = h.dailyMax || 1;
+                    // possible = how many more completions can happen in remaining days
+                    const possible    = daysRemainingInWeek * dailyMax;
+                    const isUrgent    = (modeThresh - cur) >= possible && (modeThresh - cur) > 0;
                     const isArriving = h.id === lastActedId;
 
                     let bubblesHtml = '';
@@ -946,7 +950,17 @@
                     manageRoot.innerHTML += `
                         <div class="manage-card">
                             <h4 class="beloved-small" style="font-family:'Great Vibes'; font-size:24px; color:var(--header-pink); margin:0 0 10px 0;">${h.icon} ${h.name}</h4>
-                            <div style="margin-bottom:10px; font-size:12px;">Max Circles: <input type="number" value="${h.max || 7}" style="width:45px;" onchange="window.updateField('${h.id}','max',this.value)"></div>
+                            <div style="margin-bottom:10px; display:flex; gap:20px; align-items:center; flex-wrap:wrap;">
+                                <div style="font-size:12px;">Max Circles (week):
+                                    <input type="number" value="${h.max || 7}" min="1" max="49" style="width:45px; margin-left:4px;"
+                                    onchange="window.updateField('${h.id}','max',this.value)">
+                                </div>
+                                <div style="font-size:12px;">Daily Max:
+                                    <input type="number" value="${h.dailyMax || 1}" min="1" max="7" style="width:40px; margin-left:4px;"
+                                    onchange="window.updateField('${h.id}','dailyMax',this.value)">
+                                    <span style="font-size:10px; color:#aaa; margin-left:4px;">completions/day</span>
+                                </div>
+                            </div>
                             <table class="matrix-table">
                                 <tr><th>Tier</th><th>Qty</th><th>$ Payout</th></tr>
                                 <tr><td style="color:var(--color-punish)">Debt</td><td><input type="number" value="${h.punish}" onchange="window.updateField('${h.id}','punish',this.value)"></td><td><input type="number" value="${h.valPunish}" onchange="window.updateField('${h.id}','valPunish',this.value)"></td></tr>
