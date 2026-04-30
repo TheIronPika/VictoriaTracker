@@ -732,16 +732,15 @@
                 lastActiveCat = h.cat;
                 saveCollapsedState();
             }
-            const dIdx = getDayIdx(viewingDate);
+            const dIdx   = getDayIdx(viewingDate);
             const oldQty = h.history[dIdx];
-            
-            let newVal = (oldQty === val) ? val - 1 : val;
+            let newVal   = (oldQty === val) ? val - 1 : val;
 
             const oldTier = getTier(h, oldQty);
             const newTier = getTier(h, newVal);
 
             const willMove = (oldQty === 0 && newVal > 0) || (newVal === 0 && oldQty > 0);
-            playBubblePop(newVal >= oldQty); // filling = bright pop, unfilling = soft thud
+            playBubblePop(newVal >= oldQty);
 
             if (willMove) {
                 const cardEl = document.querySelector(`.habit-card[data-habit-id="${id}"]`);
@@ -753,17 +752,14 @@
 
             lastActedId = willMove ? id : null;
 
-            // PERSISTENCE FIX: Propagate change to future days
-            for (let i = dIdx; i < 7; i++) {
-                h.history[i] = newVal;
-            }
+            // Propagate to future days
+            for (let i = dIdx; i < 7; i++) h.history[i] = newVal;
 
             await syncToFirebase();
 
             if (newVal > oldQty && newTier !== 'punish' && newTier !== oldTier) {
                 triggerFanfare(newTier);
             }
-            // Check if every habit is now at goal or bonus
             checkPerfectWeek();
         };
 
@@ -885,15 +881,25 @@
                     const isUrgent    = (modeThresh - cur) >= possible && (modeThresh - cur) > 0;
                     const isArriving = h.id === lastActedId;
 
+                    const DS = ['M','T','W','T','F','S','S'];
+                    // Build cumulative day map: bubble index i → which day it was filled
+                    const _DS = ['M','T','W','T','F','S','S'];
+                    // Build a map: bubble index → which day earned it
+                    // e.g. Mon count=2 → bubbles 0,1 get 'M'; Tue count=1 → bubble 2 gets 'T'
+                    const cumDayMap = [];
+                    for (let d = 0; d < 7; d++) {
+                        const c = h.history[d] || 0;
+                        for (let k = 0; k < c; k++) cumDayMap.push(d);
+                    }
                     let bubblesHtml = '';
                     for (let i = 1; i <= (h.max || 7); i++) {
-                        const stepTier = getTier(h, i);
-                        const isFilled = i <= cur;
+                        const stepTier  = getTier(h, i);
+                        const isFilled  = i <= cur;
+                        const dayLetter = isFilled && cumDayMap[i-1] !== undefined ? _DS[cumDayMap[i-1]] : '';
                         bubblesHtml += `
-                            <div class="bubble ${isFilled ? 'filled ' + stepTier : ''}" 
-                                 style="border-color:var(--color-${stepTier})" 
-                                 onclick="window.toggleBubble('${h.id}',${i})">
-                            </div>`;
+                            <div class="bubble day-bub ${isFilled ? 'filled ' + stepTier : ''}"
+                                 style="border-color:var(--color-${stepTier})"
+                                 onclick="window.toggleBubble('${h.id}',${i})">${dayLetter}</div>`;
                     }
 
                     const cardHtml = `
@@ -1299,7 +1305,7 @@
             if (localStorage.getItem(key)) return;  // already celebrated today
             const dIdx = getDayIdx(viewingDate);
             const allGood = habits.every(h => {
-                const tier = getTier(h, h.history[dIdx] || 0);
+                const tier = getTier(h, h.history[getDayIdx(viewingDate)] || 0);
                 return tier === 'goal' || tier === 'bonus';
             });
             if (allGood) {
@@ -1664,6 +1670,34 @@
         .hm-row { display:flex; align-items:center; gap:3px; margin-bottom:2px; }
         .hm-label { font-size:9px; color:#888; width:112px; flex-shrink:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .hm-cell { height:14px; border-radius:2px; flex:1; min-width:0; }
+
+        .bubble.day-bub {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 9px;
+            font-weight: 700;
+            color: rgba(255,255,255,0.95);
+            position: relative;
+            letter-spacing: 0;
+        }
+        .bubble.day-bub:not(.filled) { color: transparent; }
+        .day-cnt {
+            position: absolute;
+            top: -4px;
+            right: -4px;
+            width: 13px;
+            height: 13px;
+            border-radius: 50%;
+            background: var(--color-bonus);
+            color: white;
+            font-size: 7px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1.5px solid white;
+        }
 
         .streak-badge {
             font-size: 10px;
