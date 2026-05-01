@@ -141,7 +141,7 @@
                     return { ...h, streak, bestStreak: best };
                 });
                 await saveWeekSnapshot(habits, totalMoney, dateStr);
-                habits = habits.map(h => ({ ...h, history: [0,0,0,0,0,0,0] }));
+                habits = habits.map(h => ({ ...h, history: [0,0,0,0,0,0,0], excused: false }));
                 await syncToFirebase();
                 historyLoaded = false;
                 if(isManual) alert('Weekly report sent and habits reset!');
@@ -860,17 +860,18 @@
                     const tier = getTier(h, cur);
 
                     let payout = 0;
-                    if(tier === 'punish') payout = h.valPunish;
-                    else if(tier === 'low') payout = h.valLow;
-                    else if(tier === 'goal') payout = h.valGoal;
-                    else if(tier === 'bonus') payout = h.valBonus;
-                    totalMoney += payout;
-
-                    // DEBT FILTER LOGIC: Only count toward "Debt" if payout is negative
-                    if(tier === 'punish' && h.valPunish < 0) {
-                        counts.punish++;
-                    } else if (tier !== 'punish') {
-                        counts[tier]++;
+                    if (!h.excused) {
+                        if(tier === 'punish') payout = h.valPunish;
+                        else if(tier === 'low') payout = h.valLow;
+                        else if(tier === 'goal') payout = h.valGoal;
+                        else if(tier === 'bonus') payout = h.valBonus;
+                        totalMoney += payout;
+                        // DEBT FILTER LOGIC: Only count toward "Debt" if payout is negative
+                        if(tier === 'punish' && h.valPunish < 0) {
+                            counts.punish++;
+                        } else if (tier !== 'punish') {
+                            counts[tier]++;
+                        }
                     }
 
                     const daysRemainingInWeek = 7 - dIdx;
@@ -878,7 +879,7 @@
                     const dailyMax    = h.dailyMax || 1;
                     // possible = how many more completions can happen in remaining days
                     const possible    = daysRemainingInWeek * dailyMax;
-                    const isUrgent    = (modeThresh - cur) >= possible && (modeThresh - cur) > 0;
+                    const isUrgent    = !h.excused && (modeThresh - cur) >= possible && (modeThresh - cur) > 0;
                     const isArriving = h.id === lastActedId;
 
                     const DS = ['M','T','W','T','F','S','S'];
@@ -911,9 +912,11 @@
                             <div style="font-size:24px; margin-right:15px;">${h.icon}</div>
                             <div style="flex:1">
                                 ${isUrgent ? `<span class="priority-tag">✦ ${priorityMode === 'bonus' ? 'Bonus' : 'Goal'} at Risk</span>` : ''}
+                                ${h.excused ? '<span class="excused-tag">✦ Excused this week</span>' : ''}
                                 <div style="display:flex;align-items:center;gap:8px;">
                                     <p style="margin:0; font-weight:600;">${h.name}</p>
                                     ${(h.streak >= 2) ? `<span class="streak-badge">🔥 ${h.streak}</span>` : ''}
+                                    <button class="excuse-btn ${h.excused ? 'excuse-on' : ''}" onclick="event.stopPropagation();window.toggleExcused('${h.id}')">${h.excused ? 'Unexcuse' : 'Excuse'}</button>
                                 </div>
                                 <div class="bubbles">${bubblesHtml}</div>
                             </div>
@@ -1011,6 +1014,13 @@
             if (lastActiveCat) localStorage.setItem('lastActiveCat', lastActiveCat);
             else localStorage.removeItem('lastActiveCat');
         }
+
+        window.toggleExcused = async (id) => {
+            const h = habits.find(x => x.id === id);
+            if (!h) return;
+            h.excused = !h.excused;
+            await syncToFirebase();
+        };
 
         window.toggleSortLock = () => {
             sortLocked = !sortLocked;
@@ -1697,6 +1707,36 @@
             align-items: center;
             justify-content: center;
             border: 1.5px solid white;
+        }
+
+        .excused-tag {
+            display: inline-block;
+            font-size: 10px;
+            font-weight: 600;
+            color: #a0a0a0;
+            letter-spacing: 0.5px;
+            margin-bottom: 3px;
+        }
+        .excuse-btn {
+            font-size: 9px;
+            font-weight: 700;
+            font-family: 'Montserrat', sans-serif;
+            letter-spacing: 0.5px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            border: 1px solid rgba(160,160,160,0.4);
+            background: transparent;
+            color: #b0b0b0;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .excuse-btn.excuse-on {
+            background: rgba(160,160,160,0.15);
+            color: #888;
+            border-color: #bbb;
+        }
+        .habit-card:has(.excuse-on) {
+            opacity: 0.6;
         }
 
         .streak-badge {
