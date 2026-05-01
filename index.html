@@ -59,6 +59,11 @@
         })();
         let seasonalEvents  = [];
         let eventsLoaded    = false;
+        let starBalance     = 0;
+        let starsSpent      = 0;
+        let shopItems       = [];
+        let shopLoaded      = false;
+        let pendingRedeem   = null;
 
         const getDayIdx = (d) => {
             let day = d.getDay(); 
@@ -340,6 +345,138 @@
                     ${ev.note ? `<div style="font-size:11px;color:#aaa;margin-top:4px;">${ev.note}</div>` : ''}
                 </div>`;
             }).join('');
+        }
+
+        // ── STAR SHOP ────────────────────────────────────────────────────
+        async function loadStarData() {
+            try {
+                const snap = await getDoc(doc(db, 'system', 'star_data'));
+                if (snap.exists()) {
+                    starBalance = snap.data().balance  || 0;
+                    starsSpent  = snap.data().spent    || 0;
+                    shopItems   = snap.data().items    || [];
+                }
+                shopLoaded = true;
+                updateStarDisplay();
+                renderShopManage();
+            } catch(e) { console.error('loadStarData:', e); }
+        }
+
+        async function syncStarData() {
+            await setDoc(doc(db, 'system', 'star_data'), {
+                balance: starBalance, spent: starsSpent, items: shopItems
+            });
+        }
+
+        function updateStarDisplay() {
+            const el = document.getElementById('starDisplay');
+            if (el) el.innerText = '✨' + starBalance;
+        }
+
+        window.openShop = () => {
+            renderShopSheet();
+            document.getElementById('shopConfirmView').style.display = 'none';
+            document.getElementById('shopItemsView').style.display = '';
+            document.getElementById('shopOverlay').classList.add('shop-open');
+        };
+
+        window.closeShop = () => {
+            document.getElementById('shopOverlay').classList.remove('shop-open');
+            pendingRedeem = null;
+        };
+
+        function renderShopSheet() {
+            const grid = document.getElementById('shopGrid');
+            if (!grid) return;
+            const bal = document.getElementById('shopBalDisplay');
+            if (bal) bal.innerHTML = '✨ <strong>' + starBalance + ' stars</strong> available';
+            if (!shopItems.length) {
+                grid.innerHTML = '<div style="text-align:center;padding:30px;color:#bbb;font-size:13px;">No items yet.<br>Add some in Manage!</div>';
+                return;
+            }
+            grid.innerHTML = shopItems.map((it, i) => {
+                const cant = it.cost > starBalance;
+                return '<div class="shop-item' + (cant ? ' shop-item-cant' : '') + '" onclick="' + (cant ? '' : 'window.selectShopItem(' + i + ')') + '">'
+                    + '<div class="shop-item-ico">' + (it.icon || '✨') + '</div>'
+                    + '<div class="shop-item-name">' + it.name + '</div>'
+                    + '<div class="shop-item-cost">✨ ' + it.cost + '</div>'
+                    + '</div>';
+            }).join('');
+        }
+
+        window.selectShopItem = (i) => {
+            pendingRedeem = shopItems[i];
+            const after = starBalance - pendingRedeem.cost;
+            document.getElementById('confirmItemName').innerText = pendingRedeem.name;
+            document.getElementById('confirmCost').innerText = pendingRedeem.cost;
+            document.getElementById('confirmBefore').innerText = starBalance;
+            document.getElementById('confirmAfter').innerText = after;
+            document.getElementById('shopItemsView').style.display = 'none';
+            document.getElementById('shopConfirmView').style.display = '';
+        };
+
+        window.cancelConfirm = () => {
+            pendingRedeem = null;
+            document.getElementById('shopConfirmView').style.display = 'none';
+            document.getElementById('shopItemsView').style.display = '';
+        };
+
+        window.doRedeem = async () => {
+            if (!pendingRedeem) return;
+            starBalance -= pendingRedeem.cost;
+            starsSpent  += pendingRedeem.cost;
+            pendingRedeem = null;
+            await syncStarData();
+            updateStarDisplay();
+            document.getElementById('shopConfirmView').style.display = 'none';
+            document.getElementById('shopItemsView').style.display = '';
+            renderShopSheet();
+        };
+
+        window.awardStars = async () => {
+            const amt = parseInt(document.getElementById('awardAmt')?.value) || 0;
+            if (amt <= 0) return;
+            starBalance += amt;
+            await syncStarData();
+            updateStarDisplay();
+            document.getElementById('awardAmt').value = '';
+            alert('✨ ' + amt + ' stars awarded!');
+        };
+
+        window.addShopItem = async () => {
+            const icon = document.getElementById('shopItemIcon')?.value.trim() || '✨';
+            const name = document.getElementById('shopItemName')?.value.trim();
+            const cost = parseInt(document.getElementById('shopItemCost')?.value) || 0;
+            if (!name || cost <= 0) { alert('Please enter a name and star cost.'); return; }
+            shopItems.push({ id: Date.now().toString(), icon, name, cost });
+            await syncStarData();
+            document.getElementById('shopItemIcon').value = '';
+            document.getElementById('shopItemName').value = '';
+            document.getElementById('shopItemCost').value = '';
+            renderShopManage();
+        };
+
+        window.deleteShopItem = async (id) => {
+            shopItems = shopItems.filter(it => it.id !== id);
+            await syncStarData();
+            renderShopManage();
+        };
+
+        function renderShopManage() {
+            const root = document.getElementById('shopManageRoot');
+            if (!root) return;
+            if (!shopItems.length) {
+                root.innerHTML = '<div style="font-size:12px;color:#aaa;padding:4px 0;">No items yet.</div>';
+                return;
+            }
+            root.innerHTML = shopItems.map(it =>
+                '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f5f5f5;">'
+                + '<span style="font-size:18px;">' + it.icon + '</span>'
+                + '<span style="flex:1;font-size:12px;font-weight:600;color:#4a3a3a;">' + it.name + '</span>'
+                + '<span style="font-size:11px;color:#c8942a;font-weight:700;">✨ ' + it.cost + '</span>'
+                + '<button class="btn-delete" style="padding:3px 8px;font-size:9px;" onclick="window.deleteShopItem(\'' + it.id + '\')">DEL</button>'
+                + '</div>'
+            ).join('');
         }
 
         // MONDAY AUTO-RESET CHECK
@@ -1065,7 +1202,7 @@
                 window.switchTab(3);
                 setTimeout(() => {
                     const panel = document.getElementById('managePanel');
-                    if (panel) { panel.style.display = 'block'; panel.scrollIntoView({behavior:'smooth'}); renderEventsManage(); }
+                    if (panel) { panel.style.display = 'block'; panel.scrollIntoView({behavior:'smooth'}); renderEventsManage(); renderShopManage(); }
                 }, 80);
             }
         };
@@ -1343,6 +1480,7 @@
             setInterval(applyTimeColor, 60000);
             initParticles();
             loadSeasonalEvents();
+            loadStarData();
         });
 
         function updateGreeting() {
@@ -1901,6 +2039,73 @@
             border-color: var(--header-pink);
         }
 
+        /* ── STAR SHOP ───────────────────────────────────────────────── */
+        .star-trigger {
+            position: absolute;
+            bottom: 10px;
+            right: 12px;
+            font-size: 14px;
+            opacity: 0.3;
+            cursor: pointer;
+            line-height: 1;
+            transition: opacity 0.2s;
+            user-select: none;
+        }
+        .star-trigger:hover { opacity: 0.7; }
+        #shopOverlay {
+            position: fixed; inset: 0;
+            background: rgba(74,58,58,0.45);
+            z-index: 9998;
+            display: flex; align-items: flex-end; justify-content: center;
+            opacity: 0; pointer-events: none;
+            transition: opacity 0.25s ease;
+        }
+        #shopOverlay.shop-open { opacity: 1; pointer-events: all; }
+        #shopSheet {
+            width: 100%; max-width: 480px;
+            background: #fdf8f8;
+            border-radius: 24px 24px 0 0;
+            padding: 22px 20px 36px;
+            transform: translateY(100%);
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        #shopOverlay.shop-open #shopSheet { transform: translateY(0); }
+        .shop-handle {
+            width: 36px; height: 4px; border-radius: 2px;
+            background: rgba(0,0,0,0.12); margin: 0 auto 18px;
+        }
+        .shop-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 4px;
+        }
+        .shop-item {
+            background: white;
+            border: 1px solid rgba(212,163,163,0.2);
+            border-radius: 14px;
+            padding: 12px 8px;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.15s;
+        }
+        .shop-item:hover { border-color: rgba(212,163,163,0.6); }
+        .shop-item:active { transform: scale(0.97); }
+        .shop-item-cant { opacity: 0.4; cursor: not-allowed; }
+        .shop-item-ico { font-size: 26px; margin-bottom: 6px; }
+        .shop-item-name { font-size: 11px; font-weight: 600; color: #4a3a3a; margin-bottom: 6px; line-height: 1.3; }
+        .shop-item-cost {
+            display: inline-flex; align-items: center; gap: 3px;
+            background: rgba(200,148,42,0.1); border-radius: 8px;
+            padding: 3px 8px; font-size: 11px; font-weight: 700; color: #c8942a;
+        }
+        .shop-confirm-card {
+            background: white; border-radius: 18px;
+            padding: 20px; margin: 0 2px;
+        }
+
         footer { text-align: center; margin-top: 40px; font-family: 'Great Vibes'; color: var(--header-pink); font-size: 24px; padding-bottom: 40px; }
     </style>
 </head>
@@ -1914,9 +2119,10 @@
     </header>
 
     <div class="header-status-row">
-        <div class="earnings-mini-card">
+        <div class="earnings-mini-card" style="position:relative;">
             <span class="earnings-label">This Week's Balance</span>
             <span class="earnings-value-small" id="moneyDisplay">$0.00</span>
+            <span id="starDisplay" class="star-trigger" onclick="window.openShop()">✨</span>
         </div>
         <div class="weather-mini-card">
             <div id="weatherInfo">--°F</div>
@@ -2016,6 +2222,22 @@
                 <button onclick="window.addEvent()" style="width:100%;background:var(--header-pink);color:white;border:none;padding:12px;border-radius:10px;font-weight:bold;cursor:pointer;">Create Event</button>
             </div>
             <div id="eventsManageRoot"></div>
+            <div class="manage-card" style="margin-bottom:14px;">
+                <h4 style="font-family:'Great Vibes'; font-size:28px; color:var(--header-pink); margin:0 0 12px 0;">✨ Star Shop</h4>
+                <div style="font-size:11px;color:#aaa;margin-bottom:10px;">Award stars manually or add/remove shop items.</div>
+                <div style="display:flex;gap:8px;margin-bottom:10px;">
+                    <input type="number" id="awardAmt" placeholder="Stars to award" min="1" style="flex:1;padding:10px;border:1px solid #eee;border-radius:8px;font-family:'Montserrat';font-size:13px;">
+                    <button onclick="window.awardStars()" style="padding:10px 14px;background:var(--header-pink);color:white;border:none;border-radius:8px;font-weight:bold;cursor:pointer;white-space:nowrap;">✨ Award</button>
+                </div>
+                <div style="font-size:11px;color:#aaa;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Add Shop Item</div>
+                <div style="display:flex;gap:6px;margin-bottom:6px;">
+                    <input type="text" id="shopItemIcon" placeholder="Icon" style="width:18%;padding:8px;border:1px solid #eee;border-radius:8px;">
+                    <input type="text" id="shopItemName" placeholder="Item name" style="flex:1;padding:8px;border:1px solid #eee;border-radius:8px;">
+                    <input type="number" id="shopItemCost" placeholder="✨ cost" min="1" style="width:22%;padding:8px;border:1px solid #eee;border-radius:8px;">
+                </div>
+                <button onclick="window.addShopItem()" style="width:100%;background:#4a3a3a;color:white;border:none;padding:10px;border-radius:8px;font-weight:bold;cursor:pointer;margin-bottom:10px;">Add Item</button>
+                <div id="shopManageRoot"></div>
+            </div>
             <button onclick="window.runWeeklyReport(true)" style="width:100%; padding:15px; background:#4a3a3a; color:white; border-radius:12px; margin-bottom:20px; border:none; font-weight:bold; cursor:pointer; font-family:'Playfair Display'; letter-spacing:1px;">SUBMIT WEEKLY REPORT &amp; RESET</button>
             <div id="manageRoot"></div>
         </div>
@@ -2025,6 +2247,36 @@
 
 
     <footer>Victoria Tracker</footer>
+
+<!-- Star Shop Overlay -->
+<div id="shopOverlay" onclick="if(event.target===this)window.closeShop()">
+    <div id="shopSheet">
+        <div class="shop-handle"></div>
+        <div id="shopItemsView">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px;">
+                <div>
+                    <div style="font-family:'Great Vibes';font-size:32px;color:var(--header-pink);">Victoria's Shop</div>
+                    <div id="shopBalDisplay" style="font-size:12px;color:#aaa;margin-bottom:16px;">✨ <strong>0 stars</strong> available</div>
+                </div>
+                <button onclick="window.closeShop()" style="background:none;border:none;font-size:18px;color:#ccc;cursor:pointer;padding:4px;">×</button>
+            </div>
+            <div id="shopGrid" class="shop-grid"></div>
+        </div>
+        <div id="shopConfirmView" style="display:none;">
+            <div class="shop-confirm-card">
+                <div style="font-family:'Great Vibes';font-size:26px;color:var(--header-pink);margin-bottom:8px;">Confirm Redemption</div>
+                <div style="font-size:13px;color:#888;line-height:1.7;margin-bottom:18px;">
+                    Redeem <strong id="confirmItemName"></strong> for <strong>✨ <span id="confirmCost"></span> stars</strong>?<br>
+                    You have <strong><span id="confirmBefore"></span></strong> stars. After redeeming you'll have <strong><span id="confirmAfter"></span></strong> left.
+                </div>
+                <div style="display:flex;gap:8px;">
+                    <button onclick="window.cancelConfirm()" style="flex:1;padding:11px;border:1px solid #eee;border-radius:10px;background:white;color:#aaa;font-size:12px;font-weight:600;cursor:pointer;font-family:'Montserrat';">Cancel</button>
+                    <button onclick="window.doRedeem()" style="flex:1;padding:11px;border:none;border-radius:10px;background:var(--header-pink);color:white;font-size:12px;font-weight:700;cursor:pointer;font-family:'Montserrat';">✨ Redeem</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 </div>
 
 <!-- Definition modal overlay -->
