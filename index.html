@@ -143,7 +143,8 @@
                     const hHist = (h.history||[]).slice(0,7);
                     const hCur  = hHist[6] !== undefined ? hHist[6] : (hHist[hHist.length-1]||0);
                     const hTier = getTier(h, hCur);
-                    const newStreak = (hTier==='goal'||hTier==='bonus') ? (h.streak||0)+1 : 0;
+                    const newStreak    = (hTier==='goal'||hTier==='bonus') ? (h.streak||0)+1 : 0;
+                    const newBadStreak = (hTier==='punish'||hTier==='low') ? (h.badStreak||0)+1 : 0;
                     let earned = 0, reasons = [];
                     if (hTier==='goal'  && (h.starGoal  ||0)>0) { earned+=h.starGoal;   reasons.push(h.name+' Goal'); }
                     if (hTier==='bonus' && (h.starBonus ||0)>0) { earned+=h.starBonus;  reasons.push(h.name+' Bonus'); }
@@ -157,10 +158,11 @@
                     const hist    = (h.history||[]).slice(0,7);
                     const cur     = hist[6] !== undefined ? hist[6] : (hist[hist.length-1]||0);
                     const tier    = getTier(h, cur);
-                    const isGood  = tier === 'goal' || tier === 'bonus';
-                    const streak  = isGood ? (h.streak||0) + 1 : 0;
-                    const best    = Math.max(streak, h.bestStreak||0);
-                    return { ...h, streak, bestStreak: best };
+                    const isGood    = tier === 'goal' || tier === 'bonus';
+                    const streak    = isGood ? (h.streak||0) + 1 : 0;
+                    const badStreak = !isGood ? (h.badStreak||0) + 1 : 0;
+                    const best      = Math.max(streak, h.bestStreak||0);
+                    return { ...h, streak, badStreak, bestStreak: best };
                 });
                 await saveWeekSnapshot(habits, totalMoney, dateStr);
                 habits = habits.map(h => ({ ...h, history: [0,0,0,0,0,0,0], excused: false }));
@@ -1100,6 +1102,7 @@
                                 <div style="display:flex;align-items:center;gap:8px;">
                                     <p style="margin:0; font-weight:600;">${h.name}</p>
                                     ${(h.streak >= 2) ? `<span class="streak-badge">🔥 ${h.streak}</span>` : ''}
+                                    ${(h.badStreak >= 2) ? `<span class="bad-streak-badge">🌧️ ${h.badStreak}</span>` : ''}
                                     <button class="excuse-btn ${h.excused ? 'excuse-on' : ''}" onclick="event.stopPropagation();window.toggleExcused('${h.id}')">${h.excused ? 'Unexcuse' : 'Excuse'}</button>
                                 </div>
                                 <div class="bubbles">${bubblesHtml}</div>
@@ -1932,6 +1935,18 @@
         }
         .habit-card:has(.excuse-on) {
             opacity: 0.6;
+        }
+
+        .bad-streak-badge {
+            font-size: 10px;
+            font-weight: 700;
+            background: rgba(100,140,200,0.12);
+            border: 1px solid rgba(100,140,200,0.3);
+            border-radius: 10px;
+            padding: 2px 7px;
+            color: #5a7eb5;
+            white-space: nowrap;
+            flex-shrink: 0;
         }
 
         .streak-badge {
