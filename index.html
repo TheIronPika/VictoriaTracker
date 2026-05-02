@@ -64,6 +64,7 @@
         let shopItems       = [];
         let shopLoaded      = false;
         let pendingRedeem   = null;
+        let starLog         = [];  // {ts, type, amount, reason}
 
         const getDayIdx = (d) => {
             let day = d.getDay(); 
@@ -135,6 +136,22 @@
 
             try {
                 await emailjs.send('service_gj1f9sj', 'template_2cyqti5', templateParams);
+                // Award stars per habit based on starGoal / starBonus / starStreak
+                let totalStarsEarned = 0;
+                habits.forEach(h => {
+                    if (h.excused) return;
+                    const hHist = (h.history||[]).slice(0,7);
+                    const hCur  = hHist[6] !== undefined ? hHist[6] : (hHist[hHist.length-1]||0);
+                    const hTier = getTier(h, hCur);
+                    const newStreak = (hTier==='goal'||hTier==='bonus') ? (h.streak||0)+1 : 0;
+                    let earned = 0, reasons = [];
+                    if (hTier==='goal'  && (h.starGoal  ||0)>0) { earned+=h.starGoal;   reasons.push(h.name+' Goal'); }
+                    if (hTier==='bonus' && (h.starBonus ||0)>0) { earned+=h.starBonus;  reasons.push(h.name+' Bonus'); }
+                    if (newStreak>=2    && (h.starStreak||0)>0) { earned+=h.starStreak; reasons.push(h.name+' Streak 🔥'+newStreak); }
+                    if (earned > 0) { totalStarsEarned += earned; addStarLog('earn', earned, reasons.join(' + ')); }
+                });
+                if (totalStarsEarned > 0) { starBalance += totalStarsEarned; await syncStarData(); updateStarDisplay(); }
+
                 // Update streaks before saving snapshot
                 habits = habits.map(h => {
                     const hist    = (h.history||[]).slice(0,7);
@@ -355,6 +372,7 @@
                     starBalance = snap.data().balance  || 0;
                     starsSpent  = snap.data().spent    || 0;
                     shopItems   = snap.data().items    || [];
+                    starLog     = snap.data().log      || [];
                 }
                 shopLoaded = true;
                 updateStarDisplay();
@@ -363,14 +381,19 @@
         }
 
         async function syncStarData() {
+            if (starLog.length > 200) starLog = starLog.slice(0, 200);
             await setDoc(doc(db, 'system', 'star_data'), {
-                balance: starBalance, spent: starsSpent, items: shopItems
+                balance: starBalance, spent: starsSpent, items: shopItems, log: starLog
             });
+        }
+
+        function addStarLog(type, amount, reason) {
+            starLog.unshift({ ts: Date.now(), type, amount, reason });
         }
 
         function updateStarDisplay() {
             const el = document.getElementById('starDisplay');
-            if (el) el.innerText = '✨' + starBalance;
+            // number lives inside the shop only — trigger is icon only
         }
 
         window.openShop = () => {
@@ -394,6 +417,25 @@
                 grid.innerHTML = '<div style="text-align:center;padding:30px;color:#bbb;font-size:13px;">No items yet.<br>Add some in Manage!</div>';
                 return;
             }
+            // Render history log
+            const logWrap = document.getElementById('shopLogWrap');
+            if (logWrap) {
+                if (!starLog.length) {
+                    logWrap.innerHTML = '<div class="shop-log-empty">No history yet.</div>';
+                } else {
+                    logWrap.innerHTML = starLog.slice(0,40).map(e => {
+                        const d  = new Date(e.ts);
+                        const ds = (d.getMonth()+1)+'/'+d.getDate()+'/'+d.getFullYear();
+                        const earn = e.type==='earn';
+                        return '<div class="shop-log-row">'
+                            +'<span class="shop-log-date">'+ds+'</span>'
+                            +'<span class="shop-log-reason">'+e.reason+'</span>'
+                            +'<span class="shop-log-amt '+(earn?'earn':'spend')+'">'+(earn?'+':'-')+'✨'+e.amount+'</span>'
+                            +'</div>';
+                    }).join('');
+                }
+            }
+
             grid.innerHTML = shopItems.map((it, i) => {
                 const cant = it.cost > starBalance;
                 return '<div class="shop-item' + (cant ? ' shop-item-cant' : '') + '" onclick="' + (cant ? '' : 'window.selectShopItem(' + i + ')') + '">'
@@ -425,6 +467,7 @@
             if (!pendingRedeem) return;
             starBalance -= pendingRedeem.cost;
             starsSpent  += pendingRedeem.cost;
+            addStarLog('spend', pendingRedeem.cost, 'Redeemed: ' + pendingRedeem.name);
             pendingRedeem = null;
             await syncStarData();
             updateStarDisplay();
@@ -434,12 +477,15 @@
         };
 
         window.awardStars = async () => {
-            const amt = parseInt(document.getElementById('awardAmt')?.value) || 0;
+            const amt  = parseInt(document.getElementById('awardAmt')?.value) || 0;
+            const note = document.getElementById('awardNote')?.value.trim() || 'Manual award';
             if (amt <= 0) return;
             starBalance += amt;
+            addStarLog('earn', amt, note);
             await syncStarData();
             updateStarDisplay();
             document.getElementById('awardAmt').value = '';
+            if (document.getElementById('awardNote')) document.getElementById('awardNote').value = '';
             alert('✨ ' + amt + ' stars awarded!');
         };
 
@@ -854,9 +900,10 @@
 
         window.updateField = async (id, field, value) => {
             const h = habits.find(x => x.id === id);
-            if (field === 'note')              h[field] = value;
-            else if (field.startsWith('val'))  h[field] = parseFloat(value);
-            else                               h[field] = parseInt(value) || 1;
+            if (field === 'note')                  h[field] = value;
+            else if (field.startsWith('val'))      h[field] = parseFloat(value);
+            else if (field.startsWith('star'))     h[field] = parseInt(value) || 0;
+            else                                   h[field] = parseInt(value) || 1;
             await syncToFirebase();
         };
 
@@ -1108,11 +1155,12 @@
                                 </div>
                             </div>
                             <table class="matrix-table">
-                                <tr><th>Tier</th><th>Qty</th><th>$ Payout</th></tr>
-                                <tr><td style="color:var(--color-punish)">Debt</td><td><input type="number" value="${h.punish}" onchange="window.updateField('${h.id}','punish',this.value)"></td><td><input type="number" value="${h.valPunish}" onchange="window.updateField('${h.id}','valPunish',this.value)"></td></tr>
-                                <tr><td style="color:var(--color-low)">Low</td><td><input type="number" value="${h.low}" onchange="window.updateField('${h.id}','low',this.value)"></td><td><input type="number" value="${h.valLow}" onchange="window.updateField('${h.id}','valLow',this.value)"></td></tr>
-                                <tr><td style="color:var(--color-goal)">Goal</td><td><input type="number" value="${h.goal}" onchange="window.updateField('${h.id}','goal',this.value)"></td><td><input type="number" value="${h.valGoal}" onchange="window.updateField('${h.id}','valGoal',this.value)"></td></tr>
-                                <tr><td style="color:var(--color-bonus)">Bonus</td><td><input type="number" value="${h.bonus}" onchange="window.updateField('${h.id}','bonus',this.value)"></td><td><input type="number" value="${h.valBonus}" onchange="window.updateField('${h.id}','valBonus',this.value)"></td></tr>
+                                <tr><th>Tier</th><th>Qty</th><th>$ Payout</th><th>✨ Stars</th></tr>
+                                <tr><td style="color:var(--color-punish)">Debt</td><td><input type="number" value="${h.punish}" onchange="window.updateField('${h.id}','punish',this.value)"></td><td><input type="number" value="${h.valPunish}" onchange="window.updateField('${h.id}','valPunish',this.value)"></td><td style="color:#aaa;font-size:10px;text-align:center;">—</td></tr>
+                                <tr><td style="color:var(--color-low)">Low</td><td><input type="number" value="${h.low}" onchange="window.updateField('${h.id}','low',this.value)"></td><td><input type="number" value="${h.valLow}" onchange="window.updateField('${h.id}','valLow',this.value)"></td><td style="color:#aaa;font-size:10px;text-align:center;">—</td></tr>
+                                <tr><td style="color:var(--color-goal)">Goal</td><td><input type="number" value="${h.goal}" onchange="window.updateField('${h.id}','goal',this.value)"></td><td><input type="number" value="${h.valGoal}" onchange="window.updateField('${h.id}','valGoal',this.value)"></td><td><input type="number" value="${h.starGoal||''}" placeholder="—" min="0" style="width:34px;" onchange="window.updateField('${h.id}','starGoal',this.value)"></td></tr>
+                                <tr><td style="color:var(--color-bonus)">Bonus</td><td><input type="number" value="${h.bonus}" onchange="window.updateField('${h.id}','bonus',this.value)"></td><td><input type="number" value="${h.valBonus}" onchange="window.updateField('${h.id}','valBonus',this.value)"></td><td><input type="number" value="${h.starBonus||''}" placeholder="—" min="0" style="width:34px;" onchange="window.updateField('${h.id}','starBonus',this.value)"></td></tr>
+                                <tr><td style="color:#f0c040">🔥 Streak</td><td colspan="2" style="font-size:10px;color:#aaa;vertical-align:middle;">Stars per reset if streak ≥ 2</td><td><input type="number" value="${h.starStreak||''}" placeholder="—" min="0" style="width:34px;" onchange="window.updateField('${h.id}','starStreak',this.value)"></td></tr>
                             </table>
                             <div style="margin-top:10px;">
                                 <div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Definition / Rules</div>
@@ -1151,6 +1199,15 @@
             if (lastActiveCat) localStorage.setItem('lastActiveCat', lastActiveCat);
             else localStorage.removeItem('lastActiveCat');
         }
+
+        window.toggleManageSection = (id) => {
+            const body = document.getElementById('ms-' + id);
+            const chv  = document.getElementById('msc-' + id);
+            if (!body) return;
+            const open = body.style.display === 'none';
+            body.style.display = open ? '' : 'none';
+            if (chv) chv.style.transform = open ? 'rotate(90deg)' : '';
+        };
 
         window.toggleExcused = async (id) => {
             const h = habits.find(x => x.id === id);
@@ -2106,6 +2163,23 @@
             padding: 20px; margin: 0 2px;
         }
 
+        /* ── MANAGE COLLAPSIBLE SECTIONS ─────────────────────────────── */
+        .manage-section-header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 12px 4px 10px; cursor: pointer;
+            border-bottom: 1px solid rgba(212,163,163,0.2); margin-bottom: 10px;
+        }
+        /* ── SHOP STAR LOG ───────────────────────────────────────────── */
+        .shop-log-title { font-size:10px; font-weight:700; color:#bbb; text-transform:uppercase; letter-spacing:1px; margin:18px 0 8px; }
+        .shop-log-wrap  { max-height:200px; overflow-y:auto; }
+        .shop-log-row   { display:flex; align-items:center; gap:8px; padding:7px 0; border-bottom:1px solid #f5f0f0; font-size:11px; }
+        .shop-log-date  { color:#bbb; flex-shrink:0; width:58px; }
+        .shop-log-reason{ flex:1; color:#888; }
+        .shop-log-amt   { font-weight:700; flex-shrink:0; }
+        .shop-log-amt.earn  { color:#c8942a; }
+        .shop-log-amt.spend { color:#d9534f; }
+        .shop-log-empty { font-size:12px; color:#bbb; padding:12px 0; }
+
         footer { text-align: center; margin-top: 40px; font-family: 'Great Vibes'; color: var(--header-pink); font-size: 24px; padding-bottom: 40px; }
     </style>
 </head>
@@ -2180,6 +2254,8 @@
     <div id="view-history" class="view">
         <!-- Manage panel lives here, hidden until unlocked -->
         <div id="managePanel" style="display:none; margin-bottom:20px;">
+<div class="manage-section-header" onclick="window.toggleManageSection('ms-addhabit')"><span style="font-family:'Playfair Display';font-size:13px;font-weight:700;color:var(--header-pink);">Add New Habit</span><span id="msc-ms-addhabit" style="color:#ccc;font-size:18px;transition:transform 0.2s;transform:;">&#8250;</span></div>
+<div id="ms-ms-addhabit" style="display:none;">
             <div class="manage-card">
                 <h4 style="font-family:'Great Vibes'; font-size:28px; color:var(--header-pink); margin:0 0 15px 0;">Add New Habit</h4>
                 <div style="display:flex; gap:10px; margin-bottom:10px;">
@@ -2190,6 +2266,10 @@
                 <textarea id="newNote" placeholder="Definition / rules (optional)" style="width:100%; padding:10px; border:1px solid #eee; border-radius:8px; font-family:'Montserrat'; font-size:13px; resize:vertical; min-height:52px; box-sizing:border-box; margin-bottom:10px;"></textarea>
                 <button onclick="window.addTask()" style="width:100%; background:var(--header-pink); color:white; border:none; padding:12px; border-radius:10px; font-weight:bold; cursor:pointer;">Create Habit</button>
             </div>
+
+</div>
+<div class="manage-section-header" onclick="window.toggleManageSection('ms-addevent')"><span style="font-family:'Playfair Display';font-size:13px;font-weight:700;color:var(--header-pink);">Add Seasonal Event</span><span id="msc-ms-addevent" style="color:#ccc;font-size:18px;transition:transform 0.2s;transform:;">&#8250;</span></div>
+<div id="ms-ms-addevent" style="display:none;">
             <div class="manage-card" style="margin-bottom:14px;">
                 <h4 style="font-family:'Great Vibes'; font-size:28px; color:var(--header-pink); margin:0 0 12px 0;">Add Seasonal Event</h4>
                 <div style="display:flex; gap:8px; margin-bottom:8px;">
@@ -2221,12 +2301,17 @@
                 <textarea id="evNote" placeholder="Definition / rules (optional)" style="width:100%;padding:8px;border:1px solid #eee;border-radius:8px;font-family:'Montserrat';font-size:12px;resize:vertical;min-height:48px;box-sizing:border-box;margin-bottom:8px;"></textarea>
                 <button onclick="window.addEvent()" style="width:100%;background:var(--header-pink);color:white;border:none;padding:12px;border-radius:10px;font-weight:bold;cursor:pointer;">Create Event</button>
             </div>
+
+</div>
             <div id="eventsManageRoot"></div>
+<div class="manage-section-header" onclick="window.toggleManageSection('ms-starshop')"><span style="font-family:'Playfair Display';font-size:13px;font-weight:700;color:var(--header-pink);">✨ Star Shop</span><span id="msc-ms-starshop" style="color:#ccc;font-size:18px;transition:transform 0.2s;transform:;">&#8250;</span></div>
+<div id="ms-ms-starshop" style="display:none;">
             <div class="manage-card" style="margin-bottom:14px;">
                 <h4 style="font-family:'Great Vibes'; font-size:28px; color:var(--header-pink); margin:0 0 12px 0;">✨ Star Shop</h4>
                 <div style="font-size:11px;color:#aaa;margin-bottom:10px;">Award stars manually or add/remove shop items.</div>
                 <div style="display:flex;gap:8px;margin-bottom:10px;">
-                    <input type="number" id="awardAmt" placeholder="Stars to award" min="1" style="flex:1;padding:10px;border:1px solid #eee;border-radius:8px;font-family:'Montserrat';font-size:13px;">
+                    <input type="number" id="awardAmt" placeholder="Amount" min="1" style="width:72px;padding:10px;border:1px solid #eee;border-radius:8px;font-family:'Montserrat';font-size:13px;">
+                    <input type="text" id="awardNote" placeholder="Reason (optional)" style="flex:1;padding:10px;border:1px solid #eee;border-radius:8px;font-family:'Montserrat';font-size:13px;">
                     <button onclick="window.awardStars()" style="padding:10px 14px;background:var(--header-pink);color:white;border:none;border-radius:8px;font-weight:bold;cursor:pointer;white-space:nowrap;">✨ Award</button>
                 </div>
                 <div style="font-size:11px;color:#aaa;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Add Shop Item</div>
@@ -2238,7 +2323,13 @@
                 <button onclick="window.addShopItem()" style="width:100%;background:#4a3a3a;color:white;border:none;padding:10px;border-radius:8px;font-weight:bold;cursor:pointer;margin-bottom:10px;">Add Item</button>
                 <div id="shopManageRoot"></div>
             </div>
+
+</div>
+<div class="manage-section-header" onclick="window.toggleManageSection('ms-habits')"><span style="font-family:'Playfair Display';font-size:13px;font-weight:700;color:var(--header-pink);">Habits &amp; Tiers</span><span id="msc-ms-habits" style="color:#ccc;font-size:18px;transition:transform 0.2s;transform:;">&#8250;</span></div>
+<div id="ms-ms-habits" style="display:none;">
             <button onclick="window.runWeeklyReport(true)" style="width:100%; padding:15px; background:#4a3a3a; color:white; border-radius:12px; margin-bottom:20px; border:none; font-weight:bold; cursor:pointer; font-family:'Playfair Display'; letter-spacing:1px;">SUBMIT WEEKLY REPORT &amp; RESET</button>
+
+</div>
             <div id="manageRoot"></div>
         </div>
         <div id="historyRoot"></div>
@@ -2261,6 +2352,8 @@
                 <button onclick="window.closeShop()" style="background:none;border:none;font-size:18px;color:#ccc;cursor:pointer;padding:4px;">×</button>
             </div>
             <div id="shopGrid" class="shop-grid"></div>
+            <div class="shop-log-title">✨ Star History</div>
+            <div id="shopLogWrap" class="shop-log-wrap"></div>
         </div>
         <div id="shopConfirmView" style="display:none;">
             <div class="shop-confirm-card">
