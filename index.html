@@ -153,6 +153,28 @@
                 });
                 if (totalStarsEarned > 0) { starBalance += totalStarsEarned; await syncStarData(); updateStarDisplay(); }
 
+                // Streak payouts — growing by streak length, capped per habit
+                habits.forEach(h => {
+                    if (h.excused) return;
+                    const hHist2 = (h.history||[]).slice(0,7);
+                    const hCur2  = hHist2[6] !== undefined ? hHist2[6] : (hHist2[hHist2.length-1]||0);
+                    const hTier2 = getTier(h, hCur2);
+                    const curStreak    = h.streak    || 0;
+                    const curBadStreak = h.badStreak || 0;
+                    // Positive streak bonus
+                    if ((hTier2==='goal'||hTier2==='bonus') && curStreak>=2 && (h.streakBonusPer||0)>0) {
+                        const raw  = curStreak * (h.streakBonusPer||0);
+                        const cap  = h.streakCap ? parseFloat(h.streakCap) : Infinity;
+                        totalMoney += Math.min(raw, cap);
+                    }
+                    // Negative streak penalty
+                    if ((hTier2==='punish'||hTier2==='low') && curBadStreak>=2 && (h.streakPenaltyPer||0)>0) {
+                        const raw  = curBadStreak * (h.streakPenaltyPer||0);
+                        const cap  = h.streakCap ? parseFloat(h.streakCap) : Infinity;
+                        totalMoney -= Math.min(raw, cap);
+                    }
+                });
+
                 // Update streaks before saving snapshot
                 habits = habits.map(h => {
                     const hist    = (h.history||[]).slice(0,7);
@@ -165,7 +187,20 @@
                     return { ...h, streak, badStreak, bestStreak: best };
                 });
                 await saveWeekSnapshot(habits, totalMoney, dateStr);
-                habits = habits.map(h => ({ ...h, history: [0,0,0,0,0,0,0], excused: false }));
+                // Advance cycleNextDue for habits that completed their cycle
+                habits = habits.map(h => {
+                    if (h.cycleType && h.cycleType !== 'none') {
+                        const hist3 = (h.history||[]).slice(0,7);
+                        const cur3  = hist3[6] !== undefined ? hist3[6] : (hist3[hist3.length-1]||0);
+                        const tier3 = getTier(h, cur3);
+                        const completed = tier3 === 'goal' || tier3 === 'bonus';
+                        if (completed) {
+                            return { ...h, history:[0,0,0,0,0,0,0], excused:false,
+                                          cycleNextDue: Date.now() + cycleIntervalMs(h) };
+                        }
+                    }
+                    return { ...h, history:[0,0,0,0,0,0,0], excused:false };
+                });
                 await syncToFirebase();
                 historyLoaded = false;
                 if(isManual) alert('Weekly report sent and habits reset!');
@@ -525,6 +560,39 @@
                 + '<button class="btn-delete" style="padding:3px 8px;font-size:9px;" onclick="window.deleteShopItem(\'' + it.id + '\')">DEL</button>'
                 + '</div>'
             ).join('');
+        }
+
+
+        // ── CYCLE HELPERS ────────────────────────────────────────────────────
+        function cycleIntervalMs(h) {
+            const DAY = 86400000;
+            switch (h.cycleType) {
+                case 'weeks':     return (h.cycleEvery || 1) * 7 * DAY;
+                case 'monthly':   return 30 * DAY;
+                case 'quarterly': return 91 * DAY;
+                case 'yearly':    return 365 * DAY;
+                default:          return 0; // no cycle
+            }
+        }
+
+        function isCycleDue(h) {
+            if (!h.cycleType || h.cycleType === 'none') return true; // always show
+            const interval = cycleIntervalMs(h);
+            if (!interval) return true;
+            const nextDue = h.cycleNextDue || 0;
+            return Date.now() >= nextDue;
+        }
+
+        function cycleLabel(h) {
+            if (!h.cycleType || h.cycleType === 'none') return '';
+            const labels = { weeks: `Every ${h.cycleEvery||1}w`, monthly: 'Monthly', quarterly: 'Quarterly', yearly: 'Yearly' };
+            return labels[h.cycleType] || '';
+        }
+
+        function cycleDueLabel(h) {
+            if (!h.cycleNextDue) return '';
+            const d = new Date(h.cycleNextDue);
+            return 'Due back ' + (d.getMonth()+1) + '/' + d.getDate();
         }
 
         // MONDAY AUTO-RESET CHECK
@@ -902,10 +970,11 @@
 
         window.updateField = async (id, field, value) => {
             const h = habits.find(x => x.id === id);
-            if (field === 'note')                  h[field] = value;
-            else if (field.startsWith('val'))      h[field] = parseFloat(value);
-            else if (field.startsWith('star'))     h[field] = parseInt(value) || 0;
-            else                                   h[field] = parseInt(value) || 1;
+            if (field === 'note' || field === 'cycleType')       h[field] = value;
+            else if (field.startsWith('val'))                    h[field] = parseFloat(value);
+            else if (field.startsWith('star'))                   h[field] = parseInt(value) || 0;
+            else if (field === 'streakBonusPer' || field === 'streakPenaltyPer' || field === 'streakCap') h[field] = parseFloat(value) || 0;
+            else                                                  h[field] = parseInt(value) || 1;
             await syncToFirebase();
         };
 
@@ -999,7 +1068,8 @@
             categories.forEach(cat => {
                 // Unknown cats default to collapsed; use explicit value if set
                 const isCol = collapsed[cat] !== false;
-                let items = habits.filter(h => h.cat === cat);
+                // For Today view: hide cyclic habits that aren't due yet
+                let items = habits.filter(h => h.cat === cat && isCycleDue(h));
 
                 // Sort completed tasks to bottom — unless sortLocked is on
                 if (!sortLocked) {
@@ -1051,6 +1121,17 @@
                         else if(tier === 'low') payout = h.valLow;
                         else if(tier === 'goal') payout = h.valGoal;
                         else if(tier === 'bonus') payout = h.valBonus;
+                        // Add live streak payout preview to balance display
+                        if ((tier==='goal'||tier==='bonus') && (h.streak||0)>=2 && (h.streakBonusPer||0)>0) {
+                            const raw = (h.streak||0) * (h.streakBonusPer||0);
+                            const cap = h.streakCap ? parseFloat(h.streakCap) : Infinity;
+                            payout += Math.min(raw, cap);
+                        }
+                        if ((tier==='punish'||tier==='low') && (h.badStreak||0)>=2 && (h.streakPenaltyPer||0)>0) {
+                            const raw = (h.badStreak||0) * (h.streakPenaltyPer||0);
+                            const cap = h.streakCap ? parseFloat(h.streakCap) : Infinity;
+                            payout -= Math.min(raw, cap);
+                        }
                         totalMoney += payout;
                         // DEBT FILTER LOGIC: Only count toward "Debt" if payout is negative
                         if(tier === 'punish' && h.valPunish < 0) {
@@ -1103,6 +1184,7 @@
                                     <p style="margin:0; font-weight:600;">${h.name}</p>
                                     ${(h.streak >= 2) ? `<span class="streak-badge">🔥 ${h.streak}</span>` : ''}
                                     ${(h.badStreak >= 2) ? `<span class="bad-streak-badge">🌧️ ${h.badStreak}</span>` : ''}
+                                    ${cycleLabel(h) ? `<span class="cycle-badge">🔄 ${cycleLabel(h)}</span>` : ''}
                                     <button class="excuse-btn ${h.excused ? 'excuse-on' : ''}" onclick="event.stopPropagation();window.toggleExcused('${h.id}')">${h.excused ? 'Unexcuse' : 'Excuse'}</button>
                                 </div>
                                 <div class="bubbles">${bubblesHtml}</div>
@@ -1165,6 +1247,29 @@
                                 <tr><td style="color:var(--color-bonus)">Bonus</td><td><input type="number" value="${h.bonus}" onchange="window.updateField('${h.id}','bonus',this.value)"></td><td><input type="number" value="${h.valBonus}" onchange="window.updateField('${h.id}','valBonus',this.value)"></td><td><input type="number" value="${h.starBonus||''}" placeholder="—" min="0" style="width:34px;" onchange="window.updateField('${h.id}','starBonus',this.value)"></td></tr>
                                 <tr><td style="color:#f0c040">🔥 Streak</td><td colspan="2" style="font-size:10px;color:#aaa;vertical-align:middle;">Stars per reset if streak ≥ 2</td><td><input type="number" value="${h.starStreak||''}" placeholder="—" min="0" style="width:34px;" onchange="window.updateField('${h.id}','starStreak',this.value)"></td></tr>
                             </table>
+                            <div style="margin-top:12px;padding-top:10px;border-top:1px solid #f5f5f5;">
+                                <div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Cycle Schedule</div>
+                                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">
+                                    <select style="padding:6px 8px;border:1px solid #eee;border-radius:8px;font-size:12px;font-family:'Montserrat';" onchange="window.updateField('${h.id}','cycleType',this.value)">
+                                        <option value="none" ${(!h.cycleType||h.cycleType==='none')?'selected':''}>No cycle</option>
+                                        <option value="weeks" ${h.cycleType==='weeks'?'selected':''}>Every N weeks</option>
+                                        <option value="monthly" ${h.cycleType==='monthly'?'selected':''}>Monthly</option>
+                                        <option value="quarterly" ${h.cycleType==='quarterly'?'selected':''}>Quarterly</option>
+                                        <option value="yearly" ${h.cycleType==='yearly'?'selected':''}>Yearly</option>
+                                    </select>
+                                    ${h.cycleType==='weeks' ? `<span style="font-size:12px;">every <input type="number" value="${h.cycleEvery||1}" min="1" max="52" style="width:40px;padding:4px;border:1px solid #eee;border-radius:6px;" onchange="window.updateField('${h.id}','cycleEvery',this.value)"> weeks</span>` : ''}
+                                    ${h.cycleNextDue ? `<span style="font-size:10px;color:#aaa;">${cycleDueLabel(h)}</span>` : ''}
+                                </div>
+                            </div>
+                            <div style="margin-top:10px;padding-top:10px;border-top:1px solid #f5f5f5;">
+                                <div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Streak Payouts</div>
+                                <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:12px;align-items:center;">
+                                    <label>🔥 Bonus $/streak&nbsp;<input type="number" step="0.05" value="${h.streakBonusPer||''}" placeholder="—" style="width:52px;padding:4px;border:1px solid #eee;border-radius:6px;" onchange="window.updateField('${h.id}','streakBonusPer',this.value)"></label>
+                                    <label>🌧️ Penalty $/streak&nbsp;<input type="number" step="0.05" value="${h.streakPenaltyPer||''}" placeholder="—" style="width:52px;padding:4px;border:1px solid #eee;border-radius:6px;" onchange="window.updateField('${h.id}','streakPenaltyPer',this.value)"></label>
+                                    <label>Cap $&nbsp;<input type="number" step="0.25" value="${h.streakCap||''}" placeholder="none" style="width:52px;padding:4px;border:1px solid #eee;border-radius:6px;" onchange="window.updateField('${h.id}','streakCap',this.value)"></label>
+                                </div>
+                                <div style="font-size:10px;color:#bbb;margin-top:4px;">e.g. $0.25/streak × streak 4 = $1.00 (capped at Cap $)</div>
+                            </div>
                             <div style="margin-top:10px;">
                                 <div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Definition / Rules</div>
                                 <textarea
@@ -1935,6 +2040,18 @@
         }
         .habit-card:has(.excuse-on) {
             opacity: 0.6;
+        }
+
+        .cycle-badge {
+            font-size: 9px;
+            font-weight: 600;
+            background: rgba(142,68,173,0.08);
+            border: 1px solid rgba(142,68,173,0.25);
+            border-radius: 10px;
+            padding: 2px 6px;
+            color: #7340b0;
+            white-space: nowrap;
+            flex-shrink: 0;
         }
 
         .bad-streak-badge {
