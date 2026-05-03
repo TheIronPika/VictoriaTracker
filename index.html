@@ -59,6 +59,7 @@
         })();
         let seasonalEvents  = [];
         let eventsLoaded    = false;
+        let seasonalCollapsed = localStorage.getItem('seasonalCollapsed') !== 'false';  // default collapsed
         let starBalance     = 0;
         let starsSpent      = 0;
         let shopItems       = [];
@@ -328,50 +329,69 @@
             const active = seasonalEvents.filter(isEventActive);
             if (!active.length) { root.innerHTML = ''; return; }
 
-            // Group by season
-            const bySeason = {};
-            active.forEach(ev => {
-                const m = new Date().getMonth() + 1;
-                let season = 'spring';
-                for (const [k, meta] of Object.entries(SEASON_META)) {
-                    if (meta.months.includes(ev.startMonth)) { season = k; break; }
-                }
-                if (!bySeason[season]) bySeason[season] = [];
-                bySeason[season].push(ev);
-            });
+            // Count done vs total for the mini dot bar
+            const totalEvs = active.length;
+            const doneEvs  = active.filter(ev => ev.completions >= ev.maxCompletions).length;
+            const miniDots = active.map(ev => {
+                const done = ev.completions >= ev.maxCompletions;
+                const meta = Object.values(SEASON_META).find(m => m.months.includes(ev.startMonth)) || SEASON_META.spring;
+                return `<div class="mini-dot" style="background:${done ? meta.accent : 'rgba(0,0,0,0.1)'}"></div>`;
+            }).join('');
 
-            let html = '';
-            for (const [season, evs] of Object.entries(bySeason)) {
-                const meta = SEASON_META[season];
-                html += `<div class="season-section-header" style="color:${meta.accent}">${meta.label} Events</div>`;
-                evs.forEach(ev => {
-                    const done = ev.completions >= ev.maxCompletions;
-                    const pips = Array.from({length: ev.maxCompletions}, (_, i) =>
-                        `<div class="ev-pip ${i < ev.completions ? 'ev-pip-done' : ''}" style="${i < ev.completions ? 'background:'+meta.accent+';border-color:'+meta.accent : ''}"></div>`
-                    ).join('');
-                    const today = new Date();
-                    const endDate = new Date(today.getFullYear(), ev.endMonth - 1, ev.endDay);
-                    const daysLeft = Math.max(0, Math.ceil((endDate - today) / 86400000));
-                    html += `
-                        <div class="ev-card" style="background:${meta.bg};border-color:${meta.border};${done?'opacity:0.6;':''}"
-                             ontouchstart="window.startLongPress('__ev__${ev.id}')"
-                             ontouchend="window.cancelLongPress()"
-                             ontouchmove="window.cancelLongPress()">
-                            <div class="ev-card-top">
-                                <span class="ev-icon">${ev.icon}</span>
-                                <div class="ev-info">
-                                    <div class="ev-name">${ev.name}${done ? ' <span class="ev-done-badge">Done!</span>' : ''}</div>
-                                    <div class="ev-meta">${ev.completions}/${ev.maxCompletions} complete · ${daysLeft}d left · +$${ev.payout.toFixed(2)}/ea</div>
-                                </div>
-                                <div class="ev-actions">
-                                    ${!done ? `<button class="ev-btn-complete" style="background:${meta.accent}" onclick="window.completeEvent('${ev.id}')">+1</button>` : ''}
-                                    ${ev.completions > 0 ? `<button class="ev-btn-undo" onclick="window.uncompleteEvent('${ev.id}')">↩</button>` : ''}
-                                </div>
-                            </div>
-                            <div class="ev-pips">${pips}</div>
-                        </div>`;
+            // Collapsible header — matches category header style exactly
+            let html = `
+                <div class="category-header" onclick="window.toggleSeasonalSection()">
+                    <div style="flex:1">
+                        <span class="cat-label">Seasonal Events</span>
+                        <div class="status-mini-bar">${miniDots}</div>
+                    </div>
+                    <span style="color:var(--header-pink); font-size:12px; font-weight:bold;">${seasonalCollapsed ? 'SHOW ✦' : 'HIDE ✧'}</span>
+                </div>`;
+
+            if (!seasonalCollapsed) {
+                // Group by season
+                const bySeason = {};
+                active.forEach(ev => {
+                    let season = 'spring';
+                    for (const [k, meta] of Object.entries(SEASON_META)) {
+                        if (meta.months.includes(ev.startMonth)) { season = k; break; }
+                    }
+                    if (!bySeason[season]) bySeason[season] = [];
+                    bySeason[season].push(ev);
                 });
+
+                for (const [season, evs] of Object.entries(bySeason)) {
+                    const meta = SEASON_META[season];
+                    evs.forEach(ev => {
+                        const done = ev.completions >= ev.maxCompletions;
+                        const pips = Array.from({length: ev.maxCompletions}, (_, i) =>
+                            `<div class="ev-pip ${i < ev.completions ? 'ev-pip-done' : ''}" style="${i < ev.completions ? 'background:'+meta.accent+';border-color:'+meta.accent : ''}"></div>`
+                        ).join('');
+                        const today2  = new Date();
+                        const endDate = new Date(today2.getFullYear(), ev.endMonth - 1, ev.endDay);
+                        const daysLeft = Math.max(0, Math.ceil((endDate - today2) / 86400000));
+                        html += `
+                            <div class="ev-card" style="background:${meta.bg};border-color:${meta.border};${done?'opacity:0.6;':''}"
+                                 ontouchstart="window.startLongPress('__ev__${ev.id}')"
+                                 ontouchend="window.cancelLongPress()"
+                                 ontouchmove="window.cancelLongPress()">
+                                <div class="ev-card-top">
+                                    <span class="ev-icon">${ev.icon}</span>
+                                    <div class="ev-info">
+                                        <div class="ev-name">${ev.name}${done ? ' <span class="ev-done-badge">Done!</span>' : ''}</div>
+                                        <div class="ev-meta">${ev.completions}/${ev.maxCompletions} complete · ${daysLeft}d left · +$${ev.payout.toFixed(2)}/ea</div>
+                                    </div>
+                                    <div class="ev-actions">
+                                        ${!done ? `<button class="ev-btn-complete" style="background:${meta.accent}" onclick="window.completeEvent('${ev.id}')">+1</button>` : ''}
+                                        ${ev.completions > 0 ? `<button class="ev-btn-undo" onclick="window.uncompleteEvent('${ev.id}')">↩</button>` : ''}
+                                    </div>
+                                </div>
+                                <div class="ev-pips">${pips}</div>
+                            </div>`;
+                    });
+                }
             }
+
             root.innerHTML = html;
         }
 
@@ -1149,25 +1169,17 @@
                     const isUrgent    = !h.excused && (modeThresh - cur) >= possible && (modeThresh - cur) > 0;
                     const isArriving = h.id === lastActedId;
 
-                    const DS = ['M','T','W','T','F','S','S'];
-                    // Build cumulative day map: bubble index i → which day it was filled
-                    const _DS = ['M','T','W','T','F','S','S'];
-                    // Build a map: bubble index → which day earned it
-                    // e.g. Mon count=2 → bubbles 0,1 get 'M'; Tue count=1 → bubble 2 gets 'T'
-                    const cumDayMap = [];
-                    for (let d = 0; d < 7; d++) {
-                        const c = h.history[d] || 0;
-                        for (let k = 0; k < c; k++) cumDayMap.push(d);
-                    }
+                    // Day letter = letter of the currently viewed day. Simple.
+                    const _DS      = ['M','T','W','Th','F','S','Su'];
+                    const dayLtr   = _DS[dIdx];
                     let bubblesHtml = '';
                     for (let i = 1; i <= (h.max || 7); i++) {
                         const stepTier  = getTier(h, i);
                         const isFilled  = i <= cur;
-                        const dayLetter = isFilled && cumDayMap[i-1] !== undefined ? _DS[cumDayMap[i-1]] : '';
                         bubblesHtml += `
                             <div class="bubble day-bub ${isFilled ? 'filled ' + stepTier : ''}"
                                  style="border-color:var(--color-${stepTier})"
-                                 onclick="window.toggleBubble('${h.id}',${i})">${dayLetter}</div>`;
+                                 onclick="window.toggleBubble('${h.id}',${i})">${isFilled ? dayLtr : ''}</div>`;
                     }
 
                     const cardHtml = `
@@ -1307,6 +1319,12 @@
             if (lastActiveCat) localStorage.setItem('lastActiveCat', lastActiveCat);
             else localStorage.removeItem('lastActiveCat');
         }
+
+        window.toggleSeasonalSection = () => {
+            seasonalCollapsed = !seasonalCollapsed;
+            localStorage.setItem('seasonalCollapsed', String(seasonalCollapsed));
+            renderSeasonalSection();
+        };
 
         window.toggleManageSection = (id) => {
             const body = document.getElementById('ms-' + id);
