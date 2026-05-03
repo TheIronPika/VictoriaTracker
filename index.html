@@ -1169,17 +1169,25 @@
                     const isUrgent    = !h.excused && (modeThresh - cur) >= possible && (modeThresh - cur) > 0;
                     const isArriving = h.id === lastActedId;
 
-                    // Day letter = letter of the currently viewed day. Simple.
-                    const _DS      = ['M','T','W','Th','F','S','Su'];
-                    const dayLtr   = _DS[dIdx];
+                    const _DS = ['M','T','W','Th','F','S','Su'];
+                    // For each bubble i, find the first day where history reached level i.
+                    // e.g. 3 bubbles filled on Mon → all show M.
+                    // Go back and fill 2 more on Thu → those show Th.
+                    function dayForBubble(hist, i) {
+                        for (let d = 0; d < 7; d++) {
+                            if ((hist[d] || 0) >= i) return _DS[d];
+                        }
+                        return '';
+                    }
                     let bubblesHtml = '';
                     for (let i = 1; i <= (h.max || 7); i++) {
                         const stepTier  = getTier(h, i);
                         const isFilled  = i <= cur;
+                        const dayLetter = isFilled ? dayForBubble(h.history, i) : '';
                         bubblesHtml += `
                             <div class="bubble day-bub ${isFilled ? 'filled ' + stepTier : ''}"
                                  style="border-color:var(--color-${stepTier})"
-                                 onclick="window.toggleBubble('${h.id}',${i})">${isFilled ? dayLtr : ''}</div>`;
+                                 onclick="window.toggleBubble('${h.id}',${i})">${dayLetter}</div>`;
                     }
 
                     const cardHtml = `
