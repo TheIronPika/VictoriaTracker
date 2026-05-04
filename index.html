@@ -954,30 +954,7 @@
             if (c) c.style.transform = open ? 'rotate(90deg)' : '';
         };
 
-        async function checkMondayReset() {
-            const now = new Date();
-            if (now.getDay() !== 1) return; // only on Monday
-
-            const thisMonday = new Date(now);
-            thisMonday.setHours(0, 0, 0, 0);
-            const thisMondayStr = thisMonday.toDateString();
-
-            // Check Firebase first — shared across ALL devices
-            // This prevents every device that opens on Monday from firing its own reset
-            try {
-                const resetRef  = doc(db, 'system', 'reset_state');
-                const resetSnap = await getDoc(resetRef);
-                const lastReset = resetSnap.exists() ? (resetSnap.data().lastWeeklyReset || '') : '';
-
-                if (lastReset === thisMondayStr) return; // already done this Monday
-
-                // Claim the reset in Firebase BEFORE running — prevents race between devices
-                await setDoc(resetRef, { lastWeeklyReset: thisMondayStr });
-                await window.runWeeklyReport(false); // false = automated, no alert
-            } catch(e) {
-                console.error('checkMondayReset failed:', e);
-            }
-        }
+        // Weekly reset handled by GitHub Actions — scripts/weekly-reset.js
 
         // HABIT ACTIONS
         window.addTask = async () => {
@@ -1074,11 +1051,7 @@
                 habits = docSnap.data().data;
                 render();
 
-                // Only run the Monday check on the very first load, not on every live update
-                if (!initialLoadDone) {
-                    initialLoadDone = true;
-                    await checkMondayReset();
-                }
+                initialLoadDone = true;
             }
         });
 
