@@ -177,7 +177,9 @@
                 });
 
                 // Update streaks before saving snapshot
+                // Excused habits freeze their streak — neither increment nor reset
                 habits = habits.map(h => {
+                    if (h.excused) return { ...h }; // freeze streak as-is
                     const hist    = (h.history||[]).slice(0,7);
                     const cur     = hist[6] !== undefined ? hist[6] : (hist[hist.length-1]||0);
                     const tier    = getTier(h, cur);
