@@ -1207,13 +1207,18 @@
                                 <div style="display:flex;align-items:center;gap:8px;">
                                     <p style="margin:0; font-weight:600;">${h.name}</p>
                                     ${(() => {
-                                        // Show projected streak: if currently on track add +1 to stored streak
-                                        const projected = (tier === 'goal' || tier === 'bonus') ? (h.streak||0) + 1 : (h.streak||0);
-                                        return projected >= 1 ? `<span class="streak-badge">🔥 ${projected}</span>` : '';
+                                        // Only show if at least 1 completed streak week already exists
+                                        // Then project +1 if currently on track this week too
+                                        const base = h.streak || 0;
+                                        if (base < 1) return '';
+                                        const projected = (tier === 'goal' || tier === 'bonus') ? base + 1 : base;
+                                        return `<span class="streak-badge">🔥 ${projected}</span>`;
                                     })()}
                                     ${(() => {
-                                        const projectedBad = (tier === 'punish' || tier === 'low') ? (h.badStreak||0) + 1 : (h.badStreak||0);
-                                        return projectedBad >= 1 ? `<span class="bad-streak-badge">🌧️ ${projectedBad}</span>` : '';
+                                        const baseBad = h.badStreak || 0;
+                                        if (baseBad < 1) return '';
+                                        const projectedBad = (tier === 'punish' || tier === 'low') ? baseBad + 1 : baseBad;
+                                        return `<span class="bad-streak-badge">🌧️ ${projectedBad}</span>`;
                                     })()}
                                     ${cycleLabel(h) ? `<span class="cycle-badge">🔄 ${cycleLabel(h)}</span>` : ''}
                                     <button class="excuse-btn ${h.excused ? 'excuse-on' : ''}" onclick="event.stopPropagation();window.toggleExcused('${h.id}')">${h.excused ? 'Unexcuse' : 'Excuse'}</button>
