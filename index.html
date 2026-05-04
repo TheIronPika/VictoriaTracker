@@ -1206,24 +1206,8 @@
                                 ${h.excused ? '<span class="excused-tag">✦ Excused this week</span>' : ''}
                                 <div style="display:flex;align-items:center;gap:8px;">
                                     <p style="margin:0; font-weight:600;">${h.name}</p>
-                                    ${(() => {
-                                        const base = h.streak || 0;
-                                        if (base < 1) return '';
-                                        // Fresh week (no bubbles yet) OR actively at goal/bonus → show optimistic projection
-                                        // Already making bad progress → drop back to base streak
-                                        const freshWeek = cur === 0;
-                                        const goodNow   = tier === 'goal' || tier === 'bonus';
-                                        const projected = (freshWeek || goodNow) ? base + 1 : base;
-                                        return `<span class="streak-badge">🔥 ${projected}</span>`;
-                                    })()}
-                                    ${(() => {
-                                        const baseBad = h.badStreak || 0;
-                                        if (baseBad < 1) return '';
-                                        const freshWeek  = cur === 0;
-                                        const badNow     = tier === 'punish' || tier === 'low';
-                                        const projBad    = (freshWeek || badNow) ? baseBad + 1 : baseBad;
-                                        return `<span class="bad-streak-badge">🌧️ ${projBad}</span>`;
-                                    })()}
+                                    ${(h.streak >= 1) ? `<span class="streak-badge">🔥 ${h.streak}</span>` : ''}
+                                    ${(h.badStreak >= 1) ? `<span class="bad-streak-badge">🌧️ ${h.badStreak}</span>` : ''}
                                     ${cycleLabel(h) ? `<span class="cycle-badge">🔄 ${cycleLabel(h)}</span>` : ''}
                                     <button class="excuse-btn ${h.excused ? 'excuse-on' : ''}" onclick="event.stopPropagation();window.toggleExcused('${h.id}')">${h.excused ? 'Unexcuse' : 'Excuse'}</button>
                                 </div>
