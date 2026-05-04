@@ -249,7 +249,9 @@
             if (!inRange) return false;
             // auto-reset completions each year
             if ((ev.resetYear || 0) < y) return true; // will reset on first complete action
-            return ev.completions < ev.maxCompletions;
+            // Always show while in date range — completed events stay visible (dimmed)
+            // until the Monday weekly reset wipes their completions.
+            return true;
         }
 
         async function loadSeasonalEvents() {
