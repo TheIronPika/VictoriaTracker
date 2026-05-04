@@ -1206,8 +1206,15 @@
                                 ${h.excused ? '<span class="excused-tag">✦ Excused this week</span>' : ''}
                                 <div style="display:flex;align-items:center;gap:8px;">
                                     <p style="margin:0; font-weight:600;">${h.name}</p>
-                                    ${(h.streak >= 2) ? `<span class="streak-badge">🔥 ${h.streak}</span>` : ''}
-                                    ${(h.badStreak >= 2) ? `<span class="bad-streak-badge">🌧️ ${h.badStreak}</span>` : ''}
+                                    ${(() => {
+                                        // Show projected streak: if currently on track add +1 to stored streak
+                                        const projected = (tier === 'goal' || tier === 'bonus') ? (h.streak||0) + 1 : (h.streak||0);
+                                        return projected >= 1 ? `<span class="streak-badge">🔥 ${projected}</span>` : '';
+                                    })()}
+                                    ${(() => {
+                                        const projectedBad = (tier === 'punish' || tier === 'low') ? (h.badStreak||0) + 1 : (h.badStreak||0);
+                                        return projectedBad >= 1 ? `<span class="bad-streak-badge">🌧️ ${projectedBad}</span>` : '';
+                                    })()}
                                     ${cycleLabel(h) ? `<span class="cycle-badge">🔄 ${cycleLabel(h)}</span>` : ''}
                                     <button class="excuse-btn ${h.excused ? 'excuse-on' : ''}" onclick="event.stopPropagation();window.toggleExcused('${h.id}')">${h.excused ? 'Unexcuse' : 'Excuse'}</button>
                                 </div>
