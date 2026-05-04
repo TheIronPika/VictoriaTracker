@@ -1,0 +1,39 @@
+name: Weekly Habit Reset
+
+on:
+  schedule:
+    # Every Monday at 4:00 AM Central Time (9:00 AM UTC)
+    # UTC is 5 hours ahead of Central (CDT) or 6 hours ahead (CST)
+    # Using 9:00 UTC = 4:00 AM CDT (summer) / 3:00 AM CST (winter)
+    # Adjust the hour here if needed: "0 9 * * 1" = 9:00 UTC Monday
+    - cron: '0 9 * * 1'
+
+  # Allow manual trigger from GitHub Actions tab for testing
+  workflow_dispatch:
+
+jobs:
+  reset:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+        working-directory: scripts
+
+      - name: Run weekly reset
+        env:
+          FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+          EMAILJS_SERVICE_ID: ${{ secrets.EMAILJS_SERVICE_ID }}
+          EMAILJS_TEMPLATE_ID: ${{ secrets.EMAILJS_TEMPLATE_ID }}
+          EMAILJS_PUBLIC_KEY: ${{ secrets.EMAILJS_PUBLIC_KEY }}
+        run: node reset.js
+        working-directory: scripts
