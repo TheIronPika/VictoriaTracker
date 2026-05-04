@@ -1,8 +1,8 @@
 {
-  "name": "victoria-tracker-scripts",
+  "name": "victoria-tracker-reset",
   "version": "1.0.0",
-  "description": "Server-side scripts for Victoria Tracker",
-  "main": "weekly-reset.js",
+  "description": "Weekly reset script for Victoria Tracker",
+  "type": "module",
   "dependencies": {
     "firebase-admin": "^12.0.0",
     "node-fetch": "^3.3.2"
