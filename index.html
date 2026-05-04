@@ -587,6 +587,32 @@
         }
 
 
+
+        // ── STREAK COMPUTATION FROM HISTORY ──────────────────────────────────
+        // Computes streaks by scanning weekly_history backward — no counter drift.
+        // Returns { streak: N, badStreak: N } for a given habit id.
+        function computeStreaksFromHistory(habitId) {
+            if (!weeklyHistory.length) return { streak: 0, badStreak: 0 };
+            // Sort newest first
+            const sorted = weeklyHistory.slice().sort((a,b) => b.timestamp - a.timestamp);
+            let streak = 0, badStreak = 0;
+            // Count consecutive good weeks from most recent
+            for (const wk of sorted) {
+                const h = (wk.habits||[]).find(x => x.id === habitId);
+                if (!h) break; // habit didn't exist that week — stop
+                const good = h.tier === 'goal' || h.tier === 'bonus';
+                if (good) { streak++; } else { break; }
+            }
+            // Count consecutive bad weeks from most recent
+            for (const wk of sorted) {
+                const h = (wk.habits||[]).find(x => x.id === habitId);
+                if (!h) break;
+                const bad = h.tier === 'punish' || h.tier === 'low';
+                if (bad) { badStreak++; } else { break; }
+            }
+            return { streak, badStreak };
+        }
+
         // ── CYCLE HELPERS ────────────────────────────────────────────────────
         function cycleIntervalMs(h) {
             const DAY = 86400000;
@@ -1206,8 +1232,14 @@
                                 ${h.excused ? '<span class="excused-tag">✦ Excused this week</span>' : ''}
                                 <div style="display:flex;align-items:center;gap:8px;">
                                     <p style="margin:0; font-weight:600;">${h.name}</p>
-                                    ${(h.streak >= 1) ? `<span class="streak-badge">🔥 ${h.streak}</span>` : ''}
-                                    ${(h.badStreak >= 1) ? `<span class="bad-streak-badge">🌧️ ${h.badStreak}</span>` : ''}
+                                    ${(() => {
+                                        const s = computeStreaksFromHistory(h.id);
+                                        return s.streak >= 1 ? `<span class="streak-badge">🔥 ${s.streak}</span>` : '';
+                                    })()}
+                                    ${(() => {
+                                        const s = computeStreaksFromHistory(h.id);
+                                        return s.badStreak >= 1 ? `<span class="bad-streak-badge">🌧️ ${s.badStreak}</span>` : '';
+                                    })()}
                                     ${cycleLabel(h) ? `<span class="cycle-badge">🔄 ${cycleLabel(h)}</span>` : ''}
                                     <button class="excuse-btn ${h.excused ? 'excuse-on' : ''}" onclick="event.stopPropagation();window.toggleExcused('${h.id}')">${h.excused ? 'Unexcuse' : 'Excuse'}</button>
                                 </div>
@@ -1676,6 +1708,12 @@
             initParticles();
             loadSeasonalEvents();
             loadStarData();
+            // Load history on startup so streak display works from day one
+            getDoc(doc(db,'system','weekly_history')).then(snap => {
+                weeklyHistory = snap.exists() ? (snap.data().weeks||[]) : [];
+                historyLoaded = true;
+                render(); // re-render now streaks are available
+            }).catch(()=>{});
         });
 
         function updateGreeting() {
