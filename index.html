@@ -343,13 +343,24 @@
             }).join('');
 
             // Collapsible header — matches category header style exactly
+            // Get the dominant season border color from active events
+            const _activeSeason = (() => {
+                const m = new Date().getMonth() + 1;
+                for (const [k, meta] of Object.entries(SEASON_META)) {
+                    if (meta.months.includes(m)) return meta;
+                }
+                return SEASON_META.spring;
+            })();
             let html = `
-                <div class="category-header" onclick="window.toggleSeasonalSection()">
+                <div class="category-header" onclick="window.toggleSeasonalSection()"
+                     style="border:1.5px solid ${_activeSeason.border};background:${_activeSeason.bg};">
                     <div style="flex:1">
-                        <span class="cat-label">Seasonal Events</span>
+                        <span class="cat-label" style="color:${_activeSeason.accent};">
+                            Seasonal Events
+                        </span>
                         <div class="status-mini-bar">${miniDots}</div>
                     </div>
-                    <span style="color:var(--header-pink); font-size:12px; font-weight:bold;">${seasonalCollapsed ? 'SHOW ✦' : 'HIDE ✧'}</span>
+                    <span style="color:${_activeSeason.accent}; font-size:12px; font-weight:bold;">${seasonalCollapsed ? 'SHOW ✦' : 'HIDE ✧'}</span>
                 </div>`;
 
             if (!seasonalCollapsed) {
@@ -1108,6 +1119,7 @@
                 }
 
                 let miniDotsHtml = items.map(h => {
+                    if (h.excused) return `<div class="mini-dot" style="background:#c8c8c8;opacity:0.5;"></div>`;
                     const t = getTier(h, h.history[dIdx]);
                     return `<div class="mini-dot" style="background:var(--grad-${t})"></div>`;
                 }).join('');
