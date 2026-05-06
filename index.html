@@ -231,14 +231,8 @@
                 goal:'linear-gradient(90deg, #84fab0, #27ae60)',
                 bonus:'linear-gradient(90deg, #d4a0fc, #8e44ad)'
             };
-            const tierBgGradients = {
-                punish:'linear-gradient(135deg, rgba(217,83,79,0.08), rgba(255,200,200,0.06))',
-                low:'linear-gradient(135deg, rgba(246,211,101,0.15), rgba(230,126,34,0.08))',
-                goal:'linear-gradient(135deg, rgba(132,250,176,0.15), rgba(39,174,96,0.08))',
-                bonus:'linear-gradient(135deg, rgba(212,160,252,0.15), rgba(142,68,173,0.08))'
-            };
             
-            // Build achievements list
+            // Build achievements
             const achievementsList = habitsArr.map(h => {
                 const cur = h.history && h.history[6] !== undefined ? h.history[6] : (h.history && h.history[h.history.length-1] || 0);
                 const tier = getTier(h, cur);
@@ -248,18 +242,14 @@
                 else if(tier === 'low') payout = h.valLow || 0;
                 else if(tier === 'goal') payout = h.valGoal || 0;
                 else if(tier === 'bonus') payout = h.valBonus || 0;
-                return { id:h.id, icon:h.icon, name:h.name, cur, tier, payout, streak:streaks.streak, badStreak:streaks.badStreak };
+                return { id:h.id, icon:h.icon, name:h.name, cur, tier, payout, streak:streaks.streak };
             }).filter(a => a.cur > 0).sort((a,b) => {
                 const tierOrder = {bonus:3, goal:2, low:1, punish:0};
                 if(tierOrder[a.tier] !== tierOrder[b.tier]) return tierOrder[b.tier] - tierOrder[a.tier];
                 const aScore = a.streak + (a.payout || 0);
                 const bScore = b.streak + (b.payout || 0);
                 return bScore - aScore;
-            });
-
-            const achievementsHtml = achievementsList.slice(0,2).map((a,i) => {
-                return `<div style="display:flex;align-items:center;gap:12px;padding:14px;background:${tierBgGradients[a.tier]};border:1.5px solid ${tierColors[a.tier]}40;border-radius:12px;"><div style="font-size:28px;flex-shrink:0;">${a.icon}</div><div style="flex:1;"><div style="font-weight:700;color:#4a3a3a;font-size:12px;margin-bottom:2px;">${a.name}</div><div style="font-size:10px;color:#888;">${a.cur}/7 days • ${a.streak}-week streak • +$${a.payout.toFixed(2)}</div></div><div style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;padding:4px 8px;border-radius:6px;background:rgba(${a.tier==='bonus'?'142,68,173':'a.tier==="goal"?39,174,96:a.tier==="low"?230,126,34:217,83,79'},0.15);color:${tierColors[a.tier]};white-space:nowrap;">${a.tier.toUpperCase()}</div></div>`;
-            }).join('');
+            }).slice(0,2);
 
             // Build streaks
             const goodStreaks = [];
@@ -287,10 +277,6 @@
             goodStreaks.sort((a,b) => b.streak - a.streak);
             badStreaks.sort((a,b) => b.streak - a.streak);
 
-            const goodStreaksHtml = goodStreaks.slice(0,3).map(s => `<div style="display:flex;align-items:center;gap:12px;padding:14px;background:linear-gradient(135deg,rgba(255,250,227,0.7),rgba(255,241,204,0.5));border:1.5px solid rgba(240,204,80,0.4);border-radius:12px;"><div style="font-size:20px;flex-shrink:0;">🔥</div><div style="flex:1;"><div style="font-weight:600;color:#4a3a3a;font-size:11px;margin-bottom:1px;">${s.name}</div><div style="font-size:9px;color:#888;">${s.streak}-week streak</div></div><div style="font-family:'Great Vibes',cursive;font-size:18px;font-weight:bold;color:#8a5a00;">+$${s.payout.toFixed(2)}</div></div>`).join('');
-
-            const badStreaksHtml = badStreaks.slice(0,2).map(s => `<div style="display:flex;align-items:center;gap:12px;padding:14px;background:linear-gradient(135deg,rgba(217,83,79,0.08),rgba(255,200,200,0.06));border:1.5px solid rgba(217,83,79,0.2);border-radius:12px;"><div style="font-size:20px;flex-shrink:0;">🌧️</div><div style="flex:1;"><div style="font-weight:600;color:#4a3a3a;font-size:11px;margin-bottom:1px;">${s.name}</div><div style="font-size:9px;color:#888;">${s.streak}-week negative</div></div><div style="font-family:'Great Vibes',cursive;font-size:18px;font-weight:bold;color:#d9534f;">-$${s.penalty.toFixed(2)}</div></div>`).join('');
-
             // Build missed opportunities
             const missedList = habitsArr.map(h => {
                 const cur = h.history && h.history[6] !== undefined ? h.history[6] : (h.history && h.history[h.history.length-1] || 0);
@@ -302,12 +288,9 @@
                 const nextPayout = h['val'+nextTier.charAt(0).toUpperCase()+nextTier.slice(1)] || 0;
                 const curPayout = h['val'+tier.charAt(0).toUpperCase()+tier.slice(1)] || 0;
                 const missedVal = Math.abs(nextPayout - curPayout);
-                const needed = nextThresh - cur;
-                if(needed <= 0) return null;
-                return { icon:h.icon, name:h.name, tier, nextTier, needed, missedVal };
+                if(missedVal <= 0) return null;
+                return { icon:h.icon, name:h.name, tier: nextTier, missedVal };
             }).filter(x => x).sort((a,b) => b.missedVal - a.missedVal).slice(0,4);
-
-            const missedHtml = missedList.map(m => `<div style="background:${tierBgGradients[m.tier]};border-left:4px solid ${tierColors[m.tier]};border-radius:10px;padding:12px 13px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:12px;"><div style="font-weight:600;color:#4a3a3a;font-size:12px;flex:1;">${m.icon} ${m.name}</div><div style="font-family:'Great Vibes',cursive;font-size:16px;color:${tierColors[m.tier]};font-weight:bold;flex-shrink:0;">+$${m.missedVal.toFixed(2)}</div></div>`).join('');
 
             // Build week at a glance
             const byCategory = {};
@@ -317,28 +300,117 @@
                 const cur = h.history && h.history[6] !== undefined ? h.history[6] : (h.history && h.history[h.history.length-1] || 0);
                 const tier = getTier(h, cur);
                 const thresh = h[tier] || {punish:1,low:3,goal:5,bonus:7}[tier];
-                const pct = Math.round((cur / thresh) * 100);
-                byCategory[cat].push({ icon:h.icon, name:h.name, cur, tier, thresh, pct });
+                const pct = Math.min(100, Math.round((cur / thresh) * 100));
+                byCategory[cat].push({ icon:h.icon, name:h.name, tier, pct });
             });
 
             let weekHtml = '';
             for(const [cat, habits] of Object.entries(byCategory)) {
                 const tierForCat = habits.length ? habits[0].tier : 'goal';
-                weekHtml += `<div style="margin-bottom:18px;background:${tierBgGradients[tierForCat]};border-radius:12px;padding:12px;border:1px solid ${tierColors[tierForCat]}40;">
-                    <div style="font-size:10px;color:${tierColors[tierForCat]};text-transform:uppercase;font-weight:800;letter-spacing:1px;margin-bottom:8px;">${cat}</div>`;
+                const catColor = tierColors[tierForCat];
+                weekHtml += `<div style="margin-bottom:12px;padding:10px;border-radius:8px;border-left:4px solid ${catColor};background:rgba(0,0,0,0.02);">
+                    <div style="font-size:9px;color:${catColor};text-transform:uppercase;font-weight:800;letter-spacing:0.5px;margin-bottom:6px;">${cat}</div>`;
                 habits.forEach(h => {
-                    weekHtml += `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid ${tierColors[h.tier]}18;">
-                        <div style="font-size:18px;flex-shrink:0;">${h.icon}</div>
-                        <div style="font-weight:600;color:#4a3a3a;font-size:11px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${h.name}</div>
-                        <div style="width:70px;height:6px;background:${tierColors[h.tier]}28;border-radius:3px;overflow:hidden;flex-shrink:0;">
-                            <div style="background:${tierGradients[h.tier]};width:${h.pct}%;height:100%;border-radius:3px;"></div>
+                    const barColor = tierColors[h.tier];
+                    weekHtml += `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;font-size:10px;">
+                        <span style="flex-shrink:0;">${h.icon}</span>
+                        <span style="flex:1;color:#4a3a3a;">${h.name}</span>
+                        <div style="width:50px;height:5px;background:rgba(0,0,0,0.08);border-radius:2px;flex-shrink:0;overflow:hidden;">
+                            <div style="background:${barColor};width:${h.pct}%;height:100%;"></div>
                         </div>
                     </div>`;
                 });
                 weekHtml += '</div>';
             }
 
-            return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Victoria Report</title><link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@300;400;600&display=swap" rel="stylesheet"><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Montserrat',sans-serif;background:linear-gradient(135deg,#fef9f7 0%,#f5eef8 100%);padding:20px}.container{max-width:700px;margin:0 auto;background:white;border-radius:32px;box-shadow:0 12px 48px rgba(212,163,163,0.12);overflow:hidden}.header{background:linear-gradient(135deg,#f9ecec 0%,#f5eaf5 50%,#f0e8f8 100%);padding:36px 32px 28px;text-align:center}.week-date{font-size:10px;color:#d4a3a3;text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:6px}.title{font-family:'Great Vibes',cursive;font-size:40px;color:#d4a3a3;margin:0;line-height:1}.subtitle{font-family:'Playfair Display',serif;font-size:12px;color:#a0a0a0;font-style:italic;margin-top:6px}.content{padding:28px 32px}.hero{text-align:center;margin-bottom:28px}.hero-stat{display:inline-block;font-family:'Great Vibes',cursive;font-size:54px;color:#27ae60;line-height:1;margin-bottom:6px}.hero-label{font-size:10px;color:#888;text-transform:uppercase;letter-spacing:1px;font-weight:700}.section{margin-bottom:28px}.section-title{font-family:'Playfair Display',serif;font-size:16px;color:#d4a3a3;font-style:italic;margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid rgba(212,163,163,0.2)}.footer{background:linear-gradient(135deg,rgba(212,163,163,0.04) 0%,rgba(230,190,255,0.04) 100%);padding:28px 32px;text-align:center;border-top:1px solid rgba(212,163,163,0.1)}.footer-text{font-size:11px;color:#888;line-height:1.6;margin-bottom:8px}.signature{font-family:'Great Vibes',cursive;font-size:26px;color:#d4a3a3}</style></head><body><div class="container"><div class="header"><div class="week-date">Week Ending ${weekEnding}</div><div class="title">Victoria</div><div class="subtitle">Weekly Reflection</div></div><div class="content"><div class="hero"><div class="hero-stat">${totalBalance >= 0 ? '+' : ''}$${Math.abs(totalBalance).toFixed(2)}</div><div class="hero-label">This Week's Earnings</div></div><div class="section"><div class="section-title">⭐ Your Best This Week</div><div style="display:flex;flex-direction:column;gap:10px;">${achievementsHtml || '<p style="color:#888;font-size:12px;">No activity yet.</p>'}</div></div><div class="section"><div class="section-title">🔥 Streaks &amp; Money Impact</div><div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;margin-bottom:10px;">🔥 Your Best Streaks (Top 3)</div><div style="display:flex;flex-direction:column;gap:10px;margin-bottom:18px;">${goodStreaksHtml || '<div style="color:#888;font-size:11px;">No streaks yet.</div>'}</div><div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;margin-bottom:10px;">🌧️ Negative Streaks (Top 2)</div><div style="display:flex;flex-direction:column;gap:10px;">${badStreaksHtml || '<div style="color:#888;font-size:11px;">None so far!</div>'}</div></div><div class="section"><div class="section-title">✨ Biggest Missed Opportunities</div><div style="font-size:10px;color:#888;margin-bottom:10px;">One more day would have earned:</div>${missedHtml || '<div style="color:#888;font-size:11px;">Great job hitting your goals!</div>'}</div><div class="section"><div class="section-title">📊 Week at a Glance</div>${weekHtml}</div></div><div class="footer"><div class="footer-text">You're doing amazing!<br>Keep up the momentum.</div><div class="signature">—Drew</div></div></div></body></html>`;
+            const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Victoria Report</title>
+<link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Playfair+Display:wght@400;700&family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+body { margin:0; padding:15px; font-family:'Montserrat',sans-serif; background:#f5f5f5; }
+.report { max-width:700px; margin:0 auto; background:white; border-radius:12px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.1); }
+.header { background:linear-gradient(135deg,#f9ecec 0%,#f5eaf5 50%,#f0e8f8 100%); padding:30px 20px; text-align:center; }
+.week-date { font-size:10px; color:#d4a3a3; text-transform:uppercase; letter-spacing:0.5px; font-weight:700; margin-bottom:6px; }
+.title { font-family:'Great Vibes',cursive; font-size:40px; color:#d4a3a3; margin:0; line-height:1; }
+.subtitle { font-family:'Playfair Display',serif; font-size:12px; color:#999; font-style:italic; margin-top:4px; }
+.content { padding:20px; }
+.hero { text-align:center; margin-bottom:20px; }
+.hero-stat { font-family:'Great Vibes',cursive; font-size:48px; color:#27ae60; margin:0; line-height:1; }
+.hero-label { font-size:10px; color:#888; text-transform:uppercase; letter-spacing:0.5px; font-weight:700; margin-top:4px; }
+.section { margin-bottom:20px; }
+.section-title { font-family:'Playfair Display',serif; font-size:14px; color:#d4a3a3; font-style:italic; margin:0 0 10px 0; padding-bottom:6px; border-bottom:2px solid rgba(212,163,163,0.2); }
+.achievement-card { display:flex; align-items:center; gap:10px; padding:10px; background:rgba(0,0,0,0.02); border-radius:8px; margin-bottom:8px; font-size:11px; }
+.achievement-card .icon { font-size:24px; flex-shrink:0; }
+.achievement-card .info { flex:1; }
+.achievement-card .name { font-weight:700; color:#4a3a3a; margin-bottom:2px; }
+.achievement-card .details { font-size:9px; color:#888; }
+.achievement-card .badge { font-size:7px; font-weight:800; text-transform:uppercase; letter-spacing:0.3px; padding:3px 6px; border-radius:4px; flex-shrink:0; }
+.streak-card { display:flex; align-items:center; gap:8px; padding:10px; background:rgba(255,250,227,0.5); border-left:3px solid #e67e22; border-radius:6px; margin-bottom:8px; font-size:10px; }
+.streak-card .emoji { flex-shrink:0; }
+.streak-card .info { flex:1; }
+.streak-card .name { font-weight:600; color:#4a3a3a; }
+.streak-card .detail { font-size:9px; color:#888; }
+.streak-card .value { font-family:'Great Vibes',cursive; font-size:16px; font-weight:bold; flex-shrink:0; }
+.bad-streak-card { display:flex; align-items:center; gap:8px; padding:10px; background:rgba(217,83,79,0.08); border-left:3px solid #d9534f; border-radius:6px; margin-bottom:8px; font-size:10px; }
+.bad-streak-card .value { font-family:'Great Vibes',cursive; font-size:16px; font-weight:bold; color:#d9534f; flex-shrink:0; }
+.opportunity-row { display:flex; align-items:center; gap:10px; padding:8px; background:rgba(0,0,0,0.02); border-left:3px solid #27ae60; border-radius:6px; margin-bottom:6px; font-size:10px; }
+.opportunity-row .name { flex:1; font-weight:600; color:#4a3a3a; }
+.opportunity-row .value { font-family:'Great Vibes',cursive; font-size:14px; font-weight:bold; color:#27ae60; flex-shrink:0; }
+.footer { background:linear-gradient(135deg,rgba(212,163,163,0.04) 0%,rgba(230,190,255,0.04) 100%); padding:16px 20px; text-align:center; border-top:1px solid rgba(212,163,163,0.1); font-size:10px; }
+.footer-text { color:#888; line-height:1.4; margin-bottom:6px; }
+.signature { font-family:'Great Vibes',cursive; font-size:22px; color:#d4a3a3; }
+</style>
+</head>
+<body>
+<div class="report">
+<div class="header">
+<div class="week-date">Week Ending ${weekEnding}</div>
+<div class="title">Victoria</div>
+<div class="subtitle">Weekly Reflection</div>
+</div>
+<div class="content">
+<div class="hero">
+<div class="hero-stat">${totalBalance >= 0 ? '+' : ''}$${Math.abs(totalBalance).toFixed(2)}</div>
+<div class="hero-label">This Week's Earnings</div>
+</div>
+
+<div class="section">
+<div class="section-title">⭐ Your Best This Week</div>
+${achievementsList.map(a => `<div class="achievement-card"><div class="icon">${a.icon}</div><div class="info"><div class="name">${a.name}</div><div class="details">${a.cur}/7 days • ${a.streak}-week streak • +$${a.payout.toFixed(2)}</div></div><div class="badge" style="background:rgba(${a.tier==='bonus'?'142,68,173':'39,174,96'},0.15);color:${tierColors[a.tier]};">${a.tier.toUpperCase()}</div></div>`).join('')}
+</div>
+
+<div class="section">
+<div class="section-title">🔥 Streaks & Money Impact</div>
+<div style="font-size:9px;color:#888;text-transform:uppercase;font-weight:700;margin-bottom:6px;">🔥 Your Best Streaks (Top 3)</div>
+${goodStreaks.slice(0,3).map(s => `<div class="streak-card"><span class="emoji">🔥</span><div class="info"><div class="name">${s.name}</div><div class="detail">${s.streak}-week streak</div></div><span class="value">+$${s.payout.toFixed(2)}</span></div>`).join('')}
+<div style="font-size:9px;color:#888;text-transform:uppercase;font-weight:700;margin:10px 0 6px;">🌧️ Negative Streaks (Top 2)</div>
+${badStreaks.slice(0,2).map(s => `<div class="bad-streak-card"><span class="emoji">🌧️</span><div class="info"><div class="name">${s.name}</div><div class="detail">${s.streak}-week negative</div></div><span class="value">-$${s.penalty.toFixed(2)}</span></div>`).join('')}
+</div>
+
+<div class="section">
+<div class="section-title">✨ Biggest Missed Opportunities</div>
+<div style="font-size:9px;color:#888;margin-bottom:8px;">One more day would have earned:</div>
+${missedList.map(m => `<div class="opportunity-row"><span>${m.icon} ${m.name}</span><span class="value">+$${m.missedVal.toFixed(2)}</span></div>`).join('')}
+</div>
+
+<div class="section">
+<div class="section-title">📊 Week at a Glance</div>
+${weekHtml}
+</div>
+</div>
+
+<div class="footer">
+<div class="footer-text">You're doing amazing!<br>Keep up the momentum.</div>
+<div class="signature">—Drew</div>
+</div>
+</div>
+</body>
+</html>`;
+            return html;
         }
 
         window.sendVictoriaTestReport = async () => {
