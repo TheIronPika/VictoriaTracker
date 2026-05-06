@@ -1553,7 +1553,7 @@
                 window.switchTab(3);
                 setTimeout(() => {
                     const panel = document.getElementById('managePanel');
-                    if (panel) { panel.style.display = 'block'; panel.scrollIntoView({behavior:'smooth'}); renderEventsManage(); renderShopManage(); }
+                    if (panel) { panel.style.display = 'block'; panel.scrollIntoView({behavior:'smooth'}); render(); renderEventsManage(); renderShopManage(); }
                 }, 80);
             }
         };
