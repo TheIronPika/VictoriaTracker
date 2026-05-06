@@ -9,7 +9,7 @@
     
     <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
@@ -215,257 +215,98 @@
             return { reportText, totalMoney, dateStr };
         }
 
-        // ═══════════════════════════════════════════════════════════════
-        // VICTORIA'S REPORT GENERATOR
-        // ═══════════════════════════════════════════════════════════════
+        // ── VICTORIA REPORT ──────────────────────────────────────────────────
         function buildVictoriaReportHtml(habitsArr, totalBalance) {
             const now = new Date();
             const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
             const weekEnding = months[now.getMonth()] + ' ' + now.getDate() + ', ' + now.getFullYear();
-            
-            // Tier colors
-            const tierColors = { punish:'#d9534f', low:'#e67e22', goal:'#27ae60', bonus:'#8e44ad' };
-            const tierBgs = {
-                punish: 'rgba(217,83,79,0.08)',
-                low:    'rgba(230,126,34,0.08)',
-                goal:   'rgba(39,174,96,0.08)',
-                bonus:  'rgba(142,68,173,0.08)'
-            };
-            
-            // Build achievements
-            const achievementsList = habitsArr.map(h => {
-                const cur = h.history && h.history[6] !== undefined ? h.history[6] : (h.history && h.history[h.history.length-1] || 0);
-                const tier = getTier(h, cur);
-                const streaks = computeStreaksFromHistory(h.id);
-                let payout = 0;
-                if(tier === 'punish') payout = h.valPunish || 0;
-                else if(tier === 'low') payout = h.valLow || 0;
-                else if(tier === 'goal') payout = h.valGoal || 0;
-                else if(tier === 'bonus') payout = h.valBonus || 0;
-                return { id:h.id, icon:h.icon, name:h.name, cur, tier, payout, streak:streaks.streak };
-            }).filter(a => a.cur > 0).sort((a,b) => {
-                const tierOrder = {bonus:3, goal:2, low:1, punish:0};
-                if(tierOrder[a.tier] !== tierOrder[b.tier]) return tierOrder[b.tier] - tierOrder[a.tier];
-                const aScore = a.streak + (a.payout || 0);
-                const bScore = b.streak + (b.payout || 0);
-                return bScore - aScore;
+            const TC = { punish:'#d9534f', low:'#e67e22', goal:'#27ae60', bonus:'#8e44ad' };
+            const TB = { punish:'rgba(217,83,79,0.08)', low:'rgba(230,126,34,0.08)', goal:'rgba(39,174,96,0.08)', bonus:'rgba(142,68,173,0.08)' };
+
+            const cur = h => h.history && h.history[6] !== undefined ? h.history[6] : (h.history && h.history[h.history.length-1] || 0);
+            const pay = (h, t) => ({ punish: h.valPunish||0, low: h.valLow||0, goal: h.valGoal||0, bonus: h.valBonus||0 }[t]);
+
+            // Achievements
+            const ach = habitsArr.map(h => {
+                const c = cur(h), t = getTier(h, c), s = computeStreaksFromHistory(h.id);
+                return { icon:h.icon, name:h.name, c, t, pay:pay(h,t), streak:s.streak };
+            }).filter(a => a.c > 0).sort((a,b) => {
+                const o = {bonus:3,goal:2,low:1,punish:0};
+                return o[b.t] !== o[a.t] ? o[b.t]-o[a.t] : (b.streak+b.pay)-(a.streak+a.pay);
             }).slice(0,2);
 
-            // Build streaks
-            const goodStreaks = [];
-            const badStreaks = [];
+            // Streaks
+            const gs = [], bs = [];
             habitsArr.forEach(h => {
-                const streaks = computeStreaksFromHistory(h.id);
-                const cur = h.history && h.history[6] !== undefined ? h.history[6] : (h.history && h.history[h.history.length-1] || 0);
-                const tier = getTier(h, cur);
-                
-                if(streaks.streak >= 1 && (tier === 'goal' || tier === 'bonus')) {
-                    let payout = 0;
-                    if(streaks.streak >= 2 && (h.streakBonusPer||0) > 0) {
-                        payout = Math.min(streaks.streak * (h.streakBonusPer||0), h.streakCap ? parseFloat(h.streakCap) : Infinity);
-                    }
-                    goodStreaks.push({name: h.name, icon: h.icon, streak: streaks.streak, payout, tier});
+                const s = computeStreaksFromHistory(h.id), c = cur(h), t = getTier(h,c);
+                if(s.streak>=1 && (t==='goal'||t==='bonus')) {
+                    const p = s.streak>=2 ? Math.min(s.streak*(h.streakBonusPer||0), h.streakCap ? parseFloat(h.streakCap) : Infinity) : 0;
+                    gs.push({name:h.name, streak:s.streak, payout:p});
                 }
-                if(streaks.badStreak >= 1 && (tier === 'punish' || tier === 'low')) {
-                    let penalty = 0;
-                    if(streaks.badStreak >= 2 && (h.streakPenaltyPer||0) > 0) {
-                        penalty = Math.min(streaks.badStreak * (h.streakPenaltyPer||0), h.streakCap ? parseFloat(h.streakCap) : Infinity);
-                    }
-                    badStreaks.push({name: h.name, icon: h.icon, streak: streaks.badStreak, penalty, tier});
+                if(s.badStreak>=1 && (t==='punish'||t==='low')) {
+                    const p = s.badStreak>=2 ? Math.min(s.badStreak*(h.streakPenaltyPer||0), h.streakCap ? parseFloat(h.streakCap) : Infinity) : 0;
+                    bs.push({name:h.name, streak:s.badStreak, penalty:p});
                 }
             });
-            goodStreaks.sort((a,b) => b.streak - a.streak);
-            badStreaks.sort((a,b) => b.streak - a.streak);
+            gs.sort((a,b)=>b.streak-a.streak);
+            bs.sort((a,b)=>b.streak-a.streak);
 
-            // Build missed opportunities
-            const missedList = habitsArr.map(h => {
-                const cur = h.history && h.history[6] !== undefined ? h.history[6] : (h.history && h.history[h.history.length-1] || 0);
-                const tier = getTier(h, cur);
-                const tierOrder = {punish:0, low:1, goal:2, bonus:3};
-                if(tierOrder[tier] >= 3) return null;
-                const nextTier = tier === 'punish' ? 'low' : tier === 'low' ? 'goal' : 'bonus';
-                const nextThresh = h[nextTier] || {punish:1,low:3,goal:5,bonus:7}[nextTier];
-                const nextPayout = h['val'+nextTier.charAt(0).toUpperCase()+nextTier.slice(1)] || 0;
-                const curPayout = h['val'+tier.charAt(0).toUpperCase()+tier.slice(1)] || 0;
-                const missedVal = Math.abs(nextPayout - curPayout);
-                if(missedVal <= 0) return null;
-                return { icon:h.icon, name:h.name, tier: nextTier, missedVal };
-            }).filter(x => x).sort((a,b) => b.missedVal - a.missedVal).slice(0,4);
+            // Missed
+            const missed = habitsArr.map(h => {
+                const c = cur(h), t = getTier(h,c);
+                const o = {punish:0,low:1,goal:2,bonus:3};
+                if(o[t]>=3) return null;
+                const nt = t==='punish'?'low':t==='low'?'goal':'bonus';
+                const mv = Math.abs(pay(h,nt)-pay(h,t));
+                return mv>0 ? {icon:h.icon, name:h.name, nt, mv} : null;
+            }).filter(x=>x).sort((a,b)=>b.mv-a.mv).slice(0,4);
 
-            // Build week at a glance
-            const byCategory = {};
+            // Week at a glance
+            const cats = {};
             habitsArr.forEach(h => {
-                const cat = h.cat || 'Other';
-                if(!byCategory[cat]) byCategory[cat] = [];
-                const cur = h.history && h.history[6] !== undefined ? h.history[6] : (h.history && h.history[h.history.length-1] || 0);
-                const tier = getTier(h, cur);
-                const thresh = h[tier] || {punish:1,low:3,goal:5,bonus:7}[tier];
-                const pct = Math.min(100, Math.round((cur / thresh) * 100));
-                byCategory[cat].push({ icon:h.icon, name:h.name, tier, pct });
+                const cat = h.cat||'Other';
+                if(!cats[cat]) cats[cat]=[];
+                const c = cur(h), t = getTier(h,c);
+                const thresh = h[t]||{punish:1,low:3,goal:5,bonus:7}[t];
+                cats[cat].push({icon:h.icon, name:h.name, t, pct:Math.min(100,Math.round(c/thresh*100))});
             });
 
-            // Build sections HTML
-            const achievementsHtml = achievementsList.map(a => {
-                return `<div style="display:flex;align-items:center;gap:10px;padding:12px;background:${tierBgs[a.tier]};border:1.5px solid ${tierColors[a.tier]}66;border-radius:10px;margin-bottom:8px;">
-                    <div style="font-size:24px;flex-shrink:0;">${a.icon}</div>
-                    <div style="flex:1;">
-                        <div style="font-weight:700;color:#4a3a3a;font-size:12px;margin-bottom:2px;">${a.name}</div>
-                        <div style="font-size:10px;color:#888;">${a.cur}/7 days &middot; ${a.streak}-week streak &middot; +$${a.payout.toFixed(2)}</div>
-                    </div>
-                    <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;padding:4px 8px;border-radius:5px;background:${tierColors[a.tier]}22;color:${tierColors[a.tier]};">${a.tier.toUpperCase()}</div>
-                </div>`;
-            }).join('') || '<div style="color:#888;font-size:11px;padding:8px;">No activity yet.</div>';
+            const achHtml = ach.map(a=>`<div style="display:flex;align-items:center;gap:10px;padding:12px;background:${TB[a.t]};border:1.5px solid ${TC[a.t]}55;border-radius:10px;margin-bottom:8px;"><div style="font-size:22px;">${a.icon}</div><div style="flex:1;"><div style="font-weight:700;color:#4a3a3a;font-size:12px;">${a.name}</div><div style="font-size:10px;color:#888;">${a.c}/7 days · ${a.streak}-week streak · +$${a.pay.toFixed(2)}</div></div><div style="font-size:8px;font-weight:800;text-transform:uppercase;padding:3px 7px;border-radius:4px;background:${TC[a.t]}22;color:${TC[a.t]};">${a.t.toUpperCase()}</div></div>`).join('') || '<div style="color:#888;font-size:11px;">No activity yet.</div>';
 
-            const goodStreaksHtml = goodStreaks.slice(0,3).map(s => {
-                return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:rgba(255,250,227,0.6);border-left:3px solid #e6a02a;border-radius:6px;margin-bottom:6px;">
-                    <div style="font-size:18px;flex-shrink:0;">🔥</div>
-                    <div style="flex:1;">
-                        <div style="font-weight:600;color:#4a3a3a;font-size:11px;">${s.name}</div>
-                        <div style="font-size:9px;color:#888;">${s.streak}-week streak</div>
-                    </div>
-                    <div style="font-family:'Great Vibes',cursive;font-size:22px;color:#8a5a00;font-weight:bold;">+$${s.payout.toFixed(2)}</div>
-                </div>`;
-            }).join('') || '<div style="color:#888;font-size:11px;padding:6px;">No streaks yet.</div>';
+            const gsHtml = gs.slice(0,3).map(s=>`<div style="display:flex;align-items:center;gap:10px;padding:10px;background:rgba(255,250,227,0.6);border-left:3px solid #e6a02a;border-radius:6px;margin-bottom:6px;"><span style="font-size:16px;">🔥</span><div style="flex:1;"><div style="font-weight:600;color:#4a3a3a;font-size:11px;">${s.name}</div><div style="font-size:9px;color:#888;">${s.streak}-week streak</div></div><div style="font-family:'Great Vibes',cursive;font-size:20px;color:#8a5a00;">+$${s.payout.toFixed(2)}</div></div>`).join('') || '<div style="color:#888;font-size:11px;padding:4px;">No streaks yet.</div>';
 
-            const badStreaksHtml = badStreaks.slice(0,2).map(s => {
-                return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:rgba(217,83,79,0.06);border-left:3px solid #d9534f;border-radius:6px;margin-bottom:6px;">
-                    <div style="font-size:18px;flex-shrink:0;">🌧️</div>
-                    <div style="flex:1;">
-                        <div style="font-weight:600;color:#4a3a3a;font-size:11px;">${s.name}</div>
-                        <div style="font-size:9px;color:#888;">${s.streak}-week negative</div>
-                    </div>
-                    <div style="font-family:'Great Vibes',cursive;font-size:22px;color:#d9534f;font-weight:bold;">-$${s.penalty.toFixed(2)}</div>
-                </div>`;
-            }).join('') || '<div style="color:#888;font-size:11px;padding:6px;">None so far!</div>';
+            const bsHtml = bs.slice(0,2).map(s=>`<div style="display:flex;align-items:center;gap:10px;padding:10px;background:rgba(217,83,79,0.06);border-left:3px solid #d9534f;border-radius:6px;margin-bottom:6px;"><span style="font-size:16px;">🌧️</span><div style="flex:1;"><div style="font-weight:600;color:#4a3a3a;font-size:11px;">${s.name}</div><div style="font-size:9px;color:#888;">${s.streak}-week negative</div></div><div style="font-family:'Great Vibes',cursive;font-size:20px;color:#d9534f;">-$${s.penalty.toFixed(2)}</div></div>`).join('') || '<div style="color:#888;font-size:11px;padding:4px;">None so far!</div>';
 
-            const missedHtml = missedList.map(m => {
-                return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:${tierBgs[m.tier]};border-left:4px solid ${tierColors[m.tier]};border-radius:6px;margin-bottom:6px;">
-                    <div style="flex:1;font-weight:600;color:#4a3a3a;font-size:11px;">${m.icon} ${m.name}</div>
-                    <div style="font-family:'Great Vibes',cursive;font-size:20px;color:${tierColors[m.tier]};font-weight:bold;">+$${m.missedVal.toFixed(2)}</div>
-                </div>`;
-            }).join('') || '<div style="color:#888;font-size:11px;padding:6px;">Great job hitting your goals!</div>';
+            const missedHtml = missed.map(m=>`<div style="display:flex;align-items:center;gap:10px;padding:10px;background:${TB[m.nt]};border-left:4px solid ${TC[m.nt]};border-radius:6px;margin-bottom:6px;"><div style="flex:1;font-weight:600;color:#4a3a3a;font-size:11px;">${m.icon} ${m.name}</div><div style="font-family:'Great Vibes',cursive;font-size:18px;color:${TC[m.nt]};">+$${m.mv.toFixed(2)}</div></div>`).join('') || '<div style="color:#888;font-size:11px;padding:4px;">Great job hitting your goals!</div>';
 
             let weekHtml = '';
-            for(const [cat, catHabits] of Object.entries(byCategory)) {
-                if(!catHabits.length) continue;
-                const tierForCat = catHabits[0].tier;
-                const catColor = tierColors[tierForCat];
-                weekHtml += `<div style="margin-bottom:10px;padding:10px;background:${tierBgs[tierForCat]};border:1px solid ${catColor}40;border-radius:8px;page-break-inside:avoid;">
-                    <div style="font-size:10px;color:${catColor};text-transform:uppercase;font-weight:800;letter-spacing:0.8px;margin-bottom:6px;">${cat}</div>`;
-                catHabits.forEach(h => {
-                    const barColor = tierColors[h.tier];
-                    weekHtml += `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:10px;border-bottom:1px solid ${barColor}15;">
-                        <span style="font-size:14px;flex-shrink:0;">${h.icon}</span>
-                        <span style="flex:1;color:#4a3a3a;font-weight:500;">${h.name}</span>
-                        <div style="width:55px;height:5px;background:${barColor}22;border-radius:3px;flex-shrink:0;overflow:hidden;">
-                            <div style="background:${barColor};width:${h.pct}%;height:100%;border-radius:3px;"></div>
-                        </div>
-                    </div>`;
-                });
-                weekHtml += '</div>';
+            for(const [cat,ch] of Object.entries(cats)) {
+                const ct = ch[0]?.t||'goal';
+                weekHtml += `<div style="margin-bottom:10px;padding:10px;background:${TB[ct]};border:1px solid ${TC[ct]}33;border-radius:8px;"><div style="font-size:10px;color:${TC[ct]};text-transform:uppercase;font-weight:800;letter-spacing:0.8px;margin-bottom:6px;">${cat}</div>${ch.map(h=>`<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid ${TC[h.t]}15;font-size:10px;"><span style="font-size:13px;">${h.icon}</span><span style="flex:1;color:#4a3a3a;">${h.name}</span><div style="width:55px;height:5px;background:${TC[h.t]}22;border-radius:3px;overflow:hidden;"><div style="background:${TC[h.t]};width:${h.pct}%;height:100%;"></div></div></div>`).join('')}</div>`;
             }
 
-            // Return the report as a styled div — sendVictoriaTestReport wraps it in a full HTML document
-            return `<div style="width:100%;background:#ffffff;font-family:'Montserrat',sans-serif;color:#4a3a3a;border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(212,163,163,0.15);">
-                <div style="background:linear-gradient(135deg,#f9ecec 0%,#f5eaf5 50%,#f0e8f8 100%);padding:28px 28px 22px;text-align:center;">
-                    <div style="font-size:10px;color:#d4a3a3;text-transform:uppercase;letter-spacing:1.5px;font-weight:700;margin-bottom:6px;">Week Ending ${weekEnding}</div>
-                    <div style="font-family:'Great Vibes',cursive;font-size:52px;color:#d4a3a3;line-height:1.1;">Victoria</div>
-                    <div style="font-family:'Playfair Display',serif;font-size:13px;color:#a0a0a0;font-style:italic;margin-top:6px;">Weekly Reflection</div>
-                </div>
-                <div style="padding:24px 28px;">
-                    <div style="text-align:center;margin-bottom:24px;">
-                        <div style="font-family:'Great Vibes',cursive;font-size:56px;color:#27ae60;line-height:1;">${totalBalance >= 0 ? '+' : ''}$${Math.abs(totalBalance).toFixed(2)}</div>
-                        <div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-top:4px;">This Week's Earnings</div>
-                    </div>
-                    <div style="margin-bottom:22px;">
-                        <div style="font-family:'Playfair Display',serif;font-size:15px;color:#d4a3a3;font-style:italic;margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid rgba(212,163,163,0.2);">⭐ Your Best This Week</div>
-                        ${achievementsHtml}
-                    </div>
-                    <div style="margin-bottom:22px;">
-                        <div style="font-family:'Playfair Display',serif;font-size:15px;color:#d4a3a3;font-style:italic;margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid rgba(212,163,163,0.2);">🔥 Streaks &amp; Money Impact</div>
-                        <div style="font-size:9px;color:#888;text-transform:uppercase;font-weight:700;margin-bottom:8px;letter-spacing:0.8px;">🔥 Your Best Streaks (Top 3)</div>
-                        ${goodStreaksHtml}
-                        <div style="font-size:9px;color:#888;text-transform:uppercase;font-weight:700;margin:14px 0 8px;letter-spacing:0.8px;">🌧️ Negative Streaks (Top 2)</div>
-                        ${badStreaksHtml}
-                    </div>
-                    <div style="margin-bottom:22px;">
-                        <div style="font-family:'Playfair Display',serif;font-size:15px;color:#d4a3a3;font-style:italic;margin-bottom:10px;padding-bottom:8px;border-bottom:2px solid rgba(212,163,163,0.2);">✨ Biggest Missed Opportunities</div>
-                        <div style="font-size:10px;color:#888;margin-bottom:10px;">One more day would have earned:</div>
-                        ${missedHtml}
-                    </div>
-                    <div style="margin-bottom:8px;">
-                        <div style="font-family:'Playfair Display',serif;font-size:15px;color:#d4a3a3;font-style:italic;margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid rgba(212,163,163,0.2);">📊 Week at a Glance</div>
-                        ${weekHtml}
-                    </div>
-                </div>
-                <div style="background:rgba(212,163,163,0.04);padding:20px 28px;text-align:center;border-top:1px solid rgba(212,163,163,0.12);">
-                    <div style="font-size:12px;color:#888;line-height:1.6;margin-bottom:8px;">You're doing amazing!<br>Keep up the momentum.</div>
-                    <div style="font-family:'Great Vibes',cursive;font-size:28px;color:#d4a3a3;">&mdash;Drew</div>
-                </div>
-            </div>`;
+            const totalStr = `${totalBalance>=0?'+':''}$${Math.abs(totalBalance).toFixed(2)}`;
+            const balColor = totalBalance>=0 ? '#27ae60' : '#d9534f';
+
+            return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Victoria's Weekly Report</title><link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@300;400;600&display=swap" rel="stylesheet"><style>*{margin:0;padding:0;box-sizing:border-box}body{background:#f0eef8;padding:20px;font-family:'Montserrat',sans-serif}.wrap{max-width:680px;margin:0 auto}.hint{background:#d4a3a3;color:white;text-align:center;padding:10px 16px;border-radius:8px;font-size:12px;font-weight:600;margin-bottom:16px;}@media print{.hint{display:none}body{background:white;padding:0}}</style></head><body><div class="wrap"><div class="hint">📄 Press <strong>Ctrl+P</strong> or <strong>⌘+P</strong> → <strong>Save as PDF</strong> — then close this tab</div><div style="background:white;border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(212,163,163,0.15);"><div style="background:linear-gradient(135deg,#f9ecec 0%,#f5eaf5 50%,#f0e8f8 100%);padding:28px 28px 22px;text-align:center;"><div style="font-size:10px;color:#d4a3a3;text-transform:uppercase;letter-spacing:1.5px;font-weight:700;margin-bottom:6px;">Week Ending ${weekEnding}</div><div style="font-family:'Great Vibes',cursive;font-size:52px;color:#d4a3a3;line-height:1.1;">Victoria</div><div style="font-family:'Playfair Display',serif;font-size:13px;color:#a0a0a0;font-style:italic;margin-top:6px;">Weekly Reflection</div></div><div style="padding:24px 28px;"><div style="text-align:center;margin-bottom:24px;"><div style="font-family:'Great Vibes',cursive;font-size:56px;color:${balColor};line-height:1;">${totalStr}</div><div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-top:4px;">This Week's Earnings</div></div><div style="margin-bottom:20px;"><div style="font-family:'Playfair Display',serif;font-size:15px;color:#d4a3a3;font-style:italic;margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid rgba(212,163,163,0.2);">⭐ Your Best This Week</div>${achHtml}</div><div style="margin-bottom:20px;"><div style="font-family:'Playfair Display',serif;font-size:15px;color:#d4a3a3;font-style:italic;margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid rgba(212,163,163,0.2);">🔥 Streaks &amp; Money Impact</div><div style="font-size:9px;color:#888;text-transform:uppercase;font-weight:700;margin-bottom:8px;letter-spacing:0.8px;">🔥 Your Best Streaks (Top 3)</div>${gsHtml}<div style="font-size:9px;color:#888;text-transform:uppercase;font-weight:700;margin:12px 0 8px;letter-spacing:0.8px;">🌧️ Negative Streaks (Top 2)</div>${bsHtml}</div><div style="margin-bottom:20px;"><div style="font-family:'Playfair Display',serif;font-size:15px;color:#d4a3a3;font-style:italic;margin-bottom:10px;padding-bottom:8px;border-bottom:2px solid rgba(212,163,163,0.2);">✨ Biggest Missed Opportunities</div><div style="font-size:10px;color:#888;margin-bottom:10px;">One more day would have earned:</div>${missedHtml}</div><div style="margin-bottom:8px;"><div style="font-family:'Playfair Display',serif;font-size:15px;color:#d4a3a3;font-style:italic;margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid rgba(212,163,163,0.2);">📊 Week at a Glance</div>${weekHtml}</div></div><div style="background:rgba(212,163,163,0.04);padding:20px 28px;text-align:center;border-top:1px solid rgba(212,163,163,0.12);"><div style="font-size:12px;color:#888;line-height:1.6;margin-bottom:8px;">You're doing amazing!<br>Keep up the momentum.</div><div style="font-family:'Great Vibes',cursive;font-size:28px;color:#d4a3a3;">&mdash;Drew</div></div></div></div></body></html>`;
         }
 
-        window.sendVictoriaTestReport = async () => {
-            if(!habits || !habits.length) { 
-                alert('No habits to report on yet.');
-                return;
-            }
-            
-            let testTotal = 0;
+        window.sendVictoriaTestReport = () => {
+            if(!habits || !habits.length) { alert('No habits yet.'); return; }
+            let total = 0;
             habits.forEach(h => {
                 if(!h.excused) {
-                    const cur = h.history && h.history[6] !== undefined ? h.history[6] : (h.history && h.history[h.history.length-1] || 0);
-                    const tier = getTier(h, cur);
-                    let payout = 0;
-                    if(tier === 'punish') payout = h.valPunish || 0;
-                    else if(tier === 'low') payout = h.valLow || 0;
-                    else if(tier === 'goal') payout = h.valGoal || 0;
-                    else if(tier === 'bonus') payout = h.valBonus || 0;
-                    testTotal += payout;
+                    const c = h.history && h.history[6] !== undefined ? h.history[6] : (h.history && h.history[h.history.length-1] || 0);
+                    const t = getTier(h, c);
+                    total += ({punish:h.valPunish||0,low:h.valLow||0,goal:h.valGoal||0,bonus:h.valBonus||0})[t];
                 }
             });
-            
-            const innerHtml = buildVictoriaReportHtml(habits, testTotal);
-            
-            // Wrap in a full HTML document with print styles
-            const fullHtml = `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Victoria's Weekly Report</title>
-<link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@300;400;600&display=swap" rel="stylesheet">
-<style>
-* { margin:0; padding:0; box-sizing:border-box; }
-body { background:#f0f0f0; padding:20px; font-family:'Montserrat',sans-serif; }
-.page-wrap { max-width:700px; margin:0 auto; }
-@media print {
-  body { background:white; padding:0; }
-  .print-hint { display:none !important; }
-  .page-wrap { max-width:100%; }
-}
-</style>
-</head>
-<body>
-<div class="print-hint" style="text-align:center;padding:12px;background:#d4a3a3;color:white;font-family:'Montserrat',sans-serif;font-size:13px;font-weight:600;margin-bottom:16px;border-radius:8px;">
-  📄 Press <strong>Ctrl+P</strong> (Windows) or <strong>⌘+P</strong> (Mac) → <strong>Save as PDF</strong>
-</div>
-<div class="page-wrap">
-${innerHtml}
-</div>
-</body>
-</html>`;
-            
-            const blob = new Blob([fullHtml], { type: 'text/html' });
+            const html = buildVictoriaReportHtml(habits, total);
+            const blob = new Blob([html], {type:'text/html'});
             const url  = URL.createObjectURL(blob);
             const tab  = window.open(url, '_blank');
-            
-            if (!tab) {
-                alert('Pop-up blocked! Please allow pop-ups for this page and try again.');
-            }
-            // Clean up blob URL after 60 seconds
+            if(!tab) alert('Pop-up blocked — please allow pop-ups for this site and try again.');
             setTimeout(() => URL.revokeObjectURL(url), 60000);
-        };
         };
 
         // Phase 2 — Award stars for tier achievements and streaks.
@@ -2994,9 +2835,9 @@ ${innerHtml}
 </div>
 <div class="manage-section-header" onclick="window.toggleManageSection('ms-habits')"><span style="font-family:'Playfair Display';font-size:13px;font-weight:700;color:var(--header-pink);">Habits &amp; Tiers</span><span id="msc-ms-habits" style="color:#ccc;font-size:18px;transition:transform 0.2s;transform:;">&#8250;</span></div>
 <div id="ms-ms-habits" style="display:none;">
-            <div style="display:flex; gap:12px; margin-bottom:20px;">
-                <button onclick="window.sendVictoriaTestReport()" style="flex:1; padding:15px; background:#8e44ad; color:white; border-radius:12px; border:none; font-weight:bold; cursor:pointer; font-family:'Playfair Display'; letter-spacing:1px;">📧 TEST SEND</button>
-                <button onclick="window.runWeeklyReport(true)" style="flex:1; padding:15px; background:#4a3a3a; color:white; border-radius:12px; border:none; font-weight:bold; cursor:pointer; font-family:'Playfair Display'; letter-spacing:1px;">✓ SUBMIT &amp; RESET</button>
+            <div style="display:flex;gap:10px;margin-bottom:20px;">
+                <button onclick="window.sendVictoriaTestReport()" style="flex:1;padding:15px;background:#8e44ad;color:white;border-radius:12px;border:none;font-weight:bold;cursor:pointer;font-family:'Playfair Display';letter-spacing:1px;">📋 VIEW REPORT</button>
+                <button onclick="window.runWeeklyReport(true)" style="flex:1;padding:15px;background:#4a3a3a;color:white;border-radius:12px;border:none;font-weight:bold;cursor:pointer;font-family:'Playfair Display';letter-spacing:1px;">✓ SUBMIT &amp; RESET</button>
             </div>
 
 </div>
