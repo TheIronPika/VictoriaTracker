@@ -128,6 +128,10 @@
         let pendingRedeem = null;       // shop item currently in the confirm-redeem flow
         let starLog      = [];          // earn/spend history entries { ts, type, amount, reason }
 
+        let roomsData    = [];          // room objects from Firestore rooms_data
+        let roomsLoaded  = false;
+        let roomsCollapsed = localStorage.getItem('roomsCollapsed') !== 'false';
+
         // Debounce timer for updateField — held between calls so rapid spinner
         // clicks only send a single Firebase write after the last change settles
         let _updateFieldTimer = null;
@@ -301,6 +305,10 @@
                     total += ({punish:h.valPunish||0,low:h.valLow||0,goal:h.valGoal||0,bonus:h.valBonus||0})[t];
                 }
             });
+            // Include room payouts in report total
+            roomsData.forEach(r => {
+                if(r.checked) total += Math.min(r.streak + 1, r.maxStreak);
+            });
             const html = buildVictoriaReportHtml(habits, total);
             const blob = new Blob([html], {type:'text/html'});
             const url  = URL.createObjectURL(blob);
@@ -308,6 +316,113 @@
             if(!tab) alert('Pop-up blocked — please allow pop-ups for this site and try again.');
             setTimeout(() => URL.revokeObjectURL(url), 60000);
         };
+
+        // ── ROOM CHECK ───────────────────────────────────────────────────────
+        const DEFAULT_ROOMS = [
+            {id:'bedroom',    name:'Bedroom',          icon:'🛏️',  maxStreak:7, streak:0, checked:false},
+            {id:'office',     name:'Office',            icon:'🖥️',  maxStreak:3, streak:0, checked:false},
+            {id:'dining',     name:'Dining Room',       icon:'🍽️',  maxStreak:4, streak:0, checked:false},
+            {id:'closet',     name:'Closet',            icon:'🚪',  maxStreak:3, streak:0, checked:false},
+            {id:'masterbath', name:'Master Bath',       icon:'🛁',  maxStreak:3, streak:0, checked:false},
+            {id:'officebath', name:'Office Bathroom',   icon:'🚿',  maxStreak:3, streak:0, checked:false},
+            {id:'kitchen',    name:'Kitchen',           icon:'🍳',  maxStreak:4, streak:0, checked:false},
+            {id:'livingroom', name:'Living Room',       icon:'🛋️',  maxStreak:5, streak:0, checked:false},
+            {id:'basement',   name:'Basement',          icon:'📦',  maxStreak:7, streak:0, checked:false},
+            {id:'garage',     name:'Garage',            icon:'🚗',  maxStreak:5, streak:0, checked:false},
+        ];
+
+        async function loadRoomsData() {
+            try {
+                const snap = await getDoc(doc(db, 'system', 'rooms_data'));
+                if(snap.exists()) {
+                    roomsData = snap.data().rooms || [];
+                } else {
+                    roomsData = DEFAULT_ROOMS.map(r => ({...r}));
+                    await syncRoomsData();
+                }
+                roomsLoaded = true;
+                renderRoomsSection();
+            } catch(e) { console.error('loadRoomsData:', e); }
+        }
+
+        async function syncRoomsData() {
+            await setDoc(doc(db, 'system', 'rooms_data'), { rooms: roomsData });
+        }
+
+        window.toggleRoomCheck = async (id) => {
+            const room = roomsData.find(r => r.id === id);
+            if(!room) return;
+            room.checked = !room.checked;
+            playBubblePop(room.checked);
+            await syncRoomsData();
+            renderRoomsSection();
+            // Update balance display
+            let totalMoney = 0;
+            const dIdx = getDayIdx(viewingDate);
+            habits.forEach(h => {
+                if(!h.excused) {
+                    const t = getTier(h, h.history[dIdx]);
+                    if(t==='punish') totalMoney += h.valPunish||0;
+                    else if(t==='low') totalMoney += h.valLow||0;
+                    else if(t==='goal') totalMoney += h.valGoal||0;
+                    else if(t==='bonus') totalMoney += h.valBonus||0;
+                }
+            });
+            roomsData.forEach(r => { if(r.checked) totalMoney += Math.min(r.streak+1, r.maxStreak); });
+            animateMoneyDisplay(totalMoney);
+        };
+
+        window.toggleRoomsSection = () => {
+            roomsCollapsed = !roomsCollapsed;
+            localStorage.setItem('roomsCollapsed', String(roomsCollapsed));
+            renderRoomsSection();
+        };
+
+        function renderRoomsSection() {
+            const root = document.getElementById('roomsRoot');
+            if(!root) return;
+            if(!roomsData.length) { root.innerHTML = ''; return; }
+
+            const miniDots = roomsData.map(r =>
+                `<div class="mini-dot" style="background:${r.checked ? 'var(--color-goal)' : 'rgba(0,0,0,0.1)'}"></div>`
+            ).join('');
+
+            let html = `<div class="category-header" onclick="window.toggleRoomsSection()" style="border:1.5px solid rgba(212,163,163,0.3);">
+                <div style="flex:1;">
+                    <span class="cat-label">Room Check</span>
+                    <div class="status-mini-bar">${miniDots}</div>
+                </div>
+                <span style="color:var(--header-pink);font-size:12px;font-weight:bold;">${roomsCollapsed ? 'SHOW ✦' : 'HIDE ✧'}</span>
+            </div>`;
+
+            if(!roomsCollapsed) {
+                roomsData.forEach(room => {
+                    const thisPayout = Math.min(room.streak + 1, room.maxStreak);
+                    html += `<div class="habit-card" style="${room.checked ? 'opacity:0.75;' : ''}">
+                        <div style="font-size:24px;margin-right:14px;">${room.icon}</div>
+                        <div style="flex:1;">
+                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                                <p style="margin:0;font-weight:600;">${room.name}</p>
+                                ${room.streak > 0 ? `<span class="streak-badge">🏠 ${room.streak}wk</span>` : ''}
+                                <span style="font-size:9px;color:#bbb;font-weight:600;">max ${room.maxStreak}wk</span>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:10px;">
+                                <button onclick="window.toggleRoomCheck('${room.id}')"
+                                    style="padding:6px 18px;border-radius:20px;border:none;font-size:12px;font-weight:700;cursor:pointer;font-family:'Montserrat',sans-serif;
+                                    background:${room.checked ? 'var(--color-goal)' : 'rgba(212,163,163,0.2)'};
+                                    color:${room.checked ? 'white' : '#888'};">
+                                    ${room.checked ? '✓ Clean' : 'Mark Clean'}
+                                </button>
+                                <span style="font-size:11px;font-weight:700;color:${room.checked ? 'var(--color-goal)' : '#bbb'};">
+                                    ${room.checked ? `+$${thisPayout.toFixed(2)} this week` : `next: +$${thisPayout.toFixed(2)}`}
+                                </span>
+                            </div>
+                        </div>
+                    </div>`;
+                });
+            }
+            root.innerHTML = html;
+        }
 
         // Phase 2 — Award stars for tier achievements and streaks.
         // Mutates starBalance and starLog; flushes to Firestore via syncStarData().
@@ -413,6 +528,15 @@
 
                 habits = advanceHabitCycles(habits);
                 await syncToFirebase();
+
+                // Advance room streaks
+                roomsData = roomsData.map(r => ({
+                    ...r,
+                    streak: r.checked ? Math.min(r.streak + 1, r.maxStreak) : 0,
+                    checked: false
+                }));
+                await syncRoomsData();
+                if(roomsLoaded) renderRoomsSection();
 
                 historyLoaded = false;
                 if (isManual) alert('Weekly report sent and habits reset!');
@@ -1584,7 +1708,10 @@
 
             lastActedId = null;
 
-            animateMoneyDisplay(totalMoney);
+            // Add checked room payouts to balance display
+            let displayTotal = totalMoney;
+            if(roomsLoaded) roomsData.forEach(r => { if(r.checked) displayTotal += Math.min(r.streak+1, r.maxStreak); });
+            animateMoneyDisplay(displayTotal);
             if (eventsLoaded) renderSeasonalSection();
             const slb = document.getElementById('sortLockBtn');
             if (slb) {
@@ -1983,6 +2110,7 @@
             initParticles();
             loadSeasonalEvents();
             loadStarData();
+            loadRoomsData();
             // Load history on startup so streak display works from day one
             getDoc(doc(db,'system','weekly_history')).then(snap => {
                 weeklyHistory = snap.exists() ? (snap.data().weeks||[]) : [];
@@ -2744,6 +2872,7 @@
         </div>
         <div id="seasonalRoot"></div>
         <div id="todayRoot"></div>
+        <div id="roomsRoot"></div>
     </div>
 
     <div id="view-priority" class="view">
