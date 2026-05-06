@@ -365,43 +365,42 @@
                 weekHtml += '</div>';
             }
 
-            // Return ONLY the report content as a styled div - no <html>, <head>, or <body>
-            // This will be appended directly to the main document for proper font rendering
-            return `<div style="width:680px;background:#ffffff;font-family:'Montserrat',sans-serif;color:#4a3a3a;border-radius:0;overflow:hidden;">
-                <div style="background:linear-gradient(135deg,#f9ecec 0%,#f5eaf5 50%,#f0e8f8 100%);padding:24px 24px 20px;text-align:center;">
-                    <div style="font-size:10px;color:#d4a3a3;text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:4px;">Week Ending ${weekEnding}</div>
-                    <div style="font-family:'Great Vibes',cursive;font-size:42px;color:#d4a3a3;line-height:1;">Victoria</div>
-                    <div style="font-family:'Playfair Display',serif;font-size:12px;color:#a0a0a0;font-style:italic;margin-top:4px;">Weekly Reflection</div>
+            // Return the report as a styled div — sendVictoriaTestReport wraps it in a full HTML document
+            return `<div style="width:100%;background:#ffffff;font-family:'Montserrat',sans-serif;color:#4a3a3a;border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(212,163,163,0.15);">
+                <div style="background:linear-gradient(135deg,#f9ecec 0%,#f5eaf5 50%,#f0e8f8 100%);padding:28px 28px 22px;text-align:center;">
+                    <div style="font-size:10px;color:#d4a3a3;text-transform:uppercase;letter-spacing:1.5px;font-weight:700;margin-bottom:6px;">Week Ending ${weekEnding}</div>
+                    <div style="font-family:'Great Vibes',cursive;font-size:52px;color:#d4a3a3;line-height:1.1;">Victoria</div>
+                    <div style="font-family:'Playfair Display',serif;font-size:13px;color:#a0a0a0;font-style:italic;margin-top:6px;">Weekly Reflection</div>
                 </div>
-                <div style="padding:20px 24px;">
-                    <div style="text-align:center;margin-bottom:20px;page-break-inside:avoid;">
-                        <div style="font-family:'Great Vibes',cursive;font-size:48px;color:#27ae60;line-height:1;">${totalBalance >= 0 ? '+' : ''}$${Math.abs(totalBalance).toFixed(2)}</div>
+                <div style="padding:24px 28px;">
+                    <div style="text-align:center;margin-bottom:24px;">
+                        <div style="font-family:'Great Vibes',cursive;font-size:56px;color:#27ae60;line-height:1;">${totalBalance >= 0 ? '+' : ''}$${Math.abs(totalBalance).toFixed(2)}</div>
                         <div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-top:4px;">This Week's Earnings</div>
                     </div>
-                    <div style="margin-bottom:20px;page-break-inside:avoid;">
-                        <div style="font-family:'Playfair Display',serif;font-size:14px;color:#d4a3a3;font-style:italic;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid rgba(212,163,163,0.2);">⭐ Your Best This Week</div>
+                    <div style="margin-bottom:22px;">
+                        <div style="font-family:'Playfair Display',serif;font-size:15px;color:#d4a3a3;font-style:italic;margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid rgba(212,163,163,0.2);">⭐ Your Best This Week</div>
                         ${achievementsHtml}
                     </div>
-                    <div style="margin-bottom:20px;page-break-inside:avoid;">
-                        <div style="font-family:'Playfair Display',serif;font-size:14px;color:#d4a3a3;font-style:italic;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid rgba(212,163,163,0.2);">🔥 Streaks &amp; Money Impact</div>
-                        <div style="font-size:9px;color:#888;text-transform:uppercase;font-weight:700;margin-bottom:6px;letter-spacing:0.5px;">🔥 Your Best Streaks (Top 3)</div>
+                    <div style="margin-bottom:22px;">
+                        <div style="font-family:'Playfair Display',serif;font-size:15px;color:#d4a3a3;font-style:italic;margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid rgba(212,163,163,0.2);">🔥 Streaks &amp; Money Impact</div>
+                        <div style="font-size:9px;color:#888;text-transform:uppercase;font-weight:700;margin-bottom:8px;letter-spacing:0.8px;">🔥 Your Best Streaks (Top 3)</div>
                         ${goodStreaksHtml}
-                        <div style="font-size:9px;color:#888;text-transform:uppercase;font-weight:700;margin:12px 0 6px;letter-spacing:0.5px;">🌧️ Negative Streaks (Top 2)</div>
+                        <div style="font-size:9px;color:#888;text-transform:uppercase;font-weight:700;margin:14px 0 8px;letter-spacing:0.8px;">🌧️ Negative Streaks (Top 2)</div>
                         ${badStreaksHtml}
                     </div>
-                    <div style="margin-bottom:20px;page-break-inside:avoid;">
-                        <div style="font-family:'Playfair Display',serif;font-size:14px;color:#d4a3a3;font-style:italic;margin-bottom:8px;padding-bottom:6px;border-bottom:2px solid rgba(212,163,163,0.2);">✨ Biggest Missed Opportunities</div>
-                        <div style="font-size:9px;color:#888;margin-bottom:8px;">One more day would have earned:</div>
+                    <div style="margin-bottom:22px;">
+                        <div style="font-family:'Playfair Display',serif;font-size:15px;color:#d4a3a3;font-style:italic;margin-bottom:10px;padding-bottom:8px;border-bottom:2px solid rgba(212,163,163,0.2);">✨ Biggest Missed Opportunities</div>
+                        <div style="font-size:10px;color:#888;margin-bottom:10px;">One more day would have earned:</div>
                         ${missedHtml}
                     </div>
-                    <div style="margin-bottom:16px;">
-                        <div style="font-family:'Playfair Display',serif;font-size:14px;color:#d4a3a3;font-style:italic;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid rgba(212,163,163,0.2);">📊 Week at a Glance</div>
+                    <div style="margin-bottom:8px;">
+                        <div style="font-family:'Playfair Display',serif;font-size:15px;color:#d4a3a3;font-style:italic;margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid rgba(212,163,163,0.2);">📊 Week at a Glance</div>
                         ${weekHtml}
                     </div>
                 </div>
-                <div style="background:rgba(212,163,163,0.04);padding:16px 24px;text-align:center;border-top:1px solid rgba(212,163,163,0.1);">
-                    <div style="font-size:11px;color:#888;line-height:1.5;margin-bottom:6px;">You're doing amazing!<br>Keep up the momentum.</div>
-                    <div style="font-family:'Great Vibes',cursive;font-size:24px;color:#d4a3a3;">&mdash;Drew</div>
+                <div style="background:rgba(212,163,163,0.04);padding:20px 28px;text-align:center;border-top:1px solid rgba(212,163,163,0.12);">
+                    <div style="font-size:12px;color:#888;line-height:1.6;margin-bottom:8px;">You're doing amazing!<br>Keep up the momentum.</div>
+                    <div style="font-family:'Great Vibes',cursive;font-size:28px;color:#d4a3a3;">&mdash;Drew</div>
                 </div>
             </div>`;
         }
@@ -426,56 +425,47 @@
                 }
             });
             
-            const victoriaHtml = buildVictoriaReportHtml(habits, testTotal);
+            const innerHtml = buildVictoriaReportHtml(habits, testTotal);
             
-            // Render directly in main document (fonts already loaded)
-            // Position off-screen but visible to html2canvas
-            const wrapper = document.createElement('div');
-            wrapper.style.position = 'fixed';
-            wrapper.style.left = '-10000px';
-            wrapper.style.top = '0';
-            wrapper.style.width = '680px';
-            wrapper.style.background = '#ffffff';
-            wrapper.style.zIndex = '-1';
-            wrapper.innerHTML = victoriaHtml;
-            document.body.appendChild(wrapper);
+            // Wrap in a full HTML document with print styles
+            const fullHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Victoria's Weekly Report</title>
+<link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#f0f0f0; padding:20px; font-family:'Montserrat',sans-serif; }
+.page-wrap { max-width:700px; margin:0 auto; }
+@media print {
+  body { background:white; padding:0; }
+  .print-hint { display:none !important; }
+  .page-wrap { max-width:100%; }
+}
+</style>
+</head>
+<body>
+<div class="print-hint" style="text-align:center;padding:12px;background:#d4a3a3;color:white;font-family:'Montserrat',sans-serif;font-size:13px;font-weight:600;margin-bottom:16px;border-radius:8px;">
+  📄 Press <strong>Ctrl+P</strong> (Windows) or <strong>⌘+P</strong> (Mac) → <strong>Save as PDF</strong>
+</div>
+<div class="page-wrap">
+${innerHtml}
+</div>
+</body>
+</html>`;
             
-            try {
-                // Wait for fonts to be fully ready
-                if (document.fonts && document.fonts.ready) {
-                    await document.fonts.ready;
-                }
-                // Extra wait for layout
-                await new Promise(r => setTimeout(r, 300));
-                
-                const target = wrapper.firstElementChild;
-                
-                await html2pdf().set({
-                    margin: [8, 8, 8, 8],
-                    filename: 'Victoria_Weekly_Report.pdf',
-                    pagebreak: { mode: ['css', 'legacy'] },
-                    html2canvas: { 
-                        scale: 2,
-                        backgroundColor: '#ffffff',
-                        useCORS: true,
-                        logging: false,
-                        windowWidth: 680
-                    },
-                    jsPDF: { 
-                        orientation: 'portrait', 
-                        unit: 'mm', 
-                        format: 'letter', 
-                        compress: true 
-                    }
-                }).from(target).save();
-                
-                document.body.removeChild(wrapper);
-                alert('✨ Victoria report PDF downloaded!\n(Week has NOT been reset)');
-            } catch(error) {
-                if (wrapper.parentNode) document.body.removeChild(wrapper);
-                console.error('Victoria report error:', error);
-                alert('Error generating report: ' + (error?.message || error));
+            const blob = new Blob([fullHtml], { type: 'text/html' });
+            const url  = URL.createObjectURL(blob);
+            const tab  = window.open(url, '_blank');
+            
+            if (!tab) {
+                alert('Pop-up blocked! Please allow pop-ups for this page and try again.');
             }
+            // Clean up blob URL after 60 seconds
+            setTimeout(() => URL.revokeObjectURL(url), 60000);
+        };
         };
 
         // Phase 2 — Award stars for tier achievements and streaks.
