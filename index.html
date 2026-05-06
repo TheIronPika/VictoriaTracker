@@ -13,7 +13,8 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, query, where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        // Only the 5 functions actually used are imported (collection/query/where removed)
+        import { getFirestore, doc, setDoc, getDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
         // EMAILJS INIT
         emailjs.init("NBsqPD18bw0R4XtcM");
@@ -31,48 +32,109 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        // STATE
-        let habits = [];
-        let viewingDate = new Date();
-        let activeFilter = null;
+        // ════════════════════════════════════════════════════════════════════
+        // VICTORIA TRACKER — index.html
+        // Single-file habit tracker: Drew tracks Victoria's daily habits with
+        // a financial reward/penalty system. No build step — pure vanilla JS.
+        //
+        // Architecture:
+        //   Firebase Firestore  — real-time data sync (onSnapshot listener)
+        //   GitHub Actions      — Monday 4 am CT weekly reset script
+        //   EmailJS             — weekly summary email to Drew
+        //
+        // Firebase collections (all under "system/"):
+        //   habits_list     — { data: [...] }          all habit objects
+        //   weekly_history  — { weeks: [...] }         reset snapshots, max 52
+        //   star_data       — { balance, spent, items, log }
+        //   seasonal_events — { events: [...] }        date-range events
+        //   reset_state     — { lastReset }            prevents double-firing
+        //
+        // Tier system (ascending): punish < low < goal < bonus
+        //   Each habit stores threshold counts (punish/low/goal/bonus fields)
+        //   and dollar payouts (valPunish/valLow/valGoal/valBonus) per tier.
+        //
+        // Key concepts:
+        //   Bubbles  — one per completion level; show the abbreviated day earned
+        //   Streaks  — computed from weekly_history snapshots, not stored counters
+        //   Cycles   — habits that recur every N weeks / monthly / quarterly / yearly
+        //   Excused  — freezes a habit's streak for one week, blocks all payouts
+        // ════════════════════════════════════════════════════════════════════
 
-        // tracks which card should play the arrive animation
-        let lastActedId = null;
+        // ── NAMED CONSTANTS ──────────────────────────────────────────────────
+        // Tier name strings — defined once so any rename is a single-line change
+        const TIER_PUNISH = 'punish';
+        const TIER_LOW    = 'low';
+        const TIER_GOAL   = 'goal';
+        const TIER_BONUS  = 'bonus';
+        // Day-of-week abbreviations aligned to our Mon=0 … Sun=6 week index
+        const DAY_ABBR = ['M', 'T', 'W', 'Th', 'F', 'S', 'Su'];
+        // Maximum array lengths stored in Firebase (hard limits to control doc size)
+        const MAX_HISTORY_WEEKS = 52;   // weeks kept in weekly_history
+        const MAX_STAR_LOG      = 200;  // entries kept in star_data.log
 
-        // tracks whether the first Firebase load has been processed (for Monday reset check)
-        let initialLoadDone = false;
-        let weeklyHistory   = [];
-        let historyLoaded   = false;
-        let historyCharts   = [];
-        let displayedMoney  = 0;       // for animated counter
-        let moneyAnimFrame  = null;
-        // 'goal' or 'bonus' — persisted per-user in localStorage
-        let priorityMode    = localStorage.getItem('priorityMode') || 'goal';
-        // sort lock — when true, completed tasks stay in place
-        let sortLocked      = localStorage.getItem('sortLocked') === '1';
-        // last category interacted with — persisted so it survives reload
-        let lastActiveCat   = localStorage.getItem('lastActiveCat') || null;
-        // restore which categories were open/closed
+        // ── STATE ────────────────────────────────────────────────────────────
+        // All mutable application state lives here.
+        // Firebase onSnapshot keeps 'habits' in sync with Firestore in real-time.
+        // UI preferences (collapsed, sortLocked, etc.) are persisted to localStorage
+        // so they survive page reloads without a network round-trip.
+
+        let habits       = [];          // habit objects from Firestore habits_list
+        let viewingDate  = new Date();  // which day the date strip shows (default: today)
+        let activeFilter = null;        // tier filter from header pill cards (null = show all)
+
+        // ID of the habit card to play the slide-in "arrive" animation on next render.
+        // Set by toggleBubble() when a card changes completion state, cleared after render.
+        let lastActedId  = null;
+
+        let weeklyHistory = [];         // snapshot array loaded from Firestore weekly_history
+        let historyLoaded = false;      // true once weeklyHistory has been fetched (skip re-fetch)
+        let historyCharts = [];         // active Chart.js instances — tracked so we can destroy them
+        let displayedMoney = 0;         // current value shown in the animated balance counter
+        let moneyAnimFrame = null;      // requestAnimationFrame handle for balance animation
+
+        // 'goal' or 'bonus' — controls which threshold the Priority tab targets
+        let priorityMode = localStorage.getItem('priorityMode') || 'goal';
+
+        // When true, completed tasks stay in their original position instead of
+        // moving to the bottom of their category
+        let sortLocked = localStorage.getItem('sortLocked') === '1';
+
+        // Last category the user interacted with — opening a category collapses
+        // all others; this persists across reloads so the app reopens to the same spot
+        let lastActiveCat = localStorage.getItem('lastActiveCat') || null;
+
+        // Per-category collapse state: { catName: true (collapsed) | false (open) }
+        // Stored in localStorage so the UI remembers which categories were open
         let collapsed = (() => {
             try { return JSON.parse(localStorage.getItem('collapsedState') || '{}'); }
             catch(e) { return {}; }
         })();
-        let seasonalEvents  = [];
-        let eventsLoaded    = false;
-        let seasonalCollapsed = localStorage.getItem('seasonalCollapsed') !== 'false';  // default collapsed
-        let starBalance     = 0;
-        let starsSpent      = 0;
-        let shopItems       = [];
-        let shopLoaded      = false;
-        let pendingRedeem   = null;
-        let starLog         = [];  // {ts, type, amount, reason}
 
+        let seasonalEvents   = [];      // event objects from Firestore seasonal_events
+        let eventsLoaded     = false;   // true once seasonalEvents has been fetched
+        // Default collapsed — Victoria sees Today view cleanly on first load
+        let seasonalCollapsed = localStorage.getItem('seasonalCollapsed') !== 'false';
+
+        let starBalance  = 0;           // current star balance (loaded from Firestore star_data)
+        let starsSpent   = 0;           // cumulative stars spent (for lifetime stats)
+        let shopItems    = [];          // redeemable shop items { id, icon, name, cost }
+        let shopLoaded   = false;       // true once star_data has been fetched
+        let pendingRedeem = null;       // shop item currently in the confirm-redeem flow
+        let starLog      = [];          // earn/spend history entries { ts, type, amount, reason }
+
+        // Maps a JS Date to our Mon=0 … Sun=6 week index.
+        // JS Date.getDay() returns Sun=0, Mon=1, …, Sat=6.
+        // We remap so Monday = index 0, matching the leftmost bubble column.
         const getDayIdx = (d) => {
-            let day = d.getDay(); 
-            return (day === 0) ? 6 : day - 1; 
+            const day = d.getDay();
+            return (day === 0) ? 6 : day - 1;
         };
 
-        // SYNC
+        // ── SYNC ─────────────────────────────────────────────────────────────
+        // Writes the entire habits array to Firestore habits_list.
+        // Important side-effect: this triggers the onSnapshot listener below,
+        // which calls render() — so any change that calls syncToFirebase()
+        // automatically re-renders the UI without a separate render() call.
         async function syncToFirebase() {
             await setDoc(doc(db, "system", "habits_list"), { data: habits });
         }
@@ -152,7 +214,7 @@
                     if (newStreak>=2    && (h.starStreak||0)>0) { earned+=h.starStreak; reasons.push(h.name+' Streak 🔥'+newStreak); }
                     if (earned > 0) { totalStarsEarned += earned; addStarLog('earn', earned, reasons.join(' + ')); }
                 });
-                if (totalStarsEarned > 0) { starBalance += totalStarsEarned; await syncStarData(); updateStarDisplay(); }
+                if (totalStarsEarned > 0) { starBalance += totalStarsEarned; await syncStarData(); }
 
                 // Streak payouts — growing by streak length, capped per habit
                 habits.forEach(h => {
@@ -223,14 +285,6 @@
             fall:   { label:'Fall',   months:[9,10,11], accent:'#8a3a10', bg:'rgba(253,240,232,0.7)', border:'#f0a880', badge:'#fdeee5' },
             winter: { label:'Winter', months:[12,1,2], accent:'#1a5c8a', bg:'rgba(232,245,253,0.7)', border:'#90c8f0', badge:'#e6f4fd' }
         };
-
-        function getCurrentSeason() {
-            const m = new Date().getMonth() + 1;
-            for (const [key, meta] of Object.entries(SEASON_META)) {
-                if (meta.months.includes(m)) return key;
-            }
-            return 'spring';
-        }
 
         function isEventActive(ev) {
             const today = new Date();
@@ -447,13 +501,12 @@
                     starLog     = snap.data().log      || [];
                 }
                 shopLoaded = true;
-                updateStarDisplay();
                 renderShopManage();
             } catch(e) { console.error('loadStarData:', e); }
         }
 
         async function syncStarData() {
-            if (starLog.length > 200) starLog = starLog.slice(0, 200);
+            if (starLog.length > MAX_STAR_LOG) starLog = starLog.slice(0, MAX_STAR_LOG);
             await setDoc(doc(db, 'system', 'star_data'), {
                 balance: starBalance, spent: starsSpent, items: shopItems, log: starLog
             });
@@ -461,11 +514,6 @@
 
         function addStarLog(type, amount, reason) {
             starLog.unshift({ ts: Date.now(), type, amount, reason });
-        }
-
-        function updateStarDisplay() {
-            const el = document.getElementById('starDisplay');
-            // number lives inside the shop only — trigger is icon only
         }
 
         window.openShop = () => {
@@ -542,7 +590,6 @@
             addStarLog('spend', pendingRedeem.cost, 'Redeemed: ' + pendingRedeem.name);
             pendingRedeem = null;
             await syncStarData();
-            updateStarDisplay();
             document.getElementById('shopConfirmView').style.display = 'none';
             document.getElementById('shopItemsView').style.display = '';
             renderShopSheet();
@@ -555,7 +602,6 @@
             starBalance += amt;
             addStarLog('earn', amt, note);
             await syncStarData();
-            updateStarDisplay();
             document.getElementById('awardAmt').value = '';
             if (document.getElementById('awardNote')) document.getElementById('awardNote').value = '';
             alert('✨ ' + amt + ' stars awarded!');
@@ -684,7 +730,7 @@
                     })
                 };
                 weeks.unshift(entry);
-                if (weeks.length > 52) weeks = weeks.slice(0, 52);
+                if (weeks.length > MAX_HISTORY_WEEKS) weeks = weeks.slice(0, MAX_HISTORY_WEEKS);
                 await setDoc(histRef, { weeks });
             } catch(e) { console.error('saveWeekSnapshot:', e); }
         }
@@ -1056,22 +1102,55 @@
             checkPerfectWeek();
         };
 
-        // LISTENERS
-        onSnapshot(doc(db, "system", "habits_list"), async (docSnap) => {
+        // ── FIREBASE LISTENER ────────────────────────────────────────────────
+        // onSnapshot fires immediately on page load (delivers the initial data),
+        // then again any time habits_list changes — including our own writes from
+        // syncToFirebase(). This is what drives the full update cycle:
+        //   user taps bubble → toggleBubble() → syncToFirebase() → onSnapshot → render()
+        // The 'async' keyword was removed — there is no await inside this callback.
+        onSnapshot(doc(db, "system", "habits_list"), (docSnap) => {
             if (docSnap.exists()) {
                 habits = docSnap.data().data;
                 render();
-
-                initialLoadDone = true;
             }
         });
 
-        // UTILS
+        // ── UTILS ────────────────────────────────────────────────────────────
+
+        // Returns the tier string for a given completion count against a habit's
+        // threshold fields. Evaluated highest-to-lowest so the first match wins.
+        //
+        // Fallback defaults (||) handle new habits or old Firebase documents
+        // that were created before a threshold field existed.
+        //
+        //   punish — below the low threshold (may earn a financial penalty)
+        //   low    — some progress but below goal
+        //   goal   — hit the weekly goal
+        //   bonus  — exceeded the weekly goal
         function getTier(h, count) {
-            if (count >= (h.bonus || 7)) return 'bonus';
-            if (count >= (h.goal || 5)) return 'goal';
-            if (count >= (h.low || 3)) return 'low';
-            return 'punish'; 
+            if (count >= (h.bonus || 7)) return TIER_BONUS;
+            if (count >= (h.goal  || 5)) return TIER_GOAL;
+            if (count >= (h.low   || 3)) return TIER_LOW;
+            return TIER_PUNISH;
+        }
+
+        // ── DAY-FOR-BUBBLE HELPER ────────────────────────────────────────────
+        // Given a habit's 7-day history array and a bubble level i (1-based),
+        // returns the abbreviated day label of the FIRST day history reached i.
+        //
+        // Why: toggling a bubble propagates its value to all future days, so the
+        // first day >= i is always the day the user actually earned that bubble.
+        //
+        // Example: history = [0,0,3,3,3,3,3]
+        //   dayForBubble(hist, 1) → 'W'   (Wednesday was first day >= 1)
+        //   dayForBubble(hist, 3) → 'W'   (Wednesday was first day >= 3)
+        //
+        // DAY_ABBR = ['M','T','W','Th','F','S','Su']  (defined in constants above)
+        function dayForBubble(hist, i) {
+            for (let d = 0; d < 7; d++) {
+                if ((hist[d] || 0) >= i) return DAY_ABBR[d];
+            }
+            return '';  // bubble not yet earned this week
         }
 
         window.render = function() {
@@ -1184,16 +1263,11 @@
                     const isUrgent    = !h.excused && (modeThresh - cur) >= possible && (modeThresh - cur) > 0;
                     const isArriving = h.id === lastActedId;
 
-                    const _DS = ['M','T','W','Th','F','S','Su'];
-                    // For each bubble i, find the first day where history reached level i.
-                    // e.g. 3 bubbles filled on Mon → all show M.
-                    // Go back and fill 2 more on Thu → those show Th.
-                    function dayForBubble(hist, i) {
-                        for (let d = 0; d < 7; d++) {
-                            if ((hist[d] || 0) >= i) return _DS[d];
-                        }
-                        return '';
-                    }
+                    // Cache streak computation — computeStreaksFromHistory() sorts and
+                    // scans all of weeklyHistory on every call. Calling it twice per
+                    // habit (once per badge) doubles work for no reason. Call once, reuse.
+                    const streaks = computeStreaksFromHistory(h.id);
+
                     let bubblesHtml = '';
                     for (let i = 1; i <= (h.max || 7); i++) {
                         const stepTier  = getTier(h, i);
@@ -1217,14 +1291,8 @@
                                 ${h.excused ? '<span class="excused-tag">✦ Excused this week</span>' : ''}
                                 <div style="display:flex;align-items:center;gap:8px;">
                                     <p style="margin:0; font-weight:600;">${h.name}</p>
-                                    ${(() => {
-                                        const s = computeStreaksFromHistory(h.id);
-                                        return s.streak >= 1 ? `<span class="streak-badge">🔥 ${s.streak}</span>` : '';
-                                    })()}
-                                    ${(() => {
-                                        const s = computeStreaksFromHistory(h.id);
-                                        return s.badStreak >= 1 ? `<span class="bad-streak-badge">🌧️ ${s.badStreak}</span>` : '';
-                                    })()}
+                                    ${streaks.streak    >= 1 ? `<span class="streak-badge">🔥 ${streaks.streak}</span>` : ''}
+                                    ${streaks.badStreak >= 1 ? `<span class="bad-streak-badge">🌧️ ${streaks.badStreak}</span>` : ''}
                                     ${cycleLabel(h) ? `<span class="cycle-badge">🔄 ${cycleLabel(h)}</span>` : ''}
                                     <button class="excuse-btn ${h.excused ? 'excuse-on' : ''}" onclick="event.stopPropagation();window.toggleExcused('${h.id}')">${h.excused ? 'Unexcuse' : 'Excuse'}</button>
                                 </div>
