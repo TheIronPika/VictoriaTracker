@@ -9,7 +9,7 @@
     
     <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
-    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
@@ -214,6 +214,87 @@
 
             return { reportText, totalMoney, dateStr };
         }
+
+        // ═══════════════════════════════════════════════════════════════
+        // VICTORIA'S REPORT GENERATOR
+        // ═══════════════════════════════════════════════════════════════
+        function buildVictoriaReportHtml(habitsArr, totalBalance) {
+            const now = new Date();
+            const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+            const weekEnding = months[now.getMonth()] + ' ' + now.getDate() + ', ' + now.getFullYear();
+            
+            // Build achievements list (habits with activity this week)
+            const achievementsList = habitsArr.map(h => {
+                const cur = h.history && h.history[6] !== undefined ? h.history[6] : (h.history && h.history[h.history.length-1] || 0);
+                const tier = getTier(h, cur);
+                const streaks = computeStreaksFromHistory(h.id);
+                let payout = 0;
+                if(tier === 'punish') payout = h.valPunish || 0;
+                else if(tier === 'low') payout = h.valLow || 0;
+                else if(tier === 'goal') payout = h.valGoal || 0;
+                else if(tier === 'bonus') payout = h.valBonus || 0;
+                return { id:h.id, icon:h.icon, name:h.name, cur, tier, payout, streak:streaks.streak, badStreak:streaks.badStreak };
+            }).filter(a => a.cur > 0).sort((a,b) => {
+                const tierOrder = {bonus:3, goal:2, low:1, punish:0};
+                if(tierOrder[a.tier] !== tierOrder[b.tier]) return tierOrder[b.tier] - tierOrder[a.tier];
+                const aScore = a.streak + (a.payout || 0);
+                const bScore = b.streak + (b.payout || 0);
+                return bScore - aScore;
+            });
+
+            const achievementsHtml = achievementsList.slice(0,2).map((a,i) => {
+                return `<div style="display:flex;align-items:center;gap:12px;padding:14px;background:linear-gradient(135deg,rgba(132,250,176,0.12),rgba(84,250,150,0.06));border:1.5px solid rgba(132,250,176,0.3);border-radius:12px;"><div style="font-size:28px;flex-shrink:0;">${a.icon}</div><div style="flex:1;"><div style="font-weight:700;color:#4a3a3a;font-size:12px;margin-bottom:2px;">${a.name}</div><div style="font-size:10px;color:#888;">${a.cur}/7 days • ${a.streak}-week streak • +$${a.payout.toFixed(2)}</div></div><div style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;padding:4px 8px;border-radius:6px;background:${a.tier==='bonus'?'linear-gradient(135deg,rgba(142,68,173,0.2),rgba(142,68,173,0.1))':'rgba(39,174,96,0.15)'};color:${a.tier==='bonus'?'#8e44ad':'#27ae60'};white-space:nowrap;">${a.tier.toUpperCase()}</div></div>`;
+            }).join('');
+
+            return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Victoria Report</title><link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@300;400;600&display=swap" rel="stylesheet"><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Montserrat',sans-serif;background:linear-gradient(135deg,#fef9f7 0%,#f5eef8 100%);padding:20px}.container{max-width:600px;margin:0 auto;background:white;border-radius:32px;box-shadow:0 12px 48px rgba(212,163,163,0.12);overflow:hidden}.header{background:linear-gradient(135deg,#f9ecec 0%,#f5eaf5 50%,#f0e8f8 100%);padding:50px 32px 40px;text-align:center}.week-date{font-size:11px;color:#d4a3a3;text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:10px}.title{font-family:'Great Vibes',cursive;font-size:56px;color:#d4a3a3;margin:0;line-height:1}.subtitle{font-family:'Playfair Display',serif;font-size:14px;color:#a0a0a0;font-style:italic;margin-top:8px}.content{padding:40px 32px}.hero{text-align:center;margin-bottom:32px}.hero-stat{display:inline-block;font-family:'Great Vibes',cursive;font-size:64px;color:#27ae60;line-height:1;margin-bottom:8px}.hero-label{font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;font-weight:700}.section{margin-bottom:28px}.section-title{font-family:'Playfair Display',serif;font-size:16px;color:#d4a3a3;font-style:italic;margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid rgba(212,163,163,0.2)}.footer{background:linear-gradient(135deg,rgba(212,163,163,0.04) 0%,rgba(230,190,255,0.04) 100%);padding:24px 32px;text-align:center;border-top:1px solid rgba(212,163,163,0.1)}.footer-text{font-size:11px;color:#888;line-height:1.6;margin-bottom:8px}.signature{font-family:'Great Vibes',cursive;font-size:26px;color:#d4a3a3}</style></head><body><div class="container"><div class="header"><div class="week-date">Week Ending ${weekEnding}</div><div class="title">Victoria</div><div class="subtitle">Weekly Reflection</div></div><div class="content"><div class="hero"><div class="hero-stat">${totalBalance >= 0 ? '+' : ''}$${Math.abs(totalBalance).toFixed(2)}</div><div class="hero-label">This Week's Earnings</div></div><div class="section"><div class="section-title">⭐ Your Best This Week</div><div style="display:flex;flex-direction:column;gap:10px;">${achievementsHtml || '<p style="color:#888;font-size:12px;">No activity this week yet.</p>'}</div></div></div><div class="footer"><div class="footer-text">You're doing amazing!<br>Keep up the momentum.</div><div class="signature">—Drew</div></div></div></body></html>`;
+        }
+
+        window.sendVictoriaTestReport = async () => {
+            if(!habits || !habits.length) { 
+                alert('No habits to report on yet.');
+                return;
+            }
+            
+            let testTotal = 0;
+            habits.forEach(h => {
+                if(!h.excused) {
+                    const cur = h.history && h.history[6] !== undefined ? h.history[6] : (h.history && h.history[h.history.length-1] || 0);
+                    const tier = getTier(h, cur);
+                    let payout = 0;
+                    if(tier === 'punish') payout = h.valPunish || 0;
+                    else if(tier === 'low') payout = h.valLow || 0;
+                    else if(tier === 'goal') payout = h.valGoal || 0;
+                    else if(tier === 'bonus') payout = h.valBonus || 0;
+                    testTotal += payout;
+                }
+            });
+            
+            const victoriaHtml = buildVictoriaReportHtml(habits, testTotal);
+            
+            try {
+                // Create temp div for PDF
+                const pdfDiv = document.createElement('div');
+                pdfDiv.innerHTML = victoriaHtml;
+                pdfDiv.style.display = 'none';
+                document.body.appendChild(pdfDiv);
+                
+                // Generate PDF
+                await html2pdf().set({
+                    margin: 0,
+                    filename: 'Victoria_Weekly_Report.pdf',
+                    pagebreak: { mode: 'avoid', avoid: 'all' },
+                    html2canvas: { scale: 2 },
+                    jsPDF: { orientation: 'portrait', unit: 'mm', format: 'letter', compress: true }
+                }).from(pdfDiv).save();
+                
+                document.body.removeChild(pdfDiv);
+                
+                alert('✨ Victoria report PDF downloaded!\n(Week has NOT been reset)');
+            } catch(error) {
+                console.error('Victoria report error:', error);
+                alert('Error generating report: ' + (error?.message || error));
+            }
+        };
 
         // Phase 2 — Award stars for tier achievements and streaks.
         // Mutates starBalance and starLog; flushes to Firestore via syncStarData().
@@ -2741,7 +2822,10 @@
 </div>
 <div class="manage-section-header" onclick="window.toggleManageSection('ms-habits')"><span style="font-family:'Playfair Display';font-size:13px;font-weight:700;color:var(--header-pink);">Habits &amp; Tiers</span><span id="msc-ms-habits" style="color:#ccc;font-size:18px;transition:transform 0.2s;transform:;">&#8250;</span></div>
 <div id="ms-ms-habits" style="display:none;">
-            <button onclick="window.runWeeklyReport(true)" style="width:100%; padding:15px; background:#4a3a3a; color:white; border-radius:12px; margin-bottom:20px; border:none; font-weight:bold; cursor:pointer; font-family:'Playfair Display'; letter-spacing:1px;">SUBMIT WEEKLY REPORT &amp; RESET</button>
+            <div style="display:flex; gap:12px; margin-bottom:20px;">
+                <button onclick="window.sendVictoriaTestReport()" style="flex:1; padding:15px; background:#8e44ad; color:white; border-radius:12px; border:none; font-weight:bold; cursor:pointer; font-family:'Playfair Display'; letter-spacing:1px;">📧 TEST SEND</button>
+                <button onclick="window.runWeeklyReport(true)" style="flex:1; padding:15px; background:#4a3a3a; color:white; border-radius:12px; border:none; font-weight:bold; cursor:pointer; font-family:'Playfair Display'; letter-spacing:1px;">✓ SUBMIT &amp; RESET</button>
+            </div>
 
 </div>
             <div id="manageRoot"></div>
