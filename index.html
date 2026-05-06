@@ -122,6 +122,10 @@
         let pendingRedeem = null;       // shop item currently in the confirm-redeem flow
         let starLog      = [];          // earn/spend history entries { ts, type, amount, reason }
 
+        // Debounce timer for updateField — held between calls so rapid spinner
+        // clicks only send a single Firebase write after the last change settles
+        let _updateFieldTimer = null;
+
         // Maps a JS Date to our Mon=0 … Sun=6 week index.
         // JS Date.getDay() returns Sun=0, Mon=1, …, Sat=6.
         // We remap so Monday = index 0, matching the leftmost bubble column.
@@ -1052,14 +1056,28 @@
             }
         };
 
+        // ── UPDATE FIELD ─────────────────────────────────────────────────────
+        // Called by every input/select onchange in the Manage tab.
+        // Applies the change to local state immediately (so the UI stays responsive),
+        // then debounces the Firebase write — waits 400ms after the last change
+        // before writing.  This prevents number-spinner clicks from firing a write
+        // per step (e.g. changing a threshold from 5 → 7 fires 2 rapid onchanges,
+        // each of which would trigger onSnapshot → render() without the debounce).
         window.updateField = async (id, field, value) => {
             const h = habits.find(x => x.id === id);
+            if (!h) return;
+            // Apply to local state immediately — no waiting
             if (field === 'note' || field === 'cycleType')       h[field] = value;
             else if (field.startsWith('val'))                    h[field] = parseFloat(value);
             else if (field.startsWith('star'))                   h[field] = parseInt(value) || 0;
             else if (field === 'streakBonusPer' || field === 'streakPenaltyPer' || field === 'streakCap') h[field] = parseFloat(value) || 0;
             else                                                  h[field] = parseInt(value) || 1;
-            await syncToFirebase();
+            // Debounce the write: cancel any pending timer and start a fresh 400ms window
+            clearTimeout(_updateFieldTimer);
+            _updateFieldTimer = setTimeout(async () => {
+                _updateFieldTimer = null;
+                await syncToFirebase();
+            }, 400);
         };
 
         window.toggleBubble = async (id, val) => {
@@ -1165,13 +1183,18 @@
             });
             const weeklyRoot = document.getElementById('weeklyRoot');
             const manageRoot = document.getElementById('manageRoot');
-            
+
+            // Only rebuild the Manage panel when it's actually visible (unlocked).
+            // It contains a full input card per habit and is hidden behind a passcode
+            // during normal use, so building it on every render is pure wasted work.
+            const manageVisible = document.getElementById('managePanel')?.style.display !== 'none';
+
             const dIdx = getDayIdx(viewingDate);
 
             todayRoot.innerHTML = '';
             priorityRoot.innerHTML = '';
             weeklyRoot.innerHTML = '';
-            manageRoot.innerHTML = '';
+            if (manageVisible) manageRoot.innerHTML = '';
 
             let totalMoney = 0;
             let counts = { punish: 0, low: 0, goal: 0, bonus: 0 };
@@ -1334,7 +1357,10 @@
                         </div>
                     `;
 
-                    manageRoot.innerHTML += `
+                    // Only build the manage card when the panel is unlocked and visible —
+                    // it's expensive (full input table per habit) and never shown during normal use
+                    if (manageVisible) {
+                        manageRoot.innerHTML += `
                         <div class="manage-card">
                             <h4 class="beloved-small" style="font-family:'Great Vibes'; font-size:24px; color:var(--header-pink); margin:0 0 10px 0;">${h.icon} ${h.name}</h4>
                             <div style="margin-bottom:10px; display:flex; gap:20px; align-items:center; flex-wrap:wrap;">
@@ -1389,6 +1415,7 @@
                             <button class="btn-delete" onclick="window.deleteTask('${h.id}')">DELETE TASK</button>
                         </div>
                     `;
+                    } // end if (manageVisible)
                 });
 
                 weekSectionHtml += `</div></div>`;
@@ -1726,6 +1753,24 @@
         }
 
         // ── PERFECT WEEK CONFETTI ────────────────────────────────────────
+
+        // Removes stale perfectWeek_ keys from localStorage.
+        // One key is written per day a perfect week is achieved (e.g. "perfectWeek_Tue May 06 2025").
+        // Without cleanup they accumulate forever — this runs once on load and
+        // removes any key older than 7 days.
+        function cleanupOldPerfectWeekKeys() {
+            const cutoff = Date.now() - (7 * 24 * 60 * 60 * 1000);
+            const toRemove = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const k = localStorage.key(i);
+                if (k && k.startsWith('perfectWeek_')) {
+                    const d = new Date(k.replace('perfectWeek_', '')).getTime();
+                    if (!isNaN(d) && d < cutoff) toRemove.push(k);
+                }
+            }
+            toRemove.forEach(k => localStorage.removeItem(k));
+        }
+
         function checkPerfectWeek() {
             if (!habits.length) return;
             const key = 'perfectWeek_' + new Date().toDateString();
@@ -1754,6 +1799,7 @@
         }
 
         window.addEventListener('load', () => {
+            cleanupOldPerfectWeekKeys();  // remove perfectWeek_ localStorage keys older than 7 days
             updateGreeting();
             fetchWeatherAndUV();
             applyTimeColor();
