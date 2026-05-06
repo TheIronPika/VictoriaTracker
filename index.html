@@ -139,41 +139,49 @@
         // Important side-effect: this triggers the onSnapshot listener below,
         // which calls render() — so any change that calls syncToFirebase()
         // automatically re-renders the UI without a separate render() call.
+        // schemaVersion lets future migration code detect and upgrade old documents.
         async function syncToFirebase() {
-            await setDoc(doc(db, "system", "habits_list"), { data: habits });
+            await setDoc(doc(db, "system", "habits_list"), { schemaVersion: 1, data: habits });
         }
 
-        // WEEKLY REPORT
-        window.runWeeklyReport = async (isManual = true) => {
+        // ── WEEKLY REPORT HELPERS ────────────────────────────────────────────
+        // The weekly report process has 4 distinct phases, each extracted here so
+        // runWeeklyReport() reads as a clear sequence of steps rather than one
+        // 130-line monolith. All helpers are pure (no side-effects) except
+        // awardWeeklyStars() which writes to Firestore.
+
+        // Phase 1 — Build the plain-text email body.
+        // Returns { reportText, totalMoney, dateStr } where totalMoney is the
+        // base payout (streak bonuses are added later in Phase 2).
+        function buildWeeklyReport(habitsArr) {
             let totalMoney = 0;
             let lines = [];
 
             // Single ASCII chars — emoji get JSON-encoded as 12-char escape sequences
             // which can push the payload over EmailJS's 50KB limit
-            const dotChar   = { punish:'D', low:'L', goal:'G', bonus:'B' };
+            const dotChar    = { punish:'D', low:'L', goal:'G', bonus:'B' };
             const tierLabels = { punish:'DEBT', low:'LOW', goal:'GOAL', bonus:'BONUS' };
 
-            habits.forEach(h => {
+            habitsArr.forEach(h => {
                 // Slice to 7 — Firebase history arrays can grow longer and bloat the payload
                 const hist = (h.history || []).slice(0, 7);
                 const cur  = hist[6] !== undefined ? hist[6] : (hist[hist.length - 1] || 0);
                 const tier = getTier(h, cur);
                 let payout = 0;
-                if(tier === 'punish') payout = h.valPunish || 0;
-                else if(tier === 'low')   payout = h.valLow   || 0;
-                else if(tier === 'goal')  payout = h.valGoal  || 0;
-                else if(tier === 'bonus') payout = h.valBonus || 0;
+                if (tier === 'punish') payout = h.valPunish || 0;
+                else if (tier === 'low')   payout = h.valLow   || 0;
+                else if (tier === 'goal')  payout = h.valGoal  || 0;
+                else if (tier === 'bonus') payout = h.valBonus || 0;
                 totalMoney += payout;
 
                 // e.g.  M:G T:G W:L T:. F:. S:. S:.
-                const days  = ['M','T','W','T','F','S','S'];
-                const dots  = days.map((d, i) => {
+                const days = ['M','T','W','T','F','S','S'];
+                const dots = days.map((d, i) => {
                     const c = hist[i] || 0;
                     return d + ':' + (c > 0 ? dotChar[getTier(h, c)] : '.');
                 }).join('  ');
 
                 const payStr = (payout < 0 ? '-$' : '+$') + Math.abs(payout).toFixed(2);
-
                 lines.push(h.icon + ' ' + h.name);
                 lines.push('  ' + dots);
                 lines.push('  ' + tierLabels[tier] + ' | ' + payStr);
@@ -181,104 +189,140 @@
             });
 
             const now     = new Date();
-            const months  = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-            const dateStr = months[now.getMonth()] + ' ' + now.getDate() + ', ' + now.getFullYear();
+            const months  = ['January','February','March','April','May','June','July',
+                             'August','September','October','November','December'];
+            const dateStr  = months[now.getMonth()] + ' ' + now.getDate() + ', ' + now.getFullYear();
             const totalStr = (totalMoney < 0 ? '-$' : '+$') + Math.abs(totalMoney).toFixed(2);
-            const line    = '--------------------------------';
+            const rule     = '--------------------------------';
 
             // Key: D=Debt  L=Low  G=Goal  B=Bonus  .=No activity
             const reportText =
-                'VICTORIA\'S WEEKLY REPORT\n' +
+                "VICTORIA'S WEEKLY REPORT\n" +
                 'Week ending ' + dateStr + '\n' +
                 'Key: D=Debt  L=Low  G=Goal  B=Bonus  .=No activity\n' +
-                line + '\n\n' +
+                rule + '\n\n' +
                 lines.join('\n') +
-                line + '\n' +
+                rule + '\n' +
                 'TOTAL BALANCE: ' + totalStr + '\n' +
-                line;
+                rule;
 
-            const templateParams = {
-                summary_text: reportText
-            };
+            return { reportText, totalMoney, dateStr };
+        }
+
+        // Phase 2 — Award stars for tier achievements and streaks.
+        // Mutates starBalance and starLog; flushes to Firestore via syncStarData().
+        async function awardWeeklyStars(habitsArr) {
+            let totalStarsEarned = 0;
+            habitsArr.forEach(h => {
+                if (h.excused) return;
+                const hist = (h.history||[]).slice(0,7);
+                const cur  = hist[6] !== undefined ? hist[6] : (hist[hist.length-1]||0);
+                const tier = getTier(h, cur);
+                // Preview what the streak will be AFTER this reset so we can award streak stars
+                const nextStreak = (tier==='goal'||tier==='bonus') ? (h.streak||0)+1 : 0;
+                let earned = 0, reasons = [];
+                if (tier==='goal'  && (h.starGoal  ||0)>0) { earned+=h.starGoal;   reasons.push(h.name+' Goal'); }
+                if (tier==='bonus' && (h.starBonus ||0)>0) { earned+=h.starBonus;  reasons.push(h.name+' Bonus'); }
+                if (nextStreak>=2  && (h.starStreak||0)>0) { earned+=h.starStreak; reasons.push(h.name+' Streak 🔥'+nextStreak); }
+                if (earned > 0) { totalStarsEarned += earned; addStarLog('earn', earned, reasons.join(' + ')); }
+            });
+            if (totalStarsEarned > 0) {
+                starBalance += totalStarsEarned;
+                await syncStarData();
+            }
+        }
+
+        // Phase 3 — Add streak bonus/penalty payouts to the base totalMoney.
+        // Pure: reads habit state, returns updated totalMoney.
+        function applyStreakPayouts(habitsArr, totalMoney) {
+            habitsArr.forEach(h => {
+                if (h.excused) return;
+                const hist = (h.history||[]).slice(0,7);
+                const cur  = hist[6] !== undefined ? hist[6] : (hist[hist.length-1]||0);
+                const tier = getTier(h, cur);
+                const streak    = h.streak    || 0;
+                const badStreak = h.badStreak || 0;
+                // Positive streak bonus: grows with streak length, optional cap
+                if ((tier==='goal'||tier==='bonus') && streak>=2 && (h.streakBonusPer||0)>0) {
+                    const raw = streak * (h.streakBonusPer||0);
+                    const cap = h.streakCap ? parseFloat(h.streakCap) : Infinity;
+                    totalMoney += Math.min(raw, cap);
+                }
+                // Negative streak penalty: grows with bad streak length, optional cap
+                if ((tier==='punish'||tier==='low') && badStreak>=2 && (h.streakPenaltyPer||0)>0) {
+                    const raw = badStreak * (h.streakPenaltyPer||0);
+                    const cap = h.streakCap ? parseFloat(h.streakCap) : Infinity;
+                    totalMoney -= Math.min(raw, cap);
+                }
+            });
+            return totalMoney;
+        }
+
+        // Phase 4a — Update streak counters on each habit.
+        // Pure: returns a new habits array with streak/badStreak/bestStreak updated.
+        // Excused habits have their streak frozen — neither incremented nor reset.
+        function updateHabitStreaks(habitsArr) {
+            return habitsArr.map(h => {
+                if (h.excused) return { ...h };  // freeze streak as-is
+                const hist      = (h.history||[]).slice(0,7);
+                const cur       = hist[6] !== undefined ? hist[6] : (hist[hist.length-1]||0);
+                const tier      = getTier(h, cur);
+                const isGood    = tier === 'goal' || tier === 'bonus';
+                const streak    = isGood ? (h.streak||0) + 1 : 0;
+                const badStreak = !isGood ? (h.badStreak||0) + 1 : 0;
+                const best      = Math.max(streak, h.bestStreak||0);
+                return { ...h, streak, badStreak, bestStreak: best };
+            });
+        }
+
+        // Phase 4b — Reset history and advance cycleNextDue for cyclic habits.
+        // Pure: returns a new habits array. All habits get history reset to zeros
+        // and excused flag cleared. Cyclic habits that completed also get a new
+        // cycleNextDue so they disappear until the next due date.
+        function advanceHabitCycles(habitsArr) {
+            return habitsArr.map(h => {
+                if (h.cycleType && h.cycleType !== 'none') {
+                    const hist      = (h.history||[]).slice(0,7);
+                    const cur       = hist[6] !== undefined ? hist[6] : (hist[hist.length-1]||0);
+                    const completed = getTier(h, cur) === 'goal' || getTier(h, cur) === 'bonus';
+                    if (completed) {
+                        return { ...h, history:[0,0,0,0,0,0,0], excused:false,
+                                       cycleNextDue: Date.now() + cycleIntervalMs(h) };
+                    }
+                }
+                return { ...h, history:[0,0,0,0,0,0,0], excused:false };
+            });
+        }
+
+        // ── WEEKLY REPORT ORCHESTRATOR ───────────────────────────────────────
+        // Calls the four phase helpers in order, guarded by a single try/catch
+        // around the EmailJS send.  If the email fails, nothing is saved —
+        // no stars awarded, no streaks updated, no reset fired.
+        window.runWeeklyReport = async (isManual = true) => {
+            const { reportText, totalMoney: baseMoney, dateStr } = buildWeeklyReport(habits);
 
             try {
-                await emailjs.send('service_gj1f9sj', 'template_2cyqti5', templateParams);
-                // Award stars per habit based on starGoal / starBonus / starStreak
-                let totalStarsEarned = 0;
-                habits.forEach(h => {
-                    if (h.excused) return;
-                    const hHist = (h.history||[]).slice(0,7);
-                    const hCur  = hHist[6] !== undefined ? hHist[6] : (hHist[hHist.length-1]||0);
-                    const hTier = getTier(h, hCur);
-                    const newStreak    = (hTier==='goal'||hTier==='bonus') ? (h.streak||0)+1 : 0;
-                    const newBadStreak = (hTier==='punish'||hTier==='low') ? (h.badStreak||0)+1 : 0;
-                    let earned = 0, reasons = [];
-                    if (hTier==='goal'  && (h.starGoal  ||0)>0) { earned+=h.starGoal;   reasons.push(h.name+' Goal'); }
-                    if (hTier==='bonus' && (h.starBonus ||0)>0) { earned+=h.starBonus;  reasons.push(h.name+' Bonus'); }
-                    if (newStreak>=2    && (h.starStreak||0)>0) { earned+=h.starStreak; reasons.push(h.name+' Streak 🔥'+newStreak); }
-                    if (earned > 0) { totalStarsEarned += earned; addStarLog('earn', earned, reasons.join(' + ')); }
-                });
-                if (totalStarsEarned > 0) { starBalance += totalStarsEarned; await syncStarData(); }
+                await emailjs.send('service_gj1f9sj', 'template_2cyqti5', { summary_text: reportText });
 
-                // Streak payouts — growing by streak length, capped per habit
-                habits.forEach(h => {
-                    if (h.excused) return;
-                    const hHist2 = (h.history||[]).slice(0,7);
-                    const hCur2  = hHist2[6] !== undefined ? hHist2[6] : (hHist2[hHist2.length-1]||0);
-                    const hTier2 = getTier(h, hCur2);
-                    const curStreak    = h.streak    || 0;
-                    const curBadStreak = h.badStreak || 0;
-                    // Positive streak bonus
-                    if ((hTier2==='goal'||hTier2==='bonus') && curStreak>=2 && (h.streakBonusPer||0)>0) {
-                        const raw  = curStreak * (h.streakBonusPer||0);
-                        const cap  = h.streakCap ? parseFloat(h.streakCap) : Infinity;
-                        totalMoney += Math.min(raw, cap);
-                    }
-                    // Negative streak penalty
-                    if ((hTier2==='punish'||hTier2==='low') && curBadStreak>=2 && (h.streakPenaltyPer||0)>0) {
-                        const raw  = curBadStreak * (h.streakPenaltyPer||0);
-                        const cap  = h.streakCap ? parseFloat(h.streakCap) : Infinity;
-                        totalMoney -= Math.min(raw, cap);
-                    }
-                });
+                await awardWeeklyStars(habits);
 
-                // Update streaks before saving snapshot
-                // Excused habits freeze their streak — neither increment nor reset
-                habits = habits.map(h => {
-                    if (h.excused) return { ...h }; // freeze streak as-is
-                    const hist    = (h.history||[]).slice(0,7);
-                    const cur     = hist[6] !== undefined ? hist[6] : (hist[hist.length-1]||0);
-                    const tier    = getTier(h, cur);
-                    const isGood    = tier === 'goal' || tier === 'bonus';
-                    const streak    = isGood ? (h.streak||0) + 1 : 0;
-                    const badStreak = !isGood ? (h.badStreak||0) + 1 : 0;
-                    const best      = Math.max(streak, h.bestStreak||0);
-                    return { ...h, streak, badStreak, bestStreak: best };
-                });
+                const totalMoney = applyStreakPayouts(habits, baseMoney);
+
+                habits = updateHabitStreaks(habits);
                 await saveWeekSnapshot(habits, totalMoney, dateStr);
-                // Advance cycleNextDue for habits that completed their cycle
-                habits = habits.map(h => {
-                    if (h.cycleType && h.cycleType !== 'none') {
-                        const hist3 = (h.history||[]).slice(0,7);
-                        const cur3  = hist3[6] !== undefined ? hist3[6] : (hist3[hist3.length-1]||0);
-                        const tier3 = getTier(h, cur3);
-                        const completed = tier3 === 'goal' || tier3 === 'bonus';
-                        if (completed) {
-                            return { ...h, history:[0,0,0,0,0,0,0], excused:false,
-                                          cycleNextDue: Date.now() + cycleIntervalMs(h) };
-                        }
-                    }
-                    return { ...h, history:[0,0,0,0,0,0,0], excused:false };
-                });
+
+                habits = advanceHabitCycles(habits);
                 await syncToFirebase();
+
                 historyLoaded = false;
-                if(isManual) alert('Weekly report sent and habits reset!');
+                if (isManual) alert('Weekly report sent and habits reset!');
             } catch (error) {
                 const msg = error?.text || error?.message || JSON.stringify(error);
-                console.error('EmailJS send failed:', error);
-                if(isManual) alert('Email failed to send.\n\nError: ' + msg);
+                console.error('Weekly report failed:', error);
+                if (isManual) alert('Email failed to send.\n\nError: ' + msg);
             }
         };
+
 
 
         // ── SEASONAL EVENTS ──────────────────────────────────────────────────
@@ -512,7 +556,7 @@
         async function syncStarData() {
             if (starLog.length > MAX_STAR_LOG) starLog = starLog.slice(0, MAX_STAR_LOG);
             await setDoc(doc(db, 'system', 'star_data'), {
-                balance: starBalance, spent: starsSpent, items: shopItems, log: starLog
+                schemaVersion: 1, balance: starBalance, spent: starsSpent, items: shopItems, log: starLog
             });
         }
 
