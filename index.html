@@ -110,6 +110,12 @@
             catch(e) { return {}; }
         })();
 
+        // Per-category collapse state for Manage tab: default all collapsed (undefined = collapsed)
+        let manageCardCollapsed = (() => {
+            try { return JSON.parse(localStorage.getItem('manageCardCollapsed') || '{}'); }
+            catch(e) { return {}; }
+        })();
+
         let seasonalEvents   = [];      // event objects from Firestore seasonal_events
         let eventsLoaded     = false;   // true once seasonalEvents has been fetched
         // Default collapsed — Victoria sees Today view cleanly on first load
@@ -1292,6 +1298,13 @@
                             </div>
                 `;
 
+                // Manage tab: build a collapsible category wrapper
+                let manageCatHtml = '';
+                if (manageVisible) {
+                    const mgCatCol = manageCardCollapsed[cat] !== false; // default collapsed
+                    manageCatHtml = `<div class="manage-cat-header" onclick="window.toggleManageCat('${cat}')"><span style="font-family:'Playfair Display';font-size:13px;font-weight:700;color:var(--header-pink);">${cat}</span><span style="color:#ccc;font-size:20px;transition:transform 0.2s;${mgCatCol ? '' : 'transform:rotate(90deg)'}">›</span></div><div class="manage-cat-body" style="${mgCatCol ? 'display:none' : ''}">`;
+                }
+
                 items.forEach(h => {
                     const cur = h.history[dIdx];
                     const tier = getTier(h, cur);
@@ -1404,9 +1417,13 @@
                     // Only build the manage card when the panel is unlocked and visible —
                     // it's expensive (full input table per habit) and never shown during normal use
                     if (manageVisible) {
-                        manageRoot.innerHTML += `
-                        <div class="manage-card">
-                            <h4 class="beloved-small" style="font-family:'Great Vibes'; font-size:24px; color:var(--header-pink); margin:0 0 10px 0;">${h.icon} ${h.name}</h4>
+                        manageCatHtml += `
+                        <div class="manage-habit-row" onclick="window.toggleManageHabit('${h.id}')">
+                            <span style="font-size:20px;line-height:1;">${h.icon}</span>
+                            <span style="font-family:'Playfair Display';font-size:14px;font-weight:700;flex:1;padding:0 6px;color:var(--text-main);">${h.name}</span>
+                            <span id="mhchv-${h.id}" style="color:#ccc;font-size:20px;line-height:1;transition:transform 0.2s;">›</span>
+                        </div>
+                        <div id="mhbody-${h.id}" class="manage-card" style="display:none;margin:0 0 14px 0;border-radius:0 0 14px 14px;border-top:1px dashed #eee;">
                             <div style="margin-bottom:10px; display:flex; gap:20px; align-items:center; flex-wrap:wrap;">
                                 <div style="font-size:12px;">Max Circles (week):
                                     <input type="number" value="${h.max || 7}" min="1" max="49" style="width:45px; margin-left:4px;"
@@ -1461,6 +1478,11 @@
                     `;
                     } // end if (manageVisible)
                 });
+
+                if (manageVisible) {
+                    manageCatHtml += '</div>'; // close manage-cat-body
+                    manageRoot.innerHTML += manageCatHtml;
+                }
 
                 weekSectionHtml += `</div></div>`;
                 weeklyRoot.innerHTML += weekSectionHtml;
@@ -1536,6 +1558,22 @@
         window.toggleFilter = (tier) => {
             activeFilter = (activeFilter === tier) ? null : tier;
             render();
+        };
+
+        window.toggleManageCat = (cat) => {
+            manageCardCollapsed[cat] = (manageCardCollapsed[cat] !== false) ? false : true;
+            localStorage.setItem('manageCardCollapsed', JSON.stringify(manageCardCollapsed));
+            render();
+        };
+
+        // Toggle a single habit card open/closed in Manage — direct DOM, no re-render needed
+        window.toggleManageHabit = (id) => {
+            const body = document.getElementById('mhbody-' + id);
+            const chv  = document.getElementById('mhchv-' + id);
+            if (!body) return;
+            const open = body.style.display === 'none';
+            body.style.display = open ? '' : 'none';
+            if (chv) chv.style.transform = open ? 'rotate(90deg)' : '';
         };
 
         window.switchTab = (idx) => {
@@ -2524,6 +2562,39 @@
         .shop-log-empty { font-size:12px; color:#bbb; padding:12px 0; }
 
         footer { text-align: center; margin-top: 40px; font-family: 'Great Vibes'; color: var(--header-pink); font-size: 24px; padding-bottom: 40px; }
+
+        /* ── MANAGE TAB: COLLAPSIBLE CATEGORIES + HABIT ROWS ──────────── */
+        .manage-cat-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 11px 14px;
+            margin-bottom: 0;
+            cursor: pointer;
+            background: rgba(255,255,255,0.55);
+            border-radius: 12px 12px 0 0;
+            border-left: 3px solid var(--header-pink);
+            margin-top: 14px;
+        }
+        .manage-cat-body { margin-bottom: 6px; }
+        .manage-habit-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 11px 14px;
+            cursor: pointer;
+            background: rgba(255,255,255,0.75);
+            border-left: 3px solid rgba(212,163,163,0.25);
+            border-bottom: 1px solid rgba(0,0,0,0.04);
+            transition: background 0.15s;
+        }
+        .manage-habit-row:last-of-type { border-radius: 0 0 12px 12px; border-bottom: none; }
+        .manage-habit-row:hover { background: rgba(255,255,255,0.92); }
+        .manage-habit-row + .manage-card {
+            border-radius: 0 0 14px 14px;
+            border-left: 3px solid var(--header-pink);
+            margin-bottom: 0;
+        }
     </style>
 </head>
 <body>
