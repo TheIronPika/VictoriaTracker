@@ -225,11 +225,11 @@
             
             // Tier colors
             const tierColors = { punish:'#d9534f', low:'#e67e22', goal:'#27ae60', bonus:'#8e44ad' };
-            const tierGradients = {
-                punish:'linear-gradient(90deg, #ff9a9e, #d9534f)',
-                low:'linear-gradient(90deg, #f6d365, #e67e22)',
-                goal:'linear-gradient(90deg, #84fab0, #27ae60)',
-                bonus:'linear-gradient(90deg, #d4a0fc, #8e44ad)'
+            const tierBgs = {
+                punish: 'rgba(217,83,79,0.08)',
+                low:    'rgba(230,126,34,0.08)',
+                goal:   'rgba(39,174,96,0.08)',
+                bonus:  'rgba(142,68,173,0.08)'
             };
             
             // Build achievements
@@ -264,14 +264,14 @@
                     if(streaks.streak >= 2 && (h.streakBonusPer||0) > 0) {
                         payout = Math.min(streaks.streak * (h.streakBonusPer||0), h.streakCap ? parseFloat(h.streakCap) : Infinity);
                     }
-                    goodStreaks.push({name: h.name, streak: streaks.streak, payout, tier});
+                    goodStreaks.push({name: h.name, icon: h.icon, streak: streaks.streak, payout, tier});
                 }
                 if(streaks.badStreak >= 1 && (tier === 'punish' || tier === 'low')) {
                     let penalty = 0;
                     if(streaks.badStreak >= 2 && (h.streakPenaltyPer||0) > 0) {
                         penalty = Math.min(streaks.badStreak * (h.streakPenaltyPer||0), h.streakCap ? parseFloat(h.streakCap) : Infinity);
                     }
-                    badStreaks.push({name: h.name, streak: streaks.badStreak, penalty, tier});
+                    badStreaks.push({name: h.name, icon: h.icon, streak: streaks.badStreak, penalty, tier});
                 }
             });
             goodStreaks.sort((a,b) => b.streak - a.streak);
@@ -304,113 +304,106 @@
                 byCategory[cat].push({ icon:h.icon, name:h.name, tier, pct });
             });
 
+            // Build sections HTML
+            const achievementsHtml = achievementsList.map(a => {
+                return `<div style="display:flex;align-items:center;gap:10px;padding:12px;background:${tierBgs[a.tier]};border:1.5px solid ${tierColors[a.tier]}66;border-radius:10px;margin-bottom:8px;">
+                    <div style="font-size:24px;flex-shrink:0;">${a.icon}</div>
+                    <div style="flex:1;">
+                        <div style="font-weight:700;color:#4a3a3a;font-size:12px;margin-bottom:2px;">${a.name}</div>
+                        <div style="font-size:10px;color:#888;">${a.cur}/7 days &middot; ${a.streak}-week streak &middot; +$${a.payout.toFixed(2)}</div>
+                    </div>
+                    <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;padding:4px 8px;border-radius:5px;background:${tierColors[a.tier]}22;color:${tierColors[a.tier]};">${a.tier.toUpperCase()}</div>
+                </div>`;
+            }).join('') || '<div style="color:#888;font-size:11px;padding:8px;">No activity yet.</div>';
+
+            const goodStreaksHtml = goodStreaks.slice(0,3).map(s => {
+                return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:rgba(255,250,227,0.6);border-left:3px solid #e6a02a;border-radius:6px;margin-bottom:6px;">
+                    <div style="font-size:18px;flex-shrink:0;">🔥</div>
+                    <div style="flex:1;">
+                        <div style="font-weight:600;color:#4a3a3a;font-size:11px;">${s.name}</div>
+                        <div style="font-size:9px;color:#888;">${s.streak}-week streak</div>
+                    </div>
+                    <div style="font-family:'Great Vibes',cursive;font-size:22px;color:#8a5a00;font-weight:bold;">+$${s.payout.toFixed(2)}</div>
+                </div>`;
+            }).join('') || '<div style="color:#888;font-size:11px;padding:6px;">No streaks yet.</div>';
+
+            const badStreaksHtml = badStreaks.slice(0,2).map(s => {
+                return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:rgba(217,83,79,0.06);border-left:3px solid #d9534f;border-radius:6px;margin-bottom:6px;">
+                    <div style="font-size:18px;flex-shrink:0;">🌧️</div>
+                    <div style="flex:1;">
+                        <div style="font-weight:600;color:#4a3a3a;font-size:11px;">${s.name}</div>
+                        <div style="font-size:9px;color:#888;">${s.streak}-week negative</div>
+                    </div>
+                    <div style="font-family:'Great Vibes',cursive;font-size:22px;color:#d9534f;font-weight:bold;">-$${s.penalty.toFixed(2)}</div>
+                </div>`;
+            }).join('') || '<div style="color:#888;font-size:11px;padding:6px;">None so far!</div>';
+
+            const missedHtml = missedList.map(m => {
+                return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:${tierBgs[m.tier]};border-left:4px solid ${tierColors[m.tier]};border-radius:6px;margin-bottom:6px;">
+                    <div style="flex:1;font-weight:600;color:#4a3a3a;font-size:11px;">${m.icon} ${m.name}</div>
+                    <div style="font-family:'Great Vibes',cursive;font-size:20px;color:${tierColors[m.tier]};font-weight:bold;">+$${m.missedVal.toFixed(2)}</div>
+                </div>`;
+            }).join('') || '<div style="color:#888;font-size:11px;padding:6px;">Great job hitting your goals!</div>';
+
             let weekHtml = '';
-            for(const [cat, habits] of Object.entries(byCategory)) {
-                const tierForCat = habits.length ? habits[0].tier : 'goal';
+            for(const [cat, catHabits] of Object.entries(byCategory)) {
+                if(!catHabits.length) continue;
+                const tierForCat = catHabits[0].tier;
                 const catColor = tierColors[tierForCat];
-                weekHtml += `<div style="margin-bottom:12px;padding:10px;border-radius:8px;border-left:4px solid ${catColor};background:rgba(0,0,0,0.02);">
-                    <div style="font-size:9px;color:${catColor};text-transform:uppercase;font-weight:800;letter-spacing:0.5px;margin-bottom:6px;">${cat}</div>`;
-                habits.forEach(h => {
+                weekHtml += `<div style="margin-bottom:10px;padding:10px;background:${tierBgs[tierForCat]};border:1px solid ${catColor}40;border-radius:8px;page-break-inside:avoid;">
+                    <div style="font-size:10px;color:${catColor};text-transform:uppercase;font-weight:800;letter-spacing:0.8px;margin-bottom:6px;">${cat}</div>`;
+                catHabits.forEach(h => {
                     const barColor = tierColors[h.tier];
-                    weekHtml += `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;font-size:10px;">
-                        <span style="flex-shrink:0;">${h.icon}</span>
-                        <span style="flex:1;color:#4a3a3a;">${h.name}</span>
-                        <div style="width:50px;height:5px;background:rgba(0,0,0,0.08);border-radius:2px;flex-shrink:0;overflow:hidden;">
-                            <div style="background:${barColor};width:${h.pct}%;height:100%;"></div>
+                    weekHtml += `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:10px;border-bottom:1px solid ${barColor}15;">
+                        <span style="font-size:14px;flex-shrink:0;">${h.icon}</span>
+                        <span style="flex:1;color:#4a3a3a;font-weight:500;">${h.name}</span>
+                        <div style="width:55px;height:5px;background:${barColor}22;border-radius:3px;flex-shrink:0;overflow:hidden;">
+                            <div style="background:${barColor};width:${h.pct}%;height:100%;border-radius:3px;"></div>
                         </div>
                     </div>`;
                 });
                 weekHtml += '</div>';
             }
 
-            const html = `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Victoria Report</title>
-<link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Playfair+Display:wght@400;700&family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
-<style>
-body { margin:0; padding:15px; font-family:'Montserrat',sans-serif; background:#f5f5f5; }
-.report { max-width:700px; margin:0 auto; background:white; border-radius:12px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.1); }
-.header { background:linear-gradient(135deg,#f9ecec 0%,#f5eaf5 50%,#f0e8f8 100%); padding:30px 20px; text-align:center; }
-.week-date { font-size:10px; color:#d4a3a3; text-transform:uppercase; letter-spacing:0.5px; font-weight:700; margin-bottom:6px; }
-.title { font-family:'Great Vibes',cursive; font-size:40px; color:#d4a3a3; margin:0; line-height:1; }
-.subtitle { font-family:'Playfair Display',serif; font-size:12px; color:#999; font-style:italic; margin-top:4px; }
-.content { padding:20px; }
-.hero { text-align:center; margin-bottom:20px; }
-.hero-stat { font-family:'Great Vibes',cursive; font-size:48px; color:#27ae60; margin:0; line-height:1; }
-.hero-label { font-size:10px; color:#888; text-transform:uppercase; letter-spacing:0.5px; font-weight:700; margin-top:4px; }
-.section { margin-bottom:20px; }
-.section-title { font-family:'Playfair Display',serif; font-size:14px; color:#d4a3a3; font-style:italic; margin:0 0 10px 0; padding-bottom:6px; border-bottom:2px solid rgba(212,163,163,0.2); }
-.achievement-card { display:flex; align-items:center; gap:10px; padding:10px; background:rgba(0,0,0,0.02); border-radius:8px; margin-bottom:8px; font-size:11px; }
-.achievement-card .icon { font-size:24px; flex-shrink:0; }
-.achievement-card .info { flex:1; }
-.achievement-card .name { font-weight:700; color:#4a3a3a; margin-bottom:2px; }
-.achievement-card .details { font-size:9px; color:#888; }
-.achievement-card .badge { font-size:7px; font-weight:800; text-transform:uppercase; letter-spacing:0.3px; padding:3px 6px; border-radius:4px; flex-shrink:0; }
-.streak-card { display:flex; align-items:center; gap:8px; padding:10px; background:rgba(255,250,227,0.5); border-left:3px solid #e67e22; border-radius:6px; margin-bottom:8px; font-size:10px; }
-.streak-card .emoji { flex-shrink:0; }
-.streak-card .info { flex:1; }
-.streak-card .name { font-weight:600; color:#4a3a3a; }
-.streak-card .detail { font-size:9px; color:#888; }
-.streak-card .value { font-family:'Great Vibes',cursive; font-size:16px; font-weight:bold; flex-shrink:0; }
-.bad-streak-card { display:flex; align-items:center; gap:8px; padding:10px; background:rgba(217,83,79,0.08); border-left:3px solid #d9534f; border-radius:6px; margin-bottom:8px; font-size:10px; }
-.bad-streak-card .value { font-family:'Great Vibes',cursive; font-size:16px; font-weight:bold; color:#d9534f; flex-shrink:0; }
-.opportunity-row { display:flex; align-items:center; gap:10px; padding:8px; background:rgba(0,0,0,0.02); border-left:3px solid #27ae60; border-radius:6px; margin-bottom:6px; font-size:10px; }
-.opportunity-row .name { flex:1; font-weight:600; color:#4a3a3a; }
-.opportunity-row .value { font-family:'Great Vibes',cursive; font-size:14px; font-weight:bold; color:#27ae60; flex-shrink:0; }
-.footer { background:linear-gradient(135deg,rgba(212,163,163,0.04) 0%,rgba(230,190,255,0.04) 100%); padding:16px 20px; text-align:center; border-top:1px solid rgba(212,163,163,0.1); font-size:10px; }
-.footer-text { color:#888; line-height:1.4; margin-bottom:6px; }
-.signature { font-family:'Great Vibes',cursive; font-size:22px; color:#d4a3a3; }
-</style>
-</head>
-<body>
-<div class="report">
-<div class="header">
-<div class="week-date">Week Ending ${weekEnding}</div>
-<div class="title">Victoria</div>
-<div class="subtitle">Weekly Reflection</div>
-</div>
-<div class="content">
-<div class="hero">
-<div class="hero-stat">${totalBalance >= 0 ? '+' : ''}$${Math.abs(totalBalance).toFixed(2)}</div>
-<div class="hero-label">This Week's Earnings</div>
-</div>
-
-<div class="section">
-<div class="section-title">⭐ Your Best This Week</div>
-${achievementsList.map(a => `<div class="achievement-card"><div class="icon">${a.icon}</div><div class="info"><div class="name">${a.name}</div><div class="details">${a.cur}/7 days • ${a.streak}-week streak • +$${a.payout.toFixed(2)}</div></div><div class="badge" style="background:rgba(${a.tier==='bonus'?'142,68,173':'39,174,96'},0.15);color:${tierColors[a.tier]};">${a.tier.toUpperCase()}</div></div>`).join('')}
-</div>
-
-<div class="section">
-<div class="section-title">🔥 Streaks & Money Impact</div>
-<div style="font-size:9px;color:#888;text-transform:uppercase;font-weight:700;margin-bottom:6px;">🔥 Your Best Streaks (Top 3)</div>
-${goodStreaks.slice(0,3).map(s => `<div class="streak-card"><span class="emoji">🔥</span><div class="info"><div class="name">${s.name}</div><div class="detail">${s.streak}-week streak</div></div><span class="value">+$${s.payout.toFixed(2)}</span></div>`).join('')}
-<div style="font-size:9px;color:#888;text-transform:uppercase;font-weight:700;margin:10px 0 6px;">🌧️ Negative Streaks (Top 2)</div>
-${badStreaks.slice(0,2).map(s => `<div class="bad-streak-card"><span class="emoji">🌧️</span><div class="info"><div class="name">${s.name}</div><div class="detail">${s.streak}-week negative</div></div><span class="value">-$${s.penalty.toFixed(2)}</span></div>`).join('')}
-</div>
-
-<div class="section">
-<div class="section-title">✨ Biggest Missed Opportunities</div>
-<div style="font-size:9px;color:#888;margin-bottom:8px;">One more day would have earned:</div>
-${missedList.map(m => `<div class="opportunity-row"><span>${m.icon} ${m.name}</span><span class="value">+$${m.missedVal.toFixed(2)}</span></div>`).join('')}
-</div>
-
-<div class="section">
-<div class="section-title">📊 Week at a Glance</div>
-${weekHtml}
-</div>
-</div>
-
-<div class="footer">
-<div class="footer-text">You're doing amazing!<br>Keep up the momentum.</div>
-<div class="signature">—Drew</div>
-</div>
-</div>
-</body>
-</html>`;
-            return html;
+            // Return ONLY the report content as a styled div - no <html>, <head>, or <body>
+            // This will be appended directly to the main document for proper font rendering
+            return `<div style="width:680px;background:#ffffff;font-family:'Montserrat',sans-serif;color:#4a3a3a;border-radius:0;overflow:hidden;">
+                <div style="background:linear-gradient(135deg,#f9ecec 0%,#f5eaf5 50%,#f0e8f8 100%);padding:24px 24px 20px;text-align:center;">
+                    <div style="font-size:10px;color:#d4a3a3;text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:4px;">Week Ending ${weekEnding}</div>
+                    <div style="font-family:'Great Vibes',cursive;font-size:42px;color:#d4a3a3;line-height:1;">Victoria</div>
+                    <div style="font-family:'Playfair Display',serif;font-size:12px;color:#a0a0a0;font-style:italic;margin-top:4px;">Weekly Reflection</div>
+                </div>
+                <div style="padding:20px 24px;">
+                    <div style="text-align:center;margin-bottom:20px;page-break-inside:avoid;">
+                        <div style="font-family:'Great Vibes',cursive;font-size:48px;color:#27ae60;line-height:1;">${totalBalance >= 0 ? '+' : ''}$${Math.abs(totalBalance).toFixed(2)}</div>
+                        <div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-top:4px;">This Week's Earnings</div>
+                    </div>
+                    <div style="margin-bottom:20px;page-break-inside:avoid;">
+                        <div style="font-family:'Playfair Display',serif;font-size:14px;color:#d4a3a3;font-style:italic;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid rgba(212,163,163,0.2);">⭐ Your Best This Week</div>
+                        ${achievementsHtml}
+                    </div>
+                    <div style="margin-bottom:20px;page-break-inside:avoid;">
+                        <div style="font-family:'Playfair Display',serif;font-size:14px;color:#d4a3a3;font-style:italic;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid rgba(212,163,163,0.2);">🔥 Streaks &amp; Money Impact</div>
+                        <div style="font-size:9px;color:#888;text-transform:uppercase;font-weight:700;margin-bottom:6px;letter-spacing:0.5px;">🔥 Your Best Streaks (Top 3)</div>
+                        ${goodStreaksHtml}
+                        <div style="font-size:9px;color:#888;text-transform:uppercase;font-weight:700;margin:12px 0 6px;letter-spacing:0.5px;">🌧️ Negative Streaks (Top 2)</div>
+                        ${badStreaksHtml}
+                    </div>
+                    <div style="margin-bottom:20px;page-break-inside:avoid;">
+                        <div style="font-family:'Playfair Display',serif;font-size:14px;color:#d4a3a3;font-style:italic;margin-bottom:8px;padding-bottom:6px;border-bottom:2px solid rgba(212,163,163,0.2);">✨ Biggest Missed Opportunities</div>
+                        <div style="font-size:9px;color:#888;margin-bottom:8px;">One more day would have earned:</div>
+                        ${missedHtml}
+                    </div>
+                    <div style="margin-bottom:16px;">
+                        <div style="font-family:'Playfair Display',serif;font-size:14px;color:#d4a3a3;font-style:italic;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid rgba(212,163,163,0.2);">📊 Week at a Glance</div>
+                        ${weekHtml}
+                    </div>
+                </div>
+                <div style="background:rgba(212,163,163,0.04);padding:16px 24px;text-align:center;border-top:1px solid rgba(212,163,163,0.1);">
+                    <div style="font-size:11px;color:#888;line-height:1.5;margin-bottom:6px;">You're doing amazing!<br>Keep up the momentum.</div>
+                    <div style="font-family:'Great Vibes',cursive;font-size:24px;color:#d4a3a3;">&mdash;Drew</div>
+                </div>
+            </div>`;
         }
 
         window.sendVictoriaTestReport = async () => {
@@ -435,28 +428,51 @@ ${weekHtml}
             
             const victoriaHtml = buildVictoriaReportHtml(habits, testTotal);
             
+            // Render directly in main document (fonts already loaded)
+            // Position off-screen but visible to html2canvas
+            const wrapper = document.createElement('div');
+            wrapper.style.position = 'fixed';
+            wrapper.style.left = '-10000px';
+            wrapper.style.top = '0';
+            wrapper.style.width = '680px';
+            wrapper.style.background = '#ffffff';
+            wrapper.style.zIndex = '-1';
+            wrapper.innerHTML = victoriaHtml;
+            document.body.appendChild(wrapper);
+            
             try {
-                // Create iframe to render the HTML document
-                const iframe = document.createElement('iframe');
-                iframe.style.display = 'none';
-                document.body.appendChild(iframe);
-                iframe.contentDocument.write(victoriaHtml);
-                iframe.contentDocument.close();
+                // Wait for fonts to be fully ready
+                if (document.fonts && document.fonts.ready) {
+                    await document.fonts.ready;
+                }
+                // Extra wait for layout
+                await new Promise(r => setTimeout(r, 300));
                 
-                // Generate PDF from iframe
-                await new Promise(r => setTimeout(r, 500)); // wait for render
+                const target = wrapper.firstElementChild;
+                
                 await html2pdf().set({
-                    margin: 0,
+                    margin: [8, 8, 8, 8],
                     filename: 'Victoria_Weekly_Report.pdf',
-                    pagebreak: { mode: 'avoid', avoid: 'all' },
-                    html2canvas: { scale: 2 },
-                    jsPDF: { orientation: 'portrait', unit: 'mm', format: 'letter', compress: true }
-                }).from(iframe.contentDocument.body).save();
+                    pagebreak: { mode: ['css', 'legacy'] },
+                    html2canvas: { 
+                        scale: 2,
+                        backgroundColor: '#ffffff',
+                        useCORS: true,
+                        logging: false,
+                        windowWidth: 680
+                    },
+                    jsPDF: { 
+                        orientation: 'portrait', 
+                        unit: 'mm', 
+                        format: 'letter', 
+                        compress: true 
+                    }
+                }).from(target).save();
                 
-                document.body.removeChild(iframe);
-                
+                document.body.removeChild(wrapper);
                 alert('✨ Victoria report PDF downloaded!\n(Week has NOT been reset)');
             } catch(error) {
+                if (wrapper.parentNode) document.body.removeChild(wrapper);
                 console.error('Victoria report error:', error);
                 alert('Error generating report: ' + (error?.message || error));
             }
