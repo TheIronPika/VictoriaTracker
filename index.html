@@ -364,22 +364,24 @@
             const victoriaHtml = buildVictoriaReportHtml(habits, testTotal);
             
             try {
-                // Create temp div for PDF
-                const pdfDiv = document.createElement('div');
-                pdfDiv.innerHTML = victoriaHtml;
-                pdfDiv.style.display = 'none';
-                document.body.appendChild(pdfDiv);
+                // Create iframe to render the HTML document
+                const iframe = document.createElement('iframe');
+                iframe.style.display = 'none';
+                document.body.appendChild(iframe);
+                iframe.contentDocument.write(victoriaHtml);
+                iframe.contentDocument.close();
                 
-                // Generate PDF
+                // Generate PDF from iframe
+                await new Promise(r => setTimeout(r, 500)); // wait for render
                 await html2pdf().set({
                     margin: 0,
                     filename: 'Victoria_Weekly_Report.pdf',
                     pagebreak: { mode: 'avoid', avoid: 'all' },
                     html2canvas: { scale: 2 },
                     jsPDF: { orientation: 'portrait', unit: 'mm', format: 'letter', compress: true }
-                }).from(pdfDiv).save();
+                }).from(iframe.contentDocument.body).save();
                 
-                document.body.removeChild(pdfDiv);
+                document.body.removeChild(iframe);
                 
                 alert('✨ Victoria report PDF downloaded!\n(Week has NOT been reset)');
             } catch(error) {
