@@ -995,7 +995,7 @@
             const daysElapsed = dIdx + 1;
             const bubblesNow  = h.history[dIdx] || 0;
             const dailyRate   = bubblesNow / daysElapsed;
-            const projected   = Math.round(dailyRate * 7 * 10) / 10;
+            const projected   = Math.min(Math.round(dailyRate * 7 * 10) / 10, h.max || 7);
 
             if (projected > lastWeekTotal)  return { dir: 'up',   pace: projected, lastWeek: lastWeekTotal };
             if (projected < lastWeekTotal)  return { dir: 'down', pace: projected, lastWeek: lastWeekTotal };
