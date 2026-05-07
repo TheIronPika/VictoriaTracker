@@ -223,10 +223,10 @@
         // Builds the styled HTML report shown in the VIEW REPORT tab and sent
         // as the weekly email. Mobile-first, ~420px wide.
         // Sections: header · balance + stars · You Crushed It · So Close · footer
-        function buildVictoriaReportHtml(habitsArr, totalBalance) {
+        function buildVictoriaReportHtml(habitsArr, totalBalance, weekEndingOverride) {
             const now = new Date();
             const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-            const weekEnding = months[now.getMonth()] + ' ' + now.getDate() + ', ' + now.getFullYear();
+            const weekEnding = weekEndingOverride || (months[now.getMonth()] + ' ' + now.getDate() + ', ' + now.getFullYear());
             const TC  = { punish:'#d9534f', low:'#e67e22', goal:'#27ae60', bonus:'#8e44ad' };
             const TB  = { punish:'rgba(217,83,79,0.07)', low:'rgba(230,126,34,0.07)', goal:'rgba(39,174,96,0.07)', bonus:'rgba(142,68,173,0.07)' };
             const PIL = { punish:'rgba(217,83,79,0.12)', low:'rgba(230,126,34,0.12)', goal:'rgba(39,174,96,0.12)', bonus:'rgba(142,68,173,0.12)' };
@@ -295,25 +295,51 @@
             return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0"><title>Victoria's Weekly Report</title><link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@300;400;600;700&display=swap" rel="stylesheet"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:#ede9f4;font-family:'Montserrat',sans-serif;min-height:100vh;padding:20px 16px 40px;}.wrap{max-width:420px;margin:0 auto;}.hint{background:#d4a3a3;color:white;text-align:center;padding:10px 16px;border-radius:8px;font-size:12px;font-weight:600;margin-bottom:16px;}@media print{.hint{display:none}body{background:white;padding:0}}</style></head><body><div class="wrap"><div class="hint">📋 Victoria's Weekly Report · ${weekEnding}</div><div style="border-radius:20px;overflow:hidden;box-shadow:0 4px 24px rgba(196,144,196,0.18);"><div style="background:linear-gradient(160deg,#f9ecec 0%,#f5eaf5 50%,#ede8f8 100%);padding:32px 24px 24px;text-align:center;"><div style="font-size:10px;color:#c9a8c9;text-transform:uppercase;letter-spacing:2px;font-weight:700;margin-bottom:8px;">Week Ending ${weekEnding}</div><div style="font-family:'Great Vibes',cursive;font-size:58px;color:#c490c4;line-height:1;margin-bottom:6px;">Victoria</div><div style="font-family:'Playfair Display',serif;font-size:12px;color:#b8a8c8;font-style:italic;">Weekly Report</div></div><div style="background:linear-gradient(180deg,#fdf8ff 0%,#f8f4fc 100%);padding:28px 24px;text-align:center;border-top:1px solid rgba(196,144,196,0.12);"><div style="font-family:'Great Vibes',cursive;font-size:72px;color:${balColor};line-height:1;margin-bottom:6px;">${totalStr}</div><div style="font-size:9px;text-transform:uppercase;letter-spacing:2px;font-weight:700;color:#ccc;${starsThisWeek>0?'margin-bottom:12px;':''}">This Week's Earnings</div>${starsThisWeek>0?`<div style="display:inline-block;background:rgba(240,192,64,0.12);border:1px solid rgba(240,192,64,0.3);border-radius:20px;padding:5px 14px;font-size:11px;font-weight:600;color:#c8961a;">✨ ${starsThisWeek} star${starsThisWeek!==1?'s':''} earned this week</div>`:''}</div><div style="background:linear-gradient(180deg,#fdf8ff 0%,#f9f4fd 100%);padding:20px 20px 16px;border-top:1px solid rgba(196,144,196,0.12);"><div style="font-family:'Playfair Display',serif;font-size:15px;color:#c490c4;font-style:italic;margin-bottom:14px;padding-bottom:10px;border-bottom:1.5px solid rgba(196,144,196,0.2);">🌟 You Crushed It</div>${winsHtml}</div><div style="background:linear-gradient(180deg,#fdf8ff 0%,#f9f4fd 100%);padding:20px 20px 16px;border-top:1px solid rgba(196,144,196,0.12);"><div style="font-family:'Playfair Display',serif;font-size:15px;color:#c490c4;font-style:italic;margin-bottom:14px;padding-bottom:10px;border-bottom:1.5px solid rgba(196,144,196,0.2);">💪 So Close</div>${soCloseHtml}</div><div style="background:linear-gradient(160deg,#f9ecec 0%,#f5eaf5 50%,#ede8f8 100%);padding:24px;text-align:center;border-top:1px solid rgba(196,144,196,0.12);"><div style="font-size:12px;color:#b0a0b8;line-height:1.7;margin-bottom:10px;">You're doing amazing!<br>Keep up the momentum next week. 💕</div><div style="font-family:'Great Vibes',cursive;font-size:30px;color:#c490c4;">— Drew</div></div></div></div></body></html>`;
         }
 
-        window.sendVictoriaTestReport = () => {
-            if(!habits || !habits.length) { alert('No habits yet.'); return; }
-            let total = 0;
-            habits.forEach(h => {
-                if(!h.excused) {
-                    const c = h.history && h.history[6] !== undefined ? h.history[6] : (h.history && h.history[h.history.length-1] || 0);
-                    const t = getTier(h, c);
-                    total += ({punish:h.valPunish||0,low:h.valLow||0,goal:h.valGoal||0,bonus:h.valBonus||0})[t];
-                }
-            });
-            // Include room payouts in report total
-            roomsData.forEach(r => {
-                if(r.checked) total += Math.min(r.streak + 1, r.maxStreak);
-            });
-            const html = buildVictoriaReportHtml(habits, total);
+        window.sendVictoriaTestReport = async () => {
+            if (!habits || !habits.length) { alert('No habits yet.'); return; }
+
+            // Load history if not already loaded
+            if (!historyLoaded) {
+                try {
+                    const snap = await getDoc(doc(db, 'system', 'weekly_history'));
+                    weeklyHistory = snap.exists() ? (snap.data().weeks || []) : [];
+                    historyLoaded = true;
+                } catch(e) { console.error('Could not load history for report:', e); }
+            }
+
+            let reportHabits, reportTotal, reportWeekEnding;
+
+            if (weeklyHistory && weeklyHistory.length) {
+                // Use the most recent completed week's snapshot
+                const lastWeek = weeklyHistory[0];
+                reportTotal      = lastWeek.totalBalance;
+                reportWeekEnding = lastWeek.weekEnding;
+                // Merge snapshot history onto live habits so payout/threshold data is current
+                reportHabits = lastWeek.habits.map(sh => {
+                    const live = habits.find(h => h.id === sh.id);
+                    if (!live) return null;
+                    return { ...live, history: sh.history };
+                }).filter(Boolean);
+            } else {
+                // No history yet — fall back to current week's live data
+                reportWeekEnding = null;
+                reportHabits = habits;
+                reportTotal  = 0;
+                habits.forEach(h => {
+                    if (!h.excused) {
+                        const c = h.history && h.history[6] !== undefined ? h.history[6] : (h.history && h.history[h.history.length-1] || 0);
+                        const t = getTier(h, c);
+                        reportTotal += ({punish:h.valPunish||0,low:h.valLow||0,goal:h.valGoal||0,bonus:h.valBonus||0})[t];
+                    }
+                });
+                roomsData.forEach(r => { if(r.checked) reportTotal += Math.min(r.streak + 1, r.maxStreak); });
+            }
+
+            const html = buildVictoriaReportHtml(reportHabits, reportTotal, reportWeekEnding);
             const blob = new Blob([html], {type:'text/html'});
             const url  = URL.createObjectURL(blob);
             const tab  = window.open(url, '_blank');
-            if(!tab) alert('Pop-up blocked — please allow pop-ups for this site and try again.');
+            if (!tab) alert('Pop-up blocked — please allow pop-ups for this site and try again.');
             setTimeout(() => URL.revokeObjectURL(url), 60000);
         };
 
@@ -520,8 +546,7 @@
             const reportHtml = buildVictoriaReportHtml(habits, baseMoney);
 
             try {
-                // NOTE: EmailJS template_2cyqti5 must be set to HTML email type
-                // and the template body should contain just {{summary_text}}
+                // EmailJS: template body must use {{{summary_text}}} (triple braces) to inject raw HTML
                 await emailjs.send('service_gj1f9sj', 'template_2cyqti5', { summary_text: reportHtml });
 
                 await awardWeeklyStars(habits);
