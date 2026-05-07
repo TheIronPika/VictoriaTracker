@@ -1578,7 +1578,7 @@
                     }
 
                     const cardHtml = `
-                        <div class="habit-card ${isUrgent ? 'priority-border' : ''} ${isArriving ? 'card-arriving' : ''}"
+                        <div class="habit-card ${isUrgent ? 'priority-border' : ''} ${isArriving ? 'card-arriving' : ''} ${streaks.streak >= 14 ? 'glow-intense' : streaks.streak >= 4 ? 'glow-bright' : streaks.streak >= 2 ? 'glow-medium' : streaks.streak >= 1 ? 'glow-light' : ''}"
                              data-habit-id="${h.id}"
                              ontouchstart="window.startLongPress('${h.id}')"
                              ontouchend="window.cancelLongPress()"
@@ -2353,6 +2353,49 @@
         }
         .card-leaving { animation: cardLeave 0.28s forwards; pointer-events: none; }
         .card-arriving { animation: cardArrive 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+
+        /* ── STREAK GLOW LEVELS (Conservative: 1w, 2w, 4w, 14+w) ──────────── */
+        .habit-card.glow-light {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.75), rgba(255, 250, 252, 0.75));
+            box-shadow: 5px 5px 15px rgba(212,163,163,0.08),
+                        0 0 12px rgba(255, 150, 180, 0.3);
+        }
+
+        .habit-card.glow-medium {
+            background: linear-gradient(135deg, rgba(255, 250, 252, 0.85), rgba(255, 240, 248, 0.85));
+            box-shadow: 5px 5px 15px rgba(212,163,163,0.08),
+                        0 0 20px rgba(255, 100, 160, 0.5);
+            border-color: rgba(255, 150, 180, 0.6);
+        }
+
+        .habit-card.glow-bright {
+            background: linear-gradient(135deg, rgba(255, 240, 248, 0.9), rgba(255, 225, 242, 0.9));
+            box-shadow: 5px 5px 15px rgba(212,163,163,0.08),
+                        0 0 30px rgba(255, 80, 150, 0.7);
+            border-color: rgba(255, 120, 170, 0.8);
+        }
+
+        .habit-card.glow-intense {
+            animation: streakPulse 2s ease-in-out infinite;
+            background: linear-gradient(135deg, rgba(255, 220, 242, 0.95), rgba(255, 200, 235, 0.95));
+            box-shadow: 5px 5px 15px rgba(212,163,163,0.08),
+                        0 0 40px rgba(255, 60, 140, 0.9),
+                        inset 0 0 30px rgba(255, 200, 220, 0.5);
+            border-color: rgba(255, 100, 160, 1);
+        }
+
+        @keyframes streakPulse {
+            0%, 100% {
+                box-shadow: 5px 5px 15px rgba(212,163,163,0.08),
+                            0 0 40px rgba(255, 60, 140, 0.9),
+                            inset 0 0 30px rgba(255, 200, 220, 0.5);
+            }
+            50% {
+                box-shadow: 5px 5px 15px rgba(212,163,163,0.08),
+                            0 0 50px rgba(255, 60, 140, 1.2),
+                            inset 0 0 35px rgba(255, 200, 220, 0.6);
+            }
+        }
 
         .weekly-grid { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(5px); border-radius: 15px; padding: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.03); }
         .weekly-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid rgba(242,242,242,0.5); }
