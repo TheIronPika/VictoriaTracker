@@ -1922,36 +1922,25 @@
 
         function triggerFanfare(tier) {
             if (tier === 'low') {
-                // 🎀 Ribbon bow + 🫧 Bubbles
-                const shapes = [
-                    confetti.shapeFromText({ text: '🎀', scalar: 2 }),
-                    confetti.shapeFromText({ text: '🫧', scalar: 2 }),
-                ];
-                confetti({ particleCount: 45, spread: 55, origin: { y: 0.8 }, shapes, scalar: 2 });
+                // 🎀 Ribbon - 20% emoji / 80% confetti
+                const shapes = [confetti.shapeFromText({ text: '🎀', scalar: 2 })];
+                confetti({ particleCount: 9, spread: 45, origin: { y: 0.8 }, shapes, scalar: 2 });
+                confetti({ particleCount: 36, spread: 45, origin: { y: 0.8 }, colors: ['#f6d365', '#e67e22'] });
 
             } else if (tier === 'goal') {
-                // ✨ Sparkles + 🌸 Cherry blossom
-                const shapes = [
-                    confetti.shapeFromText({ text: '✨', scalar: 2 }),
-                    confetti.shapeFromText({ text: '🌸', scalar: 2 }),
-                ];
-                confetti({ particleCount: 80, spread: 65, origin: { y: 0.7 }, shapes, scalar: 2 });
+                // 🌸 Blossom - 20% emoji / 80% confetti
+                const shapes = [confetti.shapeFromText({ text: '🌸', scalar: 2 })];
+                confetti({ particleCount: 12, spread: 55, origin: { y: 0.7 }, shapes, scalar: 2 });
+                confetti({ particleCount: 48, spread: 55, origin: { y: 0.7 }, colors: ['#84fab0', '#27ae60'] });
                 setTimeout(() => {
-                    confetti({ particleCount: 30, spread: 40, origin: { y: 0.75, x: 0.5 }, shapes, scalar: 2, startVelocity: 25 });
-                }, 200);
+                    confetti({ particleCount: 4, spread: 35, origin: { y: 0.75, x: 0.5 }, colors: ['#84fab0', '#27ae60'], startVelocity: 20 });
+                }, 150);
 
             } else if (tier === 'bonus') {
-                // 🦋 Butterflies + ❤️ Hearts from both sides
-                const shapes = [
-                    confetti.shapeFromText({ text: '🦋', scalar: 2 }),
-                    confetti.shapeFromText({ text: '❤️', scalar: 2 }),
-                ];
-                const end = Date.now() + 4000;
-                (function frame() {
-                    confetti({ particleCount: 4, angle: 60,  spread: 55, origin: { x: 0 }, shapes, scalar: 2 });
-                    confetti({ particleCount: 4, angle: 120, spread: 55, origin: { x: 1 }, shapes, scalar: 2 });
-                    if (Date.now() < end) requestAnimationFrame(frame);
-                }());
+                // 🦋 Butterfly - 20% emoji / 80% confetti (2x increased volume)
+                const shapes = [confetti.shapeFromText({ text: '🦋', scalar: 2 })];
+                confetti({ particleCount: 27, spread: 65, origin: { y: 0.75, x: 0.5 }, shapes, scalar: 2 });
+                confetti({ particleCount: 108, spread: 65, origin: { y: 0.75, x: 0.5 }, colors: ['#d4a0fc', '#8e44ad'] });
             }
         }
 
@@ -2080,15 +2069,15 @@
                 if (localStorage.getItem(key)) return; // already celebrated
                 localStorage.setItem(key, '1');
 
-                // 🔥 Fire + ⚡ Lightning bolt
-                const shapes = [
-                    confetti.shapeFromText({ text: '🔥', scalar: 2 }),
-                    confetti.shapeFromText({ text: '⚡', scalar: 2 }),
-                ];
+                // 🔥 Fire emoji + red confetti
+                const shapes = [confetti.shapeFromText({ text: '🔥', scalar: 2 })];
                 confetti({ particleCount: 60, spread: 50, origin: { x: 0.4, y: 0.8 }, shapes, scalar: 2, startVelocity: 45 });
-                confetti({ particleCount: 60, spread: 50, origin: { x: 0.6, y: 0.8 }, shapes, scalar: 2, startVelocity: 45 });
+                confetti({ particleCount: 60, spread: 50, origin: { x: 0.6, y: 0.8 }, colors: ['#ff6b5b', '#ff3d3d'], startVelocity: 45 });
                 setTimeout(() => {
                     confetti({ particleCount: 40, spread: 70, origin: { x: 0.5, y: 0.75 }, shapes, scalar: 2, startVelocity: 35 });
+                }, 300);
+                setTimeout(() => {
+                    confetti({ particleCount: 30, spread: 60, origin: { x: 0.5, y: 0.75 }, colors: ['#ff6b5b', '#ff3d3d'], startVelocity: 30 });
                 }, 300);
             });
         }
