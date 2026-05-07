@@ -1710,9 +1710,9 @@
                         <div class="manage-habit-row" onclick="window.toggleManageHabit('${h.id}')">
                             <span style="font-size:20px;line-height:1;">${h.icon}</span>
                             <span style="font-family:'Playfair Display';font-size:14px;font-weight:700;flex:1;padding:0 6px;color:var(--text-main);">${h.name}</span>
-                            <span id="mhchv-${h.id}" style="color:#ccc;font-size:20px;line-height:1;transition:transform 0.2s;">›</span>
+                            <span id="mhchv-${h.id}" style="color:#ccc;font-size:20px;line-height:1;transition:transform 0.2s;${manageCardCollapsed['habit_' + h.id] === false ? 'transform:rotate(90deg)' : ''}">›</span>
                         </div>
-                        <div id="mhbody-${h.id}" class="manage-card" style="display:none;margin:0 0 14px 0;border-radius:0 0 14px 14px;border-top:1px dashed #eee;">
+                        <div id="mhbody-${h.id}" class="manage-card" style="display:${manageCardCollapsed['habit_' + h.id] === false ? '' : 'none'};margin:0 0 14px 0;border-radius:0 0 14px 14px;border-top:1px dashed #eee;">
                             <div style="margin-bottom:10px; display:flex; gap:20px; align-items:center; flex-wrap:wrap;">
                                 <div style="font-size:12px;">Max Circles (week):
                                     <input type="number" value="${h.max || 7}" min="1" max="49" style="width:45px; margin-left:4px;"
@@ -1858,14 +1858,12 @@
             render();
         };
 
-        // Toggle a single habit card open/closed in Manage — direct DOM, no re-render needed
+        // Toggle a single habit card open/closed in Manage — save state to localStorage so it persists across renders
         window.toggleManageHabit = (id) => {
-            const body = document.getElementById('mhbody-' + id);
-            const chv  = document.getElementById('mhchv-' + id);
-            if (!body) return;
-            const open = body.style.display === 'none';
-            body.style.display = open ? '' : 'none';
-            if (chv) chv.style.transform = open ? 'rotate(90deg)' : '';
+            const key = 'habit_' + id;
+            manageCardCollapsed[key] = (manageCardCollapsed[key] === false) ? true : false;
+            localStorage.setItem('manageCardCollapsed', JSON.stringify(manageCardCollapsed));
+            render();
         };
 
         window.switchTab = (idx) => {
