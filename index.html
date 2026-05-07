@@ -1385,6 +1385,35 @@
             if (newVal > oldQty && newTier !== 'punish' && newTier !== oldTier) {
                 triggerFanfare(newTier);
             }
+
+            // ── LUCKY DRAW CHECK (2% chance per completion) ──────────────────
+            if (newVal > oldQty) {
+                // Initialize lastLuckyDrawDate if not present
+                if (!h.lastLuckyDrawDate) h.lastLuckyDrawDate = null;
+
+                // Get today's date in YYYY-MM-DD format
+                const today = new Date().toISOString().split('T')[0];
+
+                // Check: haven't won today AND lucky draw triggers
+                if (h.lastLuckyDrawDate !== today && Math.random() * 100 < 2) {
+                    // Award 1 star
+                    starBalance += 1;
+                    h.lastLuckyDrawDate = today;
+
+                    // Log to star history
+                    addStarLog('luckyDraw', 1, 'Lucky draw! 🍀');
+
+                    // Sync updated data (stars + habit with new lastLuckyDrawDate)
+                    await syncStarData();
+                    await syncToFirebase();
+
+                    // Show animation and toast
+                    const bubbleEl = document.querySelector(`.bubble[onclick*="toggleBubble('${id}',${dIdx})"]`);
+                    if (bubbleEl) showCloverPopup(bubbleEl);
+                    showLuckyDrawToast();
+                }
+            }
+
             checkPerfectWeek();
         };
 
@@ -1947,6 +1976,31 @@
             } catch(e) { /* audio blocked — silently skip */ }
         }
 
+        // ── LUCKY DRAW HELPERS ────────────────────────────────────────────────
+        function showCloverPopup(bubbleElement) {
+            const rect = bubbleElement.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+
+            const clover = document.createElement('div');
+            clover.className = 'clover-popup';
+            clover.textContent = '🍀';
+            clover.style.left = centerX + 'px';
+            clover.style.top = centerY + 'px';
+            document.body.appendChild(clover);
+
+            setTimeout(() => clover.remove(), 1200);
+        }
+
+        function showLuckyDrawToast() {
+            const toast = document.createElement('div');
+            toast.className = 'toast-notification';
+            toast.innerHTML = '<span>🍀</span> <span>Lucky draw! +1 ⭐</span>';
+            document.body.appendChild(toast);
+
+            setTimeout(() => toast.remove(), 6000);
+        }
+
         // ── TIME-BASED COLOR SHIFT ────────────────────────────────────────────
         // Morning  (5–10):  warm pink      #d4a3a3 / rose bg   #f9ecec
         // Midday  (10–15):  dusty rose     #c9a0b8 / blush bg  #f7ecf3
@@ -2395,6 +2449,68 @@
                             0 0 50px rgba(255, 60, 140, 1.2),
                             inset 0 0 35px rgba(255, 200, 220, 0.6);
             }
+        }
+
+        /* ── LUCKY DRAW ANIMATIONS ──────────────────────────────────── */
+        @keyframes cloverPop {
+            0% {
+                opacity: 0;
+                transform: scale(0.3) translateY(0);
+            }
+            50% {
+                opacity: 1;
+                transform: scale(1.2) translateY(-30px);
+            }
+            100% {
+                opacity: 0;
+                transform: scale(0.5) translateY(-100px) rotate(180deg);
+            }
+        }
+
+        .clover-popup {
+            position: fixed;
+            font-size: 60px;
+            pointer-events: none;
+            z-index: 9999;
+            animation: cloverPop 1.2s ease-out forwards;
+        }
+
+        @keyframes toastSlideUp {
+            0% {
+                opacity: 0;
+                transform: translateX(-50%) translateY(50px);
+            }
+            5% {
+                opacity: 1;
+                transform: translateX(-50%) translateY(0);
+            }
+            95% {
+                opacity: 1;
+                transform: translateX(-50%) translateY(0);
+            }
+            100% {
+                opacity: 0;
+                transform: translateX(-50%) translateY(50px);
+            }
+        }
+
+        .toast-notification {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.85);
+            color: white;
+            padding: 16px 24px;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            z-index: 10000;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+            animation: toastSlideUp 6s ease-in-out forwards;
         }
 
         .weekly-grid { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(5px); border-radius: 15px; padding: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.03); }
