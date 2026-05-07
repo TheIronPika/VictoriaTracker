@@ -942,6 +942,36 @@
             return { streak, badStreak };
         }
 
+        // ── WEEKLY FORECAST (pace-based) ─────────────────────────────────────
+        // Compares projected pace for this week vs last week's actual total.
+        // Uses current day progress to project end-of-week count, so early in
+        // the week a habit on pace won't be penalised for having fewer raw bubbles.
+        // NOTE: h.history stores a running total propagated forward — so history[6]
+        // (Sunday) is always the final week total, not a per-day count.
+        function computeForecast(h) {
+            if (!weeklyHistory.length) return null;
+
+            // Most recent completed week snapshot
+            const sorted  = weeklyHistory.slice().sort((a, b) => b.timestamp - a.timestamp);
+            const lastWk  = sorted[0];
+            const lastHab = (lastWk.habits || []).find(x => x.id === h.id);
+            if (!lastHab || !lastHab.history) return null;
+
+            // history[6] = Sunday = final total for the week (values propagate forward)
+            const lastWeekTotal = lastHab.history[6] || 0;
+            if (lastWeekTotal === 0 && (h.history[getDayIdx(viewingDate)] || 0) === 0) return null;
+
+            const dIdx        = getDayIdx(viewingDate);
+            const daysElapsed = dIdx + 1;
+            const bubblesNow  = h.history[dIdx] || 0;
+            const dailyRate   = bubblesNow / daysElapsed;
+            const projected   = Math.round(dailyRate * 7 * 10) / 10;
+
+            if (projected > lastWeekTotal)  return { dir: 'up',   pace: projected, lastWeek: lastWeekTotal };
+            if (projected < lastWeekTotal)  return { dir: 'down', pace: projected, lastWeek: lastWeekTotal };
+            return null; // exactly on pace — no badge
+        }
+
         // ── CYCLE HELPERS ────────────────────────────────────────────────────
         function cycleIntervalMs(h) {
             const DAY = 86400000;
@@ -1594,6 +1624,15 @@
                     // scans all of weeklyHistory on every call. Calling it twice per
                     // habit (once per badge) doubles work for no reason. Call once, reuse.
                     const streaks = computeStreaksFromHistory(h.id);
+                    const forecast = computeForecast(h);
+                    const forecastBadgeSpan = forecast
+                        ? `<span class="forecast-badge ${forecast.dir}"
+                               onclick="event.stopPropagation();document.getElementById('fc-${h.id}').classList.toggle('show')">
+                               ${forecast.dir === 'up' ? '📈' : '📉'} ${forecast.pace}
+                           </span>` : '';
+                    const forecastDetailDiv = forecast
+                        ? `<div class="forecast-detail" id="fc-${h.id}">On pace for ${forecast.pace} · last week: ${forecast.lastWeek}</div>`
+                        : '';
 
                     let bubblesHtml = '';
                     for (let i = 1; i <= (h.max || 7); i++) {
@@ -1621,8 +1660,10 @@
                                     ${streaks.streak    >= 1 ? `<span class="streak-badge">🔥 ${streaks.streak}</span>` : ''}
                                     ${streaks.badStreak >= 1 ? `<span class="bad-streak-badge">🌧️ ${streaks.badStreak}</span>` : ''}
                                     ${cycleLabel(h) ? `<span class="cycle-badge">🔄 ${cycleLabel(h)}</span>` : ''}
+                                    ${forecastBadgeSpan}
                                     <button class="excuse-btn ${h.excused ? 'excuse-on' : ''}" onclick="event.stopPropagation();window.toggleExcused('${h.id}')">${h.excused ? 'Unexcuse' : 'Excuse'}</button>
                                 </div>
+                                ${forecastDetailDiv}
                                 <div class="bubbles">${bubblesHtml}</div>
                             </div>
                         </div>
@@ -2707,6 +2748,29 @@
             white-space: nowrap;
             flex-shrink: 0;
         }
+
+        /* ── WEEKLY FORECAST BADGE ──────────────────────────────────────── */
+        .forecast-badge {
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            padding: 2px 6px;
+            border-radius: 8px;
+            white-space: nowrap;
+            flex-shrink: 0;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .forecast-badge.up   { color: #4caf50; }
+        .forecast-badge.down { color: #ff6b6b; }
+
+        .forecast-detail {
+            font-size: 10px;
+            color: #aaa;
+            margin-top: 3px;
+            display: none;
+        }
+        .forecast-detail.show { display: block; }
 
         /* ── DEFINITION MODAL ────────────────────────────────────────── */
         #defOverlay {
