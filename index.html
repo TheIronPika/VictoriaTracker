@@ -138,6 +138,10 @@
         let periodData   = { active: false, startTs: null, startDayIdx: null };
         let periodLoaded = false;
 
+        // Cycle history — stored in system/cycle_history
+        let cycleHistory       = [];   // array of { startTs, endTs, lengthDays }
+        let cycleHistoryLoaded = false;
+
         // Debounce timer for updateField — held between calls so rapid spinner
         // clicks only send a single Firebase write after the last change settles
         let _updateFieldTimer = null;
@@ -1161,10 +1165,114 @@
 
         window.endPeriod = async () => {
             document.getElementById('periodModalOverlay')?.remove();
+            // Log the completed cycle before clearing
+            if (periodData.startTs) {
+                const endTs = Date.now();
+                const lengthDays = Math.max(1, Math.round((endTs - periodData.startTs) / 86400000));
+                try {
+                    const ref  = doc(db, 'system', 'cycle_history');
+                    const snap = await getDoc(ref);
+                    const cycles = snap.exists() ? (snap.data().cycles || []) : [];
+                    cycles.push({ startTs: periodData.startTs, endTs, lengthDays });
+                    await setDoc(ref, { cycles });
+                } catch(e) { console.error('cycle_history write failed:', e); }
+            }
             periodData = { active: false, startTs: null, startDayIdx: null };
             await syncPeriodData();
+            cycleHistoryLoaded = false; // force reload on next render
             render();
         };
+        // ── CYCLE HISTORY & PREDICTION ───────────────────────────────────────
+        async function loadCycleHistory() {
+            if (cycleHistoryLoaded) return;
+            try {
+                const snap = await getDoc(doc(db, 'system', 'cycle_history'));
+                cycleHistory = snap.exists() ? (snap.data().cycles || []) : [];
+                cycleHistory.sort((a, b) => a.startTs - b.startTs);
+            } catch(e) { console.warn('cycle_history load failed:', e); }
+            cycleHistoryLoaded = true;
+            renderCycleSection();
+        }
+
+        function renderCycleSection() {
+            const root = document.getElementById('cycleTrackingRoot');
+            if (!root) return;
+            const fmt = ts => {
+                const d = new Date(ts);
+                return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]
+                    + ' ' + d.getDate() + ', ' + d.getFullYear();
+            };
+            let avgCycleLen = null, avgPeriodLen = null, nextPredicted = null;
+            if (cycleHistory.length >= 2) {
+                const gaps = [];
+                for (let i = 1; i < cycleHistory.length; i++)
+                    gaps.push(Math.round((cycleHistory[i].startTs - cycleHistory[i-1].startTs) / 86400000));
+                avgCycleLen = Math.round(gaps.reduce((s,v) => s+v, 0) / gaps.length);
+            }
+            if (cycleHistory.length >= 1) {
+                const lens = cycleHistory.map(c => c.lengthDays);
+                avgPeriodLen = Math.round(lens.reduce((s,v) => s+v, 0) / lens.length);
+            }
+            if (avgCycleLen && cycleHistory.length >= 1) {
+                const lastStart = cycleHistory[cycleHistory.length - 1].startTs;
+                nextPredicted = lastStart + avgCycleLen * 86400000;
+                if (isPeriodActive() && periodData.startTs)
+                    nextPredicted = periodData.startTs + avgCycleLen * 86400000;
+            }
+            let statusHtml = '';
+            if (isPeriodActive() && periodData.startTs) {
+                const days = periodDayCount();
+                statusHtml = `<div style="background:#FBEAF0;border:1px solid #ED93B1;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:#72243E;">
+                    🩸 Period active — Day ${days}${avgPeriodLen ? ` of ~${avgPeriodLen}` : ''} &nbsp;·&nbsp; Started ${fmt(periodData.startTs)}
+                </div>`;
+            } else if (nextPredicted) {
+                const daysUntil = Math.round((nextPredicted - Date.now()) / 86400000);
+                const isOverdue = daysUntil < 0;
+                statusHtml = `<div style="background:${isOverdue ? '#fff5f5' : '#fdf8ff'};border:1px solid ${isOverdue ? '#ED93B1' : '#e8dff0'};border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:${isOverdue ? '#72243E' : '#9a78a0'};">
+                    ${isOverdue ? '🩸 Period may be starting' : '🗓️ Next period predicted'} &nbsp;·&nbsp; ${isOverdue ? Math.abs(daysUntil) + ' days ago' : 'in ' + daysUntil + ' days'} &nbsp;·&nbsp; ~${fmt(nextPredicted)}
+                </div>`;
+            }
+            const statsHtml = `
+                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;">
+                    <div style="background:#f9f4fd;border-radius:10px;padding:10px;text-align:center;">
+                        <div style="font-size:18px;font-weight:700;color:#c490c4;">${cycleHistory.length}</div>
+                        <div style="font-size:10px;color:#b0a0b8;">cycles logged</div>
+                    </div>
+                    <div style="background:#f9f4fd;border-radius:10px;padding:10px;text-align:center;">
+                        <div style="font-size:18px;font-weight:700;color:#c490c4;">${avgCycleLen ? avgCycleLen + 'd' : '—'}</div>
+                        <div style="font-size:10px;color:#b0a0b8;">avg cycle</div>
+                    </div>
+                    <div style="background:#f9f4fd;border-radius:10px;padding:10px;text-align:center;">
+                        <div style="font-size:18px;font-weight:700;color:#c490c4;">${avgPeriodLen ? avgPeriodLen + 'd' : '—'}</div>
+                        <div style="font-size:10px;color:#b0a0b8;">avg period</div>
+                    </div>
+                </div>`;
+            const logHtml = cycleHistory.length === 0
+                ? `<div style="font-size:12px;color:#ccc;padding:10px 0;text-align:center;">No cycles logged yet — start tracking with the 🩸 button</div>`
+                : [...cycleHistory].reverse().slice(0, 6).map((c, i) => {
+                    const prevStart = [...cycleHistory].reverse()[i+1]?.startTs;
+                    const cycleGap = prevStart ? Math.round((c.startTs - prevStart) / 86400000) : null;
+                    const origIdx  = cycleHistory.length - 1 - i;
+                    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f5f0f8;font-size:12px;">
+                        <div style="flex:1;">
+                            <div style="font-weight:600;color:#4a3a3a;">${fmt(c.startTs)}</div>
+                            <div style="font-size:10px;color:#b0a0b8;">${c.lengthDays}d period${cycleGap ? ' · ' + cycleGap + 'd cycle' : ''}</div>
+                        </div>
+                        <button onclick="window.deleteCycleEntry(${origIdx})" style="font-size:10px;color:#e89dac;background:none;border:none;cursor:pointer;padding:2px 6px;">✕</button>
+                    </div>`;
+                }).join('');
+            root.innerHTML = statusHtml + statsHtml +
+                `<div style="font-size:10px;color:#b0a0b8;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Recent cycles</div>` +
+                logHtml;
+        }
+
+        window.deleteCycleEntry = async (idx) => {
+            cycleHistory.splice(idx, 1);
+            try { await setDoc(doc(db, 'system', 'cycle_history'), { cycles: cycleHistory }); }
+            catch(e) { console.error('cycle delete failed:', e); }
+            renderCycleSection();
+        };
+
         function destroyHistoryCharts() {
             historyCharts.forEach(c => { try { c.destroy(); } catch(e) {} });
             historyCharts = [];
@@ -1657,6 +1765,7 @@
             // It contains a full input card per habit and is hidden behind a passcode
             // during normal use, so building it on every render is pure wasted work.
             const manageVisible = document.getElementById('managePanel')?.style.display !== 'none';
+            if (manageVisible && !cycleHistoryLoaded) { loadCycleHistory(); }
 
             const dIdx = getDayIdx(viewingDate);
 
@@ -3465,100 +3574,4 @@
                         <input type="number" id="evPay" placeholder="e.g. 5.00" step="0.50" style="width:100%;padding:8px;border:1px solid #eee;border-radius:8px;font-size:12px;box-sizing:border-box;">
                     </div>
                 </div>
-                <textarea id="evNote" placeholder="Definition / rules (optional)" style="width:100%;padding:8px;border:1px solid #eee;border-radius:8px;font-family:'Montserrat';font-size:12px;resize:vertical;min-height:48px;box-sizing:border-box;margin-bottom:8px;"></textarea>
-                <button onclick="window.addEvent()" style="width:100%;background:var(--header-pink);color:white;border:none;padding:12px;border-radius:10px;font-weight:bold;cursor:pointer;">Create Event</button>
-            </div>
-
-</div>
-            <div id="eventsManageRoot"></div>
-<div class="manage-section-header" onclick="window.toggleManageSection('ms-starshop')"><span style="font-family:'Playfair Display';font-size:13px;font-weight:700;color:var(--header-pink);">✨ Star Shop</span><span id="msc-ms-starshop" style="color:#ccc;font-size:18px;transition:transform 0.2s;transform:;">&#8250;</span></div>
-<div id="ms-ms-starshop" style="display:none;">
-            <div class="manage-card" style="margin-bottom:14px;">
-                <h4 style="font-family:'Great Vibes'; font-size:28px; color:var(--header-pink); margin:0 0 12px 0;">✨ Star Shop</h4>
-                <div style="font-size:11px;color:#aaa;margin-bottom:10px;">Award stars manually or add/remove shop items.</div>
-                <div style="display:flex;gap:8px;margin-bottom:10px;">
-                    <input type="number" id="awardAmt" placeholder="Amount" min="1" style="width:72px;padding:10px;border:1px solid #eee;border-radius:8px;font-family:'Montserrat';font-size:13px;">
-                    <input type="text" id="awardNote" placeholder="Reason (optional)" style="flex:1;padding:10px;border:1px solid #eee;border-radius:8px;font-family:'Montserrat';font-size:13px;">
-                    <button onclick="window.awardStars()" style="padding:10px 14px;background:var(--header-pink);color:white;border:none;border-radius:8px;font-weight:bold;cursor:pointer;white-space:nowrap;">✨ Award</button>
-                </div>
-                <div style="font-size:11px;color:#aaa;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Add Shop Item</div>
-                <div style="display:flex;gap:6px;margin-bottom:6px;">
-                    <input type="text" id="shopItemIcon" placeholder="Icon" style="width:18%;padding:8px;border:1px solid #eee;border-radius:8px;">
-                    <input type="text" id="shopItemName" placeholder="Item name" style="flex:1;padding:8px;border:1px solid #eee;border-radius:8px;">
-                    <input type="number" id="shopItemCost" placeholder="✨ cost" min="1" style="width:22%;padding:8px;border:1px solid #eee;border-radius:8px;">
-                </div>
-                <button onclick="window.addShopItem()" style="width:100%;background:#4a3a3a;color:white;border:none;padding:10px;border-radius:8px;font-weight:bold;cursor:pointer;margin-bottom:10px;">Add Item</button>
-                <div id="shopManageRoot"></div>
-            </div>
-
-</div>
-<div class="manage-section-header" onclick="window.toggleManageSection('ms-habits')"><span style="font-family:'Playfair Display';font-size:13px;font-weight:700;color:var(--header-pink);">Habits &amp; Tiers</span><span id="msc-ms-habits" style="color:#ccc;font-size:18px;transition:transform 0.2s;transform:;">&#8250;</span></div>
-<div id="ms-ms-habits" style="display:none;">
-            <div style="display:flex;gap:10px;margin-bottom:20px;">
-                <button onclick="window.sendVictoriaTestReport()" style="flex:1;padding:15px;background:#8e44ad;color:white;border-radius:12px;border:none;font-weight:bold;cursor:pointer;font-family:'Playfair Display';letter-spacing:1px;">📋 VIEW REPORT</button>
-                <button onclick="window.runWeeklyReport(true)" style="flex:1;padding:15px;background:#4a3a3a;color:white;border-radius:12px;border:none;font-weight:bold;cursor:pointer;font-family:'Playfair Display';letter-spacing:1px;">✓ SUBMIT &amp; RESET</button>
-            </div>
-
-</div>
-            <div id="manageRoot"></div>
-        </div>
-        <div id="historyRoot"></div>
-    </div>
-
-
-
-    <footer>Victoria Tracker</footer>
-
-<script>
-if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/VictoriaTracker/sw.js')
-            .catch(err => console.warn('SW registration failed:', err));
-    });
-}
-</script>
-
-<!-- Star Shop Overlay -->
-<div id="shopOverlay" onclick="if(event.target===this)window.closeShop()">
-    <div id="shopSheet">
-        <div class="shop-handle"></div>
-        <div id="shopItemsView">
-            <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px;">
-                <div>
-                    <div style="font-family:'Great Vibes';font-size:32px;color:var(--header-pink);">Victoria's Shop</div>
-                    <div id="shopBalDisplay" style="font-size:12px;color:#aaa;margin-bottom:16px;">✨ <strong>0 stars</strong> available</div>
-                </div>
-                <button onclick="window.closeShop()" style="background:none;border:none;font-size:18px;color:#ccc;cursor:pointer;padding:4px;">×</button>
-            </div>
-            <div id="shopGrid" class="shop-grid"></div>
-            <div class="shop-log-title">✨ Star History</div>
-            <div id="shopLogWrap" class="shop-log-wrap"></div>
-        </div>
-        <div id="shopConfirmView" style="display:none;">
-            <div class="shop-confirm-card">
-                <div style="font-family:'Great Vibes';font-size:26px;color:var(--header-pink);margin-bottom:8px;">Confirm Redemption</div>
-                <div style="font-size:13px;color:#888;line-height:1.7;margin-bottom:18px;">
-                    Redeem <strong id="confirmItemName"></strong> for <strong>✨ <span id="confirmCost"></span> stars</strong>?<br>
-                    You have <strong><span id="confirmBefore"></span></strong> stars. After redeeming you'll have <strong><span id="confirmAfter"></span></strong> left.
-                </div>
-                <div style="display:flex;gap:8px;">
-                    <button onclick="window.cancelConfirm()" style="flex:1;padding:11px;border:1px solid #eee;border-radius:10px;background:white;color:#aaa;font-size:12px;font-weight:600;cursor:pointer;font-family:'Montserrat';">Cancel</button>
-                    <button onclick="window.doRedeem()" style="flex:1;padding:11px;border:none;border-radius:10px;background:var(--header-pink);color:white;font-size:12px;font-weight:700;cursor:pointer;font-family:'Montserrat';">✨ Redeem</button>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-</div>
-
-<!-- Definition modal overlay -->
-<div id="defOverlay" onclick="window.closeDefinition()">
-    <div id="defSheet" onclick="event.stopPropagation()">
-        <div id="defTitle" style="font-family:'Great Vibes';font-size:28px;color:var(--header-pink);margin-bottom:12px;"></div>
-        <div id="defBody" style="font-family:'Montserrat';font-size:14px;line-height:1.7;color:#4a3a3a;white-space:pre-wrap;"></div>
-        <button onclick="window.closeDefinition()" style="margin-top:20px;width:100%;padding:12px;background:var(--header-pink);color:white;border:none;border-radius:12px;font-weight:bold;cursor:pointer;font-family:'Montserrat';">Got it</button>
-    </div>
-</div>
-
-</body>
-</html>
+                <textarea id="evNote" placeholder="Definition / rules (optional)" style="width:100%;padding:8px;border:1px solid #eee;border-radius:8px;font-family:
