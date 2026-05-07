@@ -8,7 +8,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@300;400;600&display=swap" rel="stylesheet">
     
     <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
     
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script type="module">
@@ -1445,6 +1445,7 @@
             }
 
             checkPerfectWeek();
+            checkStreakMilestones();
         };
 
         // ── FIREBASE LISTENER ────────────────────────────────────────────────
@@ -1923,15 +1924,34 @@
 
         function triggerFanfare(tier) {
             if (tier === 'low') {
-                confetti({ particleCount: 40, spread: 50, origin: { y: 0.8 } });
+                // 🎀 Ribbon bow + 🫧 Bubbles
+                const shapes = [
+                    confetti.shapeFromText({ text: '🎀', scalar: 2 }),
+                    confetti.shapeFromText({ text: '🫧', scalar: 2 }),
+                ];
+                confetti({ particleCount: 45, spread: 55, origin: { y: 0.8 }, shapes, scalar: 2 });
+
             } else if (tier === 'goal') {
-                confetti({ particleCount: 100, spread: 70, origin: { y: 0.7 } });
+                // ✨ Sparkles + 🌸 Cherry blossom
+                const shapes = [
+                    confetti.shapeFromText({ text: '✨', scalar: 2 }),
+                    confetti.shapeFromText({ text: '🌸', scalar: 2 }),
+                ];
+                confetti({ particleCount: 80, spread: 65, origin: { y: 0.7 }, shapes, scalar: 2 });
+                setTimeout(() => {
+                    confetti({ particleCount: 30, spread: 40, origin: { y: 0.75, x: 0.5 }, shapes, scalar: 2, startVelocity: 25 });
+                }, 200);
+
             } else if (tier === 'bonus') {
-                const duration = 3 * 1000;
-                const end = Date.now() + duration;
+                // 🦋 Butterflies + ❤️ Hearts from both sides
+                const shapes = [
+                    confetti.shapeFromText({ text: '🦋', scalar: 2 }),
+                    confetti.shapeFromText({ text: '❤️', scalar: 2 }),
+                ];
+                const end = Date.now() + 4000;
                 (function frame() {
-                    confetti({ particleCount: 3, angle: 60, spread: 55, origin: { x: 0 } });
-                    confetti({ particleCount: 3, angle: 120, spread: 55, origin: { x: 1 } });
+                    confetti({ particleCount: 4, angle: 60,  spread: 55, origin: { x: 0 }, shapes, scalar: 2 });
+                    confetti({ particleCount: 4, angle: 120, spread: 55, origin: { x: 1 }, shapes, scalar: 2 });
                     if (Date.now() < end) requestAnimationFrame(frame);
                 }());
             }
@@ -2038,8 +2058,41 @@
             toast.className = 'toast-notification';
             toast.innerHTML = '<span>🍀</span> <span>Lucky draw! +1 ⭐</span>';
             document.body.appendChild(toast);
-
             setTimeout(() => toast.remove(), 6000);
+
+            // 🍀 Clovers + ⭐ Stars confetti
+            const clover = confetti.shapeFromText({ text: '🍀', scalar: 2 });
+            const star   = confetti.shapeFromText({ text: '⭐', scalar: 2 });
+            confetti({ particleCount: 20, spread: 60, origin: { y: 0.75, x: 0.5 }, shapes: [clover], scalar: 2, startVelocity: 30 });
+            setTimeout(() => {
+                confetti({ particleCount: 15, spread: 50, origin: { y: 0.75, x: 0.5 }, shapes: [star], scalar: 2, startVelocity: 25 });
+            }, 150);
+        }
+
+        // ── STREAK MILESTONE CONFETTI ─────────────────────────────────────────
+        // Fires when a habit's streak hits 1, 2, 4, or 14+ weeks exactly.
+        // Uses localStorage to avoid re-triggering on every page load.
+        function checkStreakMilestones() {
+            if (!weeklyHistory.length) return;
+            const milestones = [1, 2, 4, 14];
+            habits.forEach(h => {
+                const { streak } = computeStreaksFromHistory(h.id);
+                if (!milestones.includes(streak)) return;
+                const key = `streakMilestone_${h.id}_${streak}`;
+                if (localStorage.getItem(key)) return; // already celebrated
+                localStorage.setItem(key, '1');
+
+                // 🔥 Fire + ⚡ Lightning bolt
+                const shapes = [
+                    confetti.shapeFromText({ text: '🔥', scalar: 2 }),
+                    confetti.shapeFromText({ text: '⚡', scalar: 2 }),
+                ];
+                confetti({ particleCount: 60, spread: 50, origin: { x: 0.4, y: 0.8 }, shapes, scalar: 2, startVelocity: 45 });
+                confetti({ particleCount: 60, spread: 50, origin: { x: 0.6, y: 0.8 }, shapes, scalar: 2, startVelocity: 45 });
+                setTimeout(() => {
+                    confetti({ particleCount: 40, spread: 70, origin: { x: 0.5, y: 0.75 }, shapes, scalar: 2, startVelocity: 35 });
+                }, 300);
+            });
         }
 
         // ── TIME-BASED COLOR SHIFT ────────────────────────────────────────────
@@ -2185,13 +2238,21 @@
         }
 
         function triggerPerfectWeek() {
-            const colors = ['#d4a3a3','#c49abd','#9b72b5','#f5e6f8','#ffffff','#f9c8e0'];
-            const end    = Date.now() + 5000;
-            // Big crown of confetti from both sides
+            // 👑 Crown + 🌈 Rainbow + 💜 Purple heart + 🫧 Bubbles
+            const shapes = [
+                confetti.shapeFromText({ text: '👑', scalar: 2 }),
+                confetti.shapeFromText({ text: '🌈', scalar: 2 }),
+                confetti.shapeFromText({ text: '💜', scalar: 2 }),
+                confetti.shapeFromText({ text: '🫧', scalar: 2 }),
+            ];
+            const end = Date.now() + 6000;
+            // Big initial burst
+            confetti({ particleCount: 120, spread: 100, origin: { y: 0.6 }, shapes, scalar: 2 });
+            // Sustained side cannons + center
             (function frame() {
-                confetti({ particleCount: 8, angle: 55,  spread: 90, origin: { x: 0,   y: 0.7 }, colors });
-                confetti({ particleCount: 8, angle: 125, spread: 90, origin: { x: 1,   y: 0.7 }, colors });
-                confetti({ particleCount: 5, angle: 90,  spread: 60, origin: { x: 0.5, y: 0.9 }, colors });
+                confetti({ particleCount: 6, angle: 55,  spread: 90, origin: { x: 0,   y: 0.7 }, shapes, scalar: 2 });
+                confetti({ particleCount: 6, angle: 125, spread: 90, origin: { x: 1,   y: 0.7 }, shapes, scalar: 2 });
+                confetti({ particleCount: 4, angle: 90,  spread: 60, origin: { x: 0.5, y: 0.9 }, shapes, scalar: 2 });
                 if (Date.now() < end) requestAnimationFrame(frame);
             }());
         }
