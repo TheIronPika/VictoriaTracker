@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#d4a3a3">
+    <link rel="manifest" href="manifest.json">
     <title>The Victoria Tracker</title>
     
     <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@300;400;600&display=swap" rel="stylesheet">
@@ -131,6 +133,10 @@
         let roomsData    = [];          // room objects from Firestore rooms_data
         let roomsLoaded  = false;
         let roomsCollapsed = localStorage.getItem('roomsCollapsed') !== 'false';
+
+        // Period tracking — stored in system/period_data
+        let periodData   = { active: false, startTs: null, startDayIdx: null };
+        let periodLoaded = false;
 
         // Debounce timer for updateField — held between calls so rapid spinner
         // clicks only send a single Firebase write after the last change settles
@@ -501,10 +507,12 @@
 
         // Phase 4a — Update streak counters on each habit.
         // Pure: returns a new habits array with streak/badStreak/bestStreak updated.
-        // Excused habits have their streak frozen — neither incremented nor reset.
+        // Excused habits and period-sensitive habits (during active period) have
+        // their streak frozen — neither incremented nor reset.
         function updateHabitStreaks(habitsArr) {
             return habitsArr.map(h => {
                 if (h.excused) return { ...h };  // freeze streak as-is
+                if (isPeriodActive() && !!h.periodSensitive) return { ...h }; // period: freeze streak
                 const hist      = (h.history||[]).slice(0,7);
                 const cur       = hist[6] !== undefined ? hist[6] : (hist[hist.length-1]||0);
                 const tier      = getTier(h, cur);
@@ -1068,7 +1076,95 @@
         }
 
 
-        // ── HISTORY: destroy all Chart.js instances ──────────────────────────
+        // ── PERIOD TRACKING ──────────────────────────────────────────────────
+        // Loads period_data from Firestore on first call, then caches it.
+        async function loadPeriodData() {
+            if (periodLoaded) return;
+            try {
+                const snap = await getDoc(doc(db, 'system', 'period_data'));
+                if (snap.exists()) periodData = { ...periodData, ...snap.data() };
+            } catch(e) { console.warn('period_data load failed:', e); }
+            periodLoaded = true;
+            render();
+        }
+
+        async function syncPeriodData() {
+            try {
+                await setDoc(doc(db, 'system', 'period_data'), periodData);
+            } catch(e) { console.error('period_data sync failed:', e); }
+        }
+
+        // Returns true if a period is currently active
+        function isPeriodActive() { return !!periodData.active; }
+
+        // Returns how many days since period started (1-based, e.g. "Day 3")
+        function periodDayCount() {
+            if (!periodData.startTs) return 1;
+            const ms  = Date.now() - periodData.startTs;
+            return Math.max(1, Math.floor(ms / 86400000) + 1);
+        }
+
+        // Returns the week day index (0=Mon…6=Sun) when period started this week
+        // Returns 7 (out of range) if not active or started before this week
+        function periodStartDayIdx() {
+            if (!periodData.active || !periodData.startTs) return 7;
+            const weekStart = getWeekStart();
+            const startTs   = periodData.startTs;
+            if (startTs < weekStart) return 0; // started before this week — whole week protected
+            const d = new Date(startTs);
+            return getDayIdx(d);
+        }
+
+        // Returns the Monday 00:00 timestamp of the current week
+        function getWeekStart() {
+            const now = new Date();
+            const day = now.getDay();
+            const diff = (day === 0 ? -6 : 1 - day);
+            const mon = new Date(now);
+            mon.setDate(now.getDate() + diff);
+            mon.setHours(0,0,0,0);
+            return mon.getTime();
+        }
+
+        window.openPeriodModal = () => {
+            const existing = document.getElementById('periodModalOverlay');
+            if (existing) existing.remove();
+            const isActive = isPeriodActive();
+            const overlay = document.createElement('div');
+            overlay.id = 'periodModalOverlay';
+            overlay.className = 'period-modal-overlay';
+            overlay.innerHTML = `
+                <div class="period-modal-sheet">
+                    <div class="period-modal-title">${isActive ? '🩸 End period' : '🩸 Start period'}</div>
+                    <div class="period-modal-sub">${isActive
+                        ? `Period has been active for ${periodDayCount()} day${periodDayCount()!==1?'s':''}. Marking it as ended will restore normal payout and streak rules going forward.`
+                        : 'Period-sensitive habits will still earn positive payouts as normal, but won\'t be penalized or lose streaks while your period is active.'
+                    }</div>
+                    <div class="period-modal-btns">
+                        <button class="period-modal-btn cancel" onclick="document.getElementById('periodModalOverlay').remove()">Cancel</button>
+                        ${isActive
+                            ? `<button class="period-modal-btn end-btn" onclick="window.endPeriod()">End period</button>`
+                            : `<button class="period-modal-btn confirm" onclick="window.startPeriod()">Start period</button>`
+                        }
+                    </div>
+                </div>`;
+            overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+            document.body.appendChild(overlay);
+        };
+
+        window.startPeriod = async () => {
+            document.getElementById('periodModalOverlay')?.remove();
+            periodData = { active: true, startTs: Date.now(), startDayIdx: getDayIdx(new Date()) };
+            await syncPeriodData();
+            render();
+        };
+
+        window.endPeriod = async () => {
+            document.getElementById('periodModalOverlay')?.remove();
+            periodData = { active: false, startTs: null, startDayIdx: null };
+            await syncPeriodData();
+            render();
+        };
         function destroyHistoryCharts() {
             historyCharts.forEach(c => { try { c.destroy(); } catch(e) {} });
             historyCharts = [];
@@ -1533,6 +1629,21 @@
             buildDateStrip();
             updateFiltersUI();
 
+            // Lazy-load period data on first render
+            if (!periodLoaded) { loadPeriodData(); return; }
+
+            // Update the period pill in the header
+            const pill = document.getElementById('periodPill');
+            if (pill) {
+                if (isPeriodActive()) {
+                    pill.textContent = `🩸 Day ${periodDayCount()}`;
+                    pill.classList.remove('period-inactive');
+                } else {
+                    pill.textContent = '🩸';
+                    pill.classList.add('period-inactive');
+                }
+            }
+
             const todayRoot = document.getElementById('todayRoot');
             const priorityRoot = document.getElementById('priorityRoot');
             // Sync toggle UI to current priorityMode
@@ -1618,8 +1729,9 @@
                     const tier = getTier(h, cur);
 
                     let payout = 0;
+                    const periodProtected = isPeriodActive() && !!h.periodSensitive;
                     if (!h.excused) {
-                        if(tier === 'punish') payout = h.valPunish;
+                        if (tier === 'punish') payout = periodProtected ? 0 : (h.valPunish || 0);
                         else if(tier === 'low') payout = h.valLow;
                         else if(tier === 'goal') payout = h.valGoal;
                         else if(tier === 'bonus') payout = h.valBonus;
@@ -1629,7 +1741,8 @@
                             const cap = h.streakCap ? parseFloat(h.streakCap) : Infinity;
                             payout += Math.min(raw, cap);
                         }
-                        if ((tier==='punish'||tier==='low') && (h.badStreak||0)>=2 && (h.streakPenaltyPer||0)>0) {
+                        // Suppress streak penalty during period
+                        if (!periodProtected && (tier==='punish'||tier==='low') && (h.badStreak||0)>=2 && (h.streakPenaltyPer||0)>0) {
                             const raw = (h.badStreak||0) * (h.streakPenaltyPer||0);
                             const cap = h.streakCap ? parseFloat(h.streakCap) : Infinity;
                             payout -= Math.min(raw, cap);
@@ -1666,18 +1779,22 @@
                         : '';
 
                     let bubblesHtml = '';
+                    const pStartIdx = periodStartDayIdx();
                     for (let i = 1; i <= (h.max || 7); i++) {
                         const stepTier  = getTier(h, i);
                         const isFilled  = i <= cur;
                         const dayLetter = isFilled ? dayForBubble(h.history, i) : '';
+                        // Pink bubble: period-sensitive + period active + this bubble not yet earned + day is in period window
+                        const isPaused  = !isFilled && isPeriodActive() && !!h.periodSensitive && dIdx >= pStartIdx;
                         bubblesHtml += `
-                            <div class="bubble day-bub ${isFilled ? 'filled ' + stepTier : ''}"
+                            <div class="bubble day-bub ${isFilled ? 'filled ' + stepTier : ''} ${isPaused ? 'period-paused' : ''}"
                                  style="border-color:var(--color-${stepTier})"
                                  onclick="window.toggleBubble('${h.id}',${i})">${dayLetter}</div>`;
                     }
 
+                    const periodProtectedCard = isPeriodActive() && !!h.periodSensitive;
                     const cardHtml = `
-                        <div class="habit-card ${isUrgent ? 'priority-border' : ''} ${isArriving ? 'card-arriving' : ''} ${streaks.streak >= 14 ? 'glow-intense' : streaks.streak >= 4 ? 'glow-bright' : streaks.streak >= 2 ? 'glow-medium' : streaks.streak >= 1 ? 'glow-light' : ''}"
+                        <div class="habit-card ${isUrgent ? 'priority-border' : ''} ${isArriving ? 'card-arriving' : ''} ${streaks.streak >= 14 ? 'glow-intense' : streaks.streak >= 4 ? 'glow-bright' : streaks.streak >= 2 ? 'glow-medium' : streaks.streak >= 1 ? 'glow-light' : ''} ${periodProtectedCard ? 'period-protected-card' : ''}"
                              data-habit-id="${h.id}"
                              ontouchstart="window.startLongPress('${h.id}')"
                              ontouchend="window.cancelLongPress()"
@@ -1686,6 +1803,7 @@
                             <div style="flex:1">
                                 ${isUrgent ? `<span class="priority-tag">✦ ${priorityMode === 'bonus' ? 'Bonus' : 'Goal'} at Risk</span>` : ''}
                                 ${h.excused ? '<span class="excused-tag">✦ Excused this week</span>' : ''}
+                                ${periodProtectedCard ? '<span class="period-tag">🩸 period protected</span>' : ''}
                                 <div style="display:flex;align-items:center;gap:8px;">
                                     <p style="margin:0; font-weight:600;">${h.name}</p>
                                     ${streaks.streak    >= 1 ? `<span class="streak-badge">🔥 ${streaks.streak}</span>` : ''}
@@ -1791,6 +1909,13 @@
                                     placeholder="Describe exactly what counts for this habit…"
                                     style="width:100%;padding:8px;border:1px solid #eee;border-radius:8px;font-family:'Montserrat';font-size:12px;resize:vertical;min-height:60px;box-sizing:border-box;"
                                     onchange="window.updateField('${h.id}','note',this.value)">${h.note || ''}</textarea>
+                            </div>
+                            <div style="margin-top:10px;display:flex;align-items:center;gap:10px;">
+                                <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#888;cursor:pointer;">
+                                    <input type="checkbox" ${h.periodSensitive ? 'checked' : ''}
+                                        onchange="window.updateField('${h.id}','periodSensitive',this.checked)">
+                                    🩸 Period sensitive — no penalties during period
+                                </label>
                             </div>
                             <button class="btn-delete" onclick="window.deleteTask('${h.id}')">DELETE TASK</button>
                         </div>
@@ -2790,6 +2915,107 @@
         .habit-card:has(.excuse-on) {
             opacity: 0.6;
         }
+        .period-protected-card {
+            border-color: rgba(237,147,177,0.3) !important;
+            background: rgba(251,234,240,0.25) !important;
+        }
+
+        /* ── PERIOD PILL ────────────────────────────────────────────────── */
+        .period-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid rgba(237,147,177,0.4);
+            background: rgba(251,234,240,0.6);
+            color: #72243E;
+            transition: all 0.15s;
+            flex-shrink: 0;
+        }
+        .period-pill:active { transform: scale(0.96); }
+        .period-pill.period-inactive {
+            border-color: rgba(212,163,163,0.25);
+            background: rgba(253,248,255,0.6);
+            color: #c9a8c9;
+        }
+
+        /* ── PERIOD PROTECTED BADGE ─────────────────────────────────────── */
+        .period-tag {
+            display: inline-block;
+            font-size: 10px;
+            font-weight: 600;
+            color: #993556;
+            letter-spacing: 0.5px;
+            margin-bottom: 3px;
+        }
+
+        /* ── PERIOD BUBBLE (paused day) ─────────────────────────────────── */
+        .bubble.period-paused {
+            background: #f4c0d1 !important;
+            border-color: #ED93B1 !important;
+            color: #993556;
+        }
+
+        /* ── PERIOD MODAL ───────────────────────────────────────────────── */
+        .period-modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.35);
+            z-index: 1000;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+        }
+        .period-modal-sheet {
+            background: white;
+            border-radius: 20px 20px 0 0;
+            padding: 24px 20px 36px;
+            width: 100%;
+            max-width: 500px;
+        }
+        .period-modal-title {
+            font-family: 'Playfair Display', serif;
+            font-size: 18px;
+            color: #c490c4;
+            margin-bottom: 8px;
+        }
+        .period-modal-sub {
+            font-size: 13px;
+            color: #888;
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+        .period-modal-btns {
+            display: flex;
+            gap: 10px;
+        }
+        .period-modal-btn {
+            flex: 1;
+            padding: 12px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: 700;
+            font-family: 'Montserrat', sans-serif;
+            cursor: pointer;
+            border: none;
+        }
+        .period-modal-btn.cancel {
+            background: #f5f5f5;
+            color: #888;
+        }
+        .period-modal-btn.confirm {
+            background: #FBEAF0;
+            color: #72243E;
+            border: 1px solid #ED93B1;
+        }
+        .period-modal-btn.end-btn {
+            background: #f5f5f5;
+            color: #72243E;
+        }
 
         .cycle-badge {
             font-size: 9px;
@@ -3125,7 +3351,10 @@
 <canvas id="particleCanvas" style="position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0;"></canvas>
 <div class="phone-mockup">
     <header>
-        <div class="greeting-line"><span id="daytimeGreeting">Good Morning</span>,<span class="beloved">Victoria</span></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+            <div class="greeting-line"><span id="daytimeGreeting">Good Morning</span>,<span class="beloved">Victoria</span></div>
+            <button id="periodPill" class="period-pill period-inactive" onclick="window.openPeriodModal()">🩸</button>
+        </div>
         <div class="date-strip" id="dateStrip"></div>
     </header>
 
@@ -3279,6 +3508,15 @@
 
 
     <footer>Victoria Tracker</footer>
+
+<script>
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/VictoriaTracker/sw.js')
+            .catch(err => console.warn('SW registration failed:', err));
+    });
+}
+</script>
 
 <!-- Star Shop Overlay -->
 <div id="shopOverlay" onclick="if(event.target===this)window.closeShop()">
