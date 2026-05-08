@@ -135,7 +135,7 @@
         let roomsCollapsed = localStorage.getItem('roomsCollapsed') !== 'false';
 
         // Period tracking — stored in system/period_data
-        let periodData   = { active: false, startTs: null, startDayIdx: null };
+        let periodData   = { active: false, startTs: null, startDayIdx: null, history: [] };
         let periodLoaded = false;
 
         // Debounce timer for updateField — held between calls so rapid spinner
@@ -1154,17 +1154,112 @@
 
         window.startPeriod = async () => {
             document.getElementById('periodModalOverlay')?.remove();
-            periodData = { active: true, startTs: Date.now(), startDayIdx: getDayIdx(new Date()) };
+            const now = Date.now();
+            periodData = { active: true, startTs: now, startDayIdx: getDayIdx(new Date()), history: periodData.history || [] };
             await syncPeriodData();
             render();
         };
 
         window.endPeriod = async () => {
             document.getElementById('periodModalOverlay')?.remove();
-            periodData = { active: false, startTs: null, startDayIdx: null };
+            if (periodData.active && periodData.startTs) {
+                const endTs = Date.now();
+                const duration = Math.ceil((endTs - periodData.startTs) / 86400000);
+                const entry = {
+                    id: periodData.startTs.toString(),
+                    startTs: periodData.startTs,
+                    endTs: endTs,
+                    duration: duration,
+                    startDate: new Date(periodData.startTs).toLocaleDateString('en-US'),
+                    endDate: new Date(endTs).toLocaleDateString('en-US')
+                };
+                const history = periodData.history || [];
+                history.unshift(entry);
+                periodData = { active: false, startTs: null, startDayIdx: null, history: history };
+            } else {
+                periodData = { active: false, startTs: null, startDayIdx: null, history: periodData.history || [] };
+            }
             await syncPeriodData();
             render();
         };
+        function renderPeriodHistory() {
+            const root = document.getElementById('periodHistoryRoot');
+            if (!root) return;
+            
+            const history = periodData.history || [];
+            
+            // Calculate stats
+            const avgCycleDays = history.length >= 2 
+                ? Math.round((history[0].startTs - history[history.length - 1].startTs) / ((history.length - 1) * 86400000)) 
+                : 0;
+            const avgDurationDays = history.length > 0 
+                ? Math.round(history.reduce((sum, e) => sum + e.duration, 0) / history.length * 10) / 10 
+                : 0;
+            const nextPeriodTs = history.length > 0 && avgCycleDays > 0 
+                ? history[0].endTs + (avgCycleDays * 86400000) 
+                : null;
+            const nextPeriodDate = nextPeriodTs ? new Date(nextPeriodTs) : null;
+            const nextPeriodStr = nextPeriodDate ? (nextPeriodDate.getMonth() + 1) + '/' + nextPeriodDate.getDate() + '/' + nextPeriodDate.getFullYear() : '--';
+            
+            // Build HTML
+            let html = `
+                <div class="period-history-card" style="background:rgba(255,255,255,0.85);border-radius:16px;padding:18px;margin-bottom:14px;box-shadow:0 4px 15px rgba(0,0,0,0.04);">
+                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:18px;">
+                        <div style="background:rgba(232,100,100,0.08);border-radius:8px;padding:1rem;">
+                            <div style="font-size:12px;color:#999;margin-bottom:0.5rem;">Next period</div>
+                            <div style="font-size:18px;font-weight:500;color:#d9534f;">${nextPeriodStr}</div>
+                            ${avgCycleDays > 0 ? `<div style="font-size:11px;color:#bbb;margin-top:0.5rem;">${avgCycleDays} day cycle</div>` : ''}
+                        </div>
+                        <div style="background:rgba(232,100,100,0.08);border-radius:8px;padding:1rem;">
+                            <div style="font-size:12px;color:#999;margin-bottom:0.5rem;">Avg cycle</div>
+                            <div style="font-size:18px;font-weight:500;color:#d9534f;">${avgCycleDays || '--'} days</div>
+                            <div style="font-size:11px;color:#bbb;margin-top:0.5rem;">from ${history.length} cycles</div>
+                        </div>
+                        <div style="background:rgba(232,100,100,0.08);border-radius:8px;padding:1rem;">
+                            <div style="font-size:12px;color:#999;margin-bottom:0.5rem;">Avg duration</div>
+                            <div style="font-size:18px;font-weight:500;color:#d9534f;">${avgDurationDays || '--'} days</div>
+                            <div style="font-size:11px;color:#bbb;margin-top:0.5rem;">period length</div>
+                        </div>
+                        <div style="background:rgba(232,100,100,0.08);border-radius:8px;padding:1rem;">
+                            <div style="font-size:12px;color:#999;margin-bottom:0.5rem;">Tracked</div>
+                            <div style="font-size:18px;font-weight:500;color:#d9534f;">${history.length} cycles</div>
+                            <div style="font-size:11px;color:#bbb;margin-top:0.5rem;">in history</div>
+                        </div>
+                    </div>
+                    
+                    ${history.length > 0 ? `
+                        <div style="border-top:1px solid rgba(0,0,0,0.05);padding-top:1rem;">
+                            <div style="font-size:12px;color:#999;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:0.75rem;">Past periods</div>
+                            <div style="display:flex;flex-direction:column;gap:6px;font-size:12px;">
+                                ${history.slice(0, 20).map((e, i) => `
+                                    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px;background:rgba(0,0,0,0.02);border-radius:6px;">
+                                        <div>
+                                            <div style="font-weight:500;">${e.startDate} – ${e.endDate}</div>
+                                            <div style="font-size:11px;color:#999;">${e.duration} day${e.duration !== 1 ? 's' : ''}</div>
+                                        </div>
+                                        <button onclick="window.deletePeriodEntry('${e.id}')" style="background:none;border:none;color:#ccc;cursor:pointer;font-size:12px;padding:2px 6px;">×</button>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    ` : `
+                        <div style="text-align:center;padding:20px;color:#bbb;font-size:12px;">
+                            No period history yet. Start tracking when you begin your next period.
+                        </div>
+                    `}
+                </div>
+            `;
+            root.innerHTML = html;
+        }
+
+        window.deletePeriodEntry = async (entryId) => {
+            if (!confirm('Delete this period entry?')) return;
+            const history = (periodData.history || []).filter(e => e.id !== entryId);
+            periodData = { ...periodData, history };
+            await syncPeriodData();
+            renderPeriodHistory();
+        };
+
         function destroyHistoryCharts() {
             historyCharts.forEach(c => { try { c.destroy(); } catch(e) {} });
             historyCharts = [];
@@ -1939,6 +2034,7 @@
             if(roomsLoaded) roomsData.forEach(r => { if(r.checked) displayTotal += Math.min(r.streak+1, r.maxStreak); });
             animateMoneyDisplay(displayTotal);
             if (eventsLoaded) renderSeasonalSection();
+            if (manageVisible && periodLoaded) renderPeriodHistory();
             const slb = document.getElementById('sortLockBtn');
             if (slb) {
                 slb.classList.toggle('sort-lock-on', sortLocked);
@@ -2036,7 +2132,7 @@
                 window.switchTab(3);
                 setTimeout(() => {
                     const panel = document.getElementById('managePanel');
-                    if (panel) { panel.style.display = 'block'; panel.scrollIntoView({behavior:'smooth'}); render(); renderEventsManage(); renderShopManage(); }
+                    if (panel) { panel.style.display = 'block'; panel.scrollIntoView({behavior:'smooth'}); render(); renderEventsManage(); renderShopManage(); renderPeriodHistory(); }
                 }, 80);
             }
         };
@@ -3491,6 +3587,10 @@
                 <div id="shopManageRoot"></div>
             </div>
 
+</div>
+<div class="manage-section-header" onclick="window.toggleManageSection('ms-period')"><span style="font-family:'Playfair Display';font-size:13px;font-weight:700;color:var(--header-pink);">🩸 Period History</span><span id="msc-ms-period" style="color:#ccc;font-size:18px;transition:transform 0.2s;transform:;">&#8250;</span></div>
+<div id="ms-ms-period" style="display:none;">
+            <div id="periodHistoryRoot"></div>
 </div>
 <div class="manage-section-header" onclick="window.toggleManageSection('ms-habits')"><span style="font-family:'Playfair Display';font-size:13px;font-weight:700;color:var(--header-pink);">Habits &amp; Tiers</span><span id="msc-ms-habits" style="color:#ccc;font-size:18px;transition:transform 0.2s;transform:;">&#8250;</span></div>
 <div id="ms-ms-habits" style="display:none;">
