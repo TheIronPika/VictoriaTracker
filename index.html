@@ -138,10 +138,6 @@
         let periodData   = { active: false, startTs: null, startDayIdx: null };
         let periodLoaded = false;
 
-        // Cycle history — stored in system/cycle_history
-        let cycleHistory       = [];   // array of { startTs, endTs, lengthDays }
-        let cycleHistoryLoaded = false;
-
         // Debounce timer for updateField — held between calls so rapid spinner
         // clicks only send a single Firebase write after the last change settles
         let _updateFieldTimer = null;
@@ -1165,301 +1161,17 @@
 
         window.endPeriod = async () => {
             document.getElementById('periodModalOverlay')?.remove();
-            // Log the completed cycle before clearing
-            if (periodData.startTs) {
-                const endTs = Date.now();
-                const lengthDays = Math.max(1, Math.round((endTs - periodData.startTs) / 86400000));
-                try {
-                    const ref  = doc(db, 'system', 'cycle_history');
-                    const snap = await getDoc(ref);
-                    const cycles = snap.exists() ? (snap.data().cycles || []) : [];
-                    cycles.push({ startTs: periodData.startTs, endTs, lengthDays });
-                    await setDoc(ref, { cycles });
-                } catch(e) { console.error('cycle_history write failed:', e); }
-            }
             periodData = { active: false, startTs: null, startDayIdx: null };
             await syncPeriodData();
-            cycleHistoryLoaded = false; // force reload on next render
             render();
         };
-        // ── CYCLE HISTORY & PREDICTION ───────────────────────────────────────
-        async function loadCycleHistory() {
-            if (cycleHistoryLoaded) return;
-            try {
-                const snap = await getDoc(doc(db, 'system', 'cycle_history'));
-                cycleHistory = snap.exists() ? (snap.data().cycles || []) : [];
-                cycleHistory.sort((a, b) => a.startTs - b.startTs);
-            } catch(e) { console.warn('cycle_history load failed:', e); }
-            cycleHistoryLoaded = true;
-            renderCycleSection();
-        }
-
-        function renderCycleSection() {
-            const root = document.getElementById('cycleTrackingRoot');
-            if (!root) return;
-            const fmt = ts => {
-                const d = new Date(ts);
-                return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]
-                    + ' ' + d.getDate() + ', ' + d.getFullYear();
-            };
-            let avgCycleLen = null, avgPeriodLen = null, nextPredicted = null;
-            if (cycleHistory.length >= 2) {
-                const gaps = [];
-                for (let i = 1; i < cycleHistory.length; i++)
-                    gaps.push(Math.round((cycleHistory[i].startTs - cycleHistory[i-1].startTs) / 86400000));
-                avgCycleLen = Math.round(gaps.reduce((s,v) => s+v, 0) / gaps.length);
-            }
-            if (cycleHistory.length >= 1) {
-                const lens = cycleHistory.map(c => c.lengthDays);
-                avgPeriodLen = Math.round(lens.reduce((s,v) => s+v, 0) / lens.length);
-            }
-            if (avgCycleLen && cycleHistory.length >= 1) {
-                const lastStart = cycleHistory[cycleHistory.length - 1].startTs;
-                nextPredicted = lastStart + avgCycleLen * 86400000;
-                if (isPeriodActive() && periodData.startTs)
-                    nextPredicted = periodData.startTs + avgCycleLen * 86400000;
-            }
-            let statusHtml = '';
-            if (isPeriodActive() && periodData.startTs) {
-                const days = periodDayCount();
-                statusHtml = `<div style="background:#FBEAF0;border:1px solid #ED93B1;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:#72243E;">
-                    🩸 Period active — Day ${days}${avgPeriodLen ? ` of ~${avgPeriodLen}` : ''} &nbsp;·&nbsp; Started ${fmt(periodData.startTs)}
-                </div>`;
-            } else if (nextPredicted) {
-                const daysUntil = Math.round((nextPredicted - Date.now()) / 86400000);
-                const isOverdue = daysUntil < 0;
-                statusHtml = `<div style="background:${isOverdue ? '#fff5f5' : '#fdf8ff'};border:1px solid ${isOverdue ? '#ED93B1' : '#e8dff0'};border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:${isOverdue ? '#72243E' : '#9a78a0'};">
-                    ${isOverdue ? '🩸 Period may be starting' : '🗓️ Next period predicted'} &nbsp;·&nbsp; ${isOverdue ? Math.abs(daysUntil) + ' days ago' : 'in ' + daysUntil + ' days'} &nbsp;·&nbsp; ~${fmt(nextPredicted)}
-                </div>`;
-            }
-            const statsHtml = `
-                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;">
-                    <div style="background:#f9f4fd;border-radius:10px;padding:10px;text-align:center;">
-                        <div style="font-size:18px;font-weight:700;color:#c490c4;">${cycleHistory.length}</div>
-                        <div style="font-size:10px;color:#b0a0b8;">cycles logged</div>
-                    </div>
-                    <div style="background:#f9f4fd;border-radius:10px;padding:10px;text-align:center;">
-                        <div style="font-size:18px;font-weight:700;color:#c490c4;">${avgCycleLen ? avgCycleLen + 'd' : '—'}</div>
-                        <div style="font-size:10px;color:#b0a0b8;">avg cycle</div>
-                    </div>
-                    <div style="background:#f9f4fd;border-radius:10px;padding:10px;text-align:center;">
-                        <div style="font-size:18px;font-weight:700;color:#c490c4;">${avgPeriodLen ? avgPeriodLen + 'd' : '—'}</div>
-                        <div style="font-size:10px;color:#b0a0b8;">avg period</div>
-                    </div>
-                </div>`;
-            const logHtml = cycleHistory.length === 0
-                ? `<div style="font-size:12px;color:#ccc;padding:10px 0;text-align:center;">No cycles logged yet — start tracking with the 🩸 button</div>`
-                : [...cycleHistory].reverse().slice(0, 6).map((c, i) => {
-                    const prevStart = [...cycleHistory].reverse()[i+1]?.startTs;
-                    const cycleGap = prevStart ? Math.round((c.startTs - prevStart) / 86400000) : null;
-                    const origIdx  = cycleHistory.length - 1 - i;
-                    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f5f0f8;font-size:12px;">
-                        <div style="flex:1;">
-                            <div style="font-weight:600;color:#4a3a3a;">${fmt(c.startTs)}</div>
-                            <div style="font-size:10px;color:#b0a0b8;">${c.lengthDays}d period${cycleGap ? ' · ' + cycleGap + 'd cycle' : ''}</div>
-                        </div>
-                        <button onclick="window.deleteCycleEntry(${origIdx})" style="font-size:10px;color:#e89dac;background:none;border:none;cursor:pointer;padding:2px 6px;">✕</button>
-                    </div>`;
-                }).join('');
-            root.innerHTML = statusHtml + statsHtml +
-                `<div style="font-size:10px;color:#b0a0b8;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Recent cycles</div>` +
-                logHtml;
-        }
-
-        window.deleteCycleEntry = async (idx) => {
-            cycleHistory.splice(idx, 1);
-            try { await setDoc(doc(db, 'system', 'cycle_history'), { cycles: cycleHistory }); }
-            catch(e) { console.error('cycle delete failed:', e); }
-            renderCycleSection();
-        };
-
         function destroyHistoryCharts() {
             historyCharts.forEach(c => { try { c.destroy(); } catch(e) {} });
             historyCharts = [];
         }
 
-
-        // ── ANALYTICS & DASHBOARD ─────────────────────────────────────────
-        let analyticsWeeksRange = 4;
-        let analyticsCharts = [];
-
-        function getAnalyticsData(weeksBack) {
-            const categoryMap = {};
-            const habitsByCategory = {};
-            
-            if (!habitsList || habitsList.length === 0) return { categoryMap, habitsByCategory };
-            
-            habitsList.forEach(h => {
-                if (!categoryMap[h.category]) {
-                    categoryMap[h.category] = { Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0, Sun: 0 };
-                    habitsByCategory[h.category] = {};
-                }
-                habitsByCategory[h.category][h.id] = [0,0,0,0,0,0,0];
-            });
-            
-            for (let w = 0; w < weeksBack && w < weeklyHistory.length; w++) {
-                const week = weeklyHistory[w];
-                if (!week.days) continue;
-                
-                week.days.forEach((dayRecord, dayIdx) => {
-                    if (!dayRecord.habits) return;
-                    dayRecord.habits.forEach(hid => {
-                        const habit = habitsList.find(h => h.id === hid);
-                        if (!habit) return;
-                        const dayName = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][dayIdx];
-                        categoryMap[habit.category][dayName]++;
-                        if (habitsByCategory[habit.category][hid]) {
-                            habitsByCategory[habit.category][hid][dayIdx]++;
-                        }
-                    });
-                });
-            }
-            
-            return { categoryMap, habitsByCategory };
-        }
-
-        function renderAnalyticsDashboard() {
-            const root = document.getElementById('analyticsRoot');
-            if (!root) return;
-            
-            const data = getAnalyticsData(analyticsWeeksRange);
-            const cats = Object.keys(data.categoryMap || {});
-            
-            if (window.analyticsDrilldownCategory) {
-                const catName = window.analyticsDrilldownCategory;
-                const habits = data.habitsByCategory[catName] || {};
-                let html = `<button style="padding:6px 10px;background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);font-size:12px;cursor:pointer;margin-bottom:12px;" onclick="window.analyticsDrilldownCategory=null;render();">← Back to categories</button>`;
-                html += `<div style="font-size:11px;font-weight:600;color:var(--color-text-secondary);margin-bottom:8px;">${catName.toUpperCase()}</div>`;
-                html += `<div style="background:var(--color-background-primary);border:1px solid var(--color-border-tertiary);padding:10px;"><div style="display:grid;grid-template-columns:65px repeat(7,1fr);gap:0.5px;background:transparent;">`;
-                html += `<div style="padding:5px 3px;font-size:8px;color:var(--color-text-secondary);"></div>`;
-                ['M','T','W','Th','F','S','Su'].forEach(d => {
-                    html += `<div style="padding:5px 3px;font-size:8px;color:var(--color-text-secondary);text-align:center;">${d}</div>`;
-                });
-                Object.entries(habits).forEach((entry, idx) => {
-                    const [hid, counts] = entry;
-                    const habit = habitsList.find(h => h.id === hid);
-                    if (!habit) return;
-                    if (idx > 0) html += `<div style="background:var(--color-border-secondary);height:1px;grid-column:1/-1;"></div>`;
-                    html += `<div style="padding:5px 3px;font-size:8px;color:var(--color-text-secondary);text-align:right;">${habit.name.substring(0,8)}</div>`;
-                    counts.forEach(count => {
-                        const heat = count === 0 ? '#f4f0eb' : count === 1 ? '#dcc9b3' : count === 2 ? '#c9a885' : '#8b7d70';
-                        const txt = count === 0 ? '#8b7d70' : count <= 2 ? '#6b5f52' : 'white';
-                        html += `<div style="padding:5px 3px;background:${heat};color:${txt};font-size:10px;font-weight:500;display:flex;align-items:center;justify-content:center;text-align:center;border:0.5px solid var(--color-border-tertiary);">${count}</div>`;
-                    });
-                });
-                html += `</div></div>`;
-                root.innerHTML = html;
-                return;
-            }
-            
-            let html = `<div style="display:grid;grid-template-columns:65px repeat(7,1fr);gap:0.5px;background:transparent;padding:10px;background-color:var(--color-background-primary);border:1px solid var(--color-border-tertiary);">`;
-            html += `<div style="padding:5px 3px;font-size:8px;color:var(--color-text-secondary);"></div>`;
-            ['M','T','W','Th','F','S','Su'].forEach(d => {
-                html += `<div style="padding:5px 3px;font-size:8px;color:var(--color-text-secondary);text-align:center;">${d}</div>`;
-            });
-            
-            cats.forEach((cat, idx) => {
-                const days = data.categoryMap[cat];
-                if (idx > 0) html += `<div style="background:var(--color-border-secondary);height:1px;grid-column:1/-1;"></div>`;
-                html += `<div style="padding:5px 3px;font-size:8px;color:var(--color-text-secondary);text-align:right;">${cat.substring(0,8)}</div>`;
-                ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].forEach(day => {
-                    const count = days[day];
-                    const heat = count === 0 ? '#f4f0eb' : count <= 3 ? '#dcc9b3' : count <= 6 ? '#c9a885' : '#8b7d70';
-                    const txt = count === 0 ? '#8b7d70' : count <= 6 ? '#6b5f52' : 'white';
-                    html += `<div style="padding:5px 3px;background:${heat};color:${txt};font-size:10px;font-weight:500;cursor:pointer;display:flex;align-items:center;justify-content:center;border:0.5px solid var(--color-border-tertiary);" onclick="window.analyticsDrilldownCategory='${cat}';render();">${count}</div>`;
-                });
-            });
-            html += `</div>`;
-            root.innerHTML = html;
-        };
-
-        function getNegativeStreakHabits() {
-            const negativeHabits = [];
-            habitsList.forEach(habit => {
-                const streaks = computeStreaksFromHistory(habit.id);
-                if (streaks.badStreak > 0) {
-                    negativeHabits.push({
-                        id: habit.id,
-                        name: habit.name,
-                        icon: habit.icon,
-                        category: habit.category,
-                        badStreak: streaks.badStreak,
-                        goal: habit.goal || 5,
-                        bonus: habit.bonus || 7,
-                        punishCost: habit.punishCost || 0
-                    });
-                }
-            });
-            return negativeHabits.sort((a, b) => b.badStreak - a.badStreak);
-        }
-
-        function renderNegativeStreaks() {
-            const root = document.getElementById('analyticsNegativeStreaksRoot');
-            if (!root) return;
-            
-            const habits = getNegativeStreakHabits();
-            
-            if (habits.length === 0) {
-                root.innerHTML = `<div style="font-size:12px;color:var(--color-text-secondary);padding:10px 0;text-align:center;">All habits on track! 🎉</div>`;
-                return;
-            }
-            
-            let html = '';
-            habits.forEach((h) => {
-                const cost = h.punishCost ? `-$${h.punishCost}` : '$0';
-                html += `<div style="display:flex;align-items:flex-start;gap:10px;padding:10px;background:var(--color-background-primary);border:1px solid var(--color-border-tertiary);border-radius:4px;margin-bottom:8px;">
-                    <div style="font-size:18px;">${h.icon}</div>
-                    <div style="flex:1;min-width:0;">
-                        <div style="font-size:12px;font-weight:600;color:var(--color-text-primary);">${h.name}</div>
-                        <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px;">${h.category}</div>
-                        <div style="font-size:11px;color:var(--color-text-secondary);margin-top:4px;">Goal: ${h.goal}, Bonus: ${h.bonus}</div>
-                    </div>
-                    <div style="text-align:right;white-space:nowrap;">
-                        <div style="font-size:13px;font-weight:600;color:#a32d2d;">🌧️ ${h.badStreak}w</div>
-                        <div style="font-size:10px;color:var(--color-text-secondary);margin-top:2px;">${cost}/week</div>
-                    </div>
-                </div>`;
-            });
-            
-            root.innerHTML = html;
-        };
-
-        function renderAnalyticsTrendChart() {
-            if (!window.Chart) return;
-            if (window.analyticsTrendChartInstance) {
-                try { window.analyticsTrendChartInstance.destroy(); } catch(e) {}
-            }
-            const canvas = document.getElementById('analyticsTrendChart');
-            if (!canvas) return;
-            const weeks = [];
-            const earnings = [];
-            for (let w = 0; w < analyticsWeeksRange && w < weeklyHistory.length; w++) {
-                const week = weeklyHistory[w];
-                const weekNum = analyticsWeeksRange - w;
-                weeks.unshift('W' + weekNum);
-                earnings.unshift(week.balance || 0);
-            }
-            window.analyticsTrendChartInstance = new Chart(canvas, {
-                type: 'line',
-                data: {
-                    labels: weeks,
-                    datasets: [{
-                        label: 'Earnings',
-                        data: earnings,
-                        borderColor: '#8b7d70',
-                        backgroundColor: 'rgba(139,125,112,0.08)',
-                        borderWidth: 2,
-                        fill: true,
-                        tension: 0.3,
-                        pointRadius: 3,
-                        pointBackgroundColor: '#8b7d70'
-                    }]
-                },
-                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
-            });
-        }
-
-        
+        // ── HISTORY: load + render ────────────────────────────────────────────
+        function renderHistory() {
             const root = document.getElementById('historyRoot');
             if (!root) return;
             destroyHistoryCharts();
@@ -1945,23 +1657,6 @@
             // It contains a full input card per habit and is hidden behind a passcode
             // during normal use, so building it on every render is pure wasted work.
             const manageVisible = document.getElementById('managePanel')?.style.display !== 'none';
-            if (manageVisible && !cycleHistoryLoaded) { loadCycleHistory(); }
-            if (manageVisible) {
-                renderAnalyticsDashboard();
-                renderAnalyticsTrendChart();
-                renderNegativeStreaks();
-                const slider = document.getElementById('analyticsWeeksSlider');
-                if (slider && !slider.__listenerAdded) {
-                    slider.addEventListener('input', (e) => {
-                        analyticsWeeksRange = parseInt(e.target.value);
-                        document.getElementById('analyticsWeeksDisplay').textContent = analyticsWeeksRange;
-                        renderAnalyticsDashboard();
-                        renderAnalyticsTrendChart();
-                        renderNegativeStreaks();
-                    });
-                    slider.__listenerAdded = true;
-                }
-            }
 
             const dIdx = getDayIdx(viewingDate);
 
@@ -3805,35 +3500,6 @@
             </div>
 
 </div>
-
-<div class="manage-section-header" onclick="window.toggleManageSection('ms-cycle')"><span style="font-family:'Playfair Display';font-size:13px;font-weight:700;color:var(--header-pink);">🩸 Cycle Tracking</span><span id="msc-ms-cycle" style="color:#ccc;font-size:18px;transition:transform 0.2s;transform:;">&#8250;</span></div>
-<div id="ms-ms-cycle" style="display:none;padding:14px 16px 4px;">
-    <div id="cycleTrackingRoot">
-        <div style="font-size:12px;color:#ccc;padding:10px 0;text-align:center;">Loading cycle data…</div>
-    </div>
-</div>
-
-<div class="manage-section-header" onclick="window.toggleManageSection('ms-analytics')"><span style="font-family:'Playfair Display';font-size:13px;font-weight:700;color:var(--header-pink);">📊 Analytics</span><span id="msc-ms-analytics" style="color:#ccc;font-size:18px;transition:transform 0.2s;transform:;">&#8250;</span></div>
-<div id="ms-ms-analytics" style="display:none;padding:14px 16px 4px;">
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
-        <label style="font-size:12px;color:var(--color-text-secondary);">Time range</label>
-        <input type="range" min="1" max="52" value="4" id="analyticsWeeksSlider" step="1" style="flex:1;">
-        <span style="font-size:12px;font-weight:500;min-width:45px;text-align:right;color:var(--color-text-primary);"><span id="analyticsWeeksDisplay">4</span> weeks</span>
-    </div>
-    <div style="position:relative;height:200px;margin-bottom:14px;background:var(--color-background-primary);border:1px solid var(--color-border-tertiary);padding:12px;">
-        <canvas id="analyticsTrendChart" role="img" aria-label="Earnings trend chart"></canvas>
-    </div>
-    <div style="font-size:11px;font-weight:600;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Completion by category & day</div>
-    <div id="analyticsRoot">
-        <div style="font-size:12px;color:#ccc;padding:10px 0;text-align:center;">Loading…</div>
-    </div>
-    <div style="font-size:11px;font-weight:600;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;margin-top:16px;">On negative streaks</div>
-    <div id="analyticsNegativeStreaksRoot">
-        <div style="font-size:12px;color:#ccc;padding:10px 0;text-align:center;">Loading…</div>
-    </div>
-</div>
-
-
             <div id="manageRoot"></div>
         </div>
         <div id="historyRoot"></div>
