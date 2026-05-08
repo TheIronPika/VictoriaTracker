@@ -1597,7 +1597,7 @@
             const h = habits.find(x => x.id === id);
             if (!h) return;
             // Apply to local state immediately — no waiting
-            if (field === 'note' || field === 'cycleType')       h[field] = value;
+            if (field === 'note' || field === 'cycleType' || field === 'icon')       h[field] = value;
             else if (field.startsWith('val'))                    h[field] = parseFloat(value);
             else if (field.startsWith('star'))                   h[field] = parseInt(value) || 0;
             else if (field === 'streakBonusPer' || field === 'streakPenaltyPer' || field === 'streakCap') h[field] = parseFloat(value) || 0;
@@ -1968,6 +1968,10 @@
                         </div>
                         <div id="mhbody-${h.id}" class="manage-card" style="display:${manageCardCollapsed['habit_' + h.id] === false ? '' : 'none'};margin:0 0 14px 0;border-radius:0 0 14px 14px;border-top:1px dashed #eee;">
                             <div style="margin-bottom:10px; display:flex; gap:20px; align-items:center; flex-wrap:wrap;">
+                                <div style="font-size:12px;">Icon:
+                                    <input type="text" value="${h.icon || '✨'}" maxlength="5" style="width:45px; margin-left:4px; padding:6px;" 
+                                    onchange="window.updateField('${h.id}','icon',this.value)">
+                                </div>
                                 <div style="font-size:12px;">Max Circles (week):
                                     <input type="number" value="${h.max || 7}" min="1" max="49" style="width:45px; margin-left:4px;"
                                     onchange="window.updateField('${h.id}','max',this.value)">
@@ -3666,10 +3670,4 @@ if ('serviceWorker' in navigator) {
 <div id="defOverlay" onclick="window.closeDefinition()">
     <div id="defSheet" onclick="event.stopPropagation()">
         <div id="defTitle" style="font-family:'Great Vibes';font-size:28px;color:var(--header-pink);margin-bottom:12px;"></div>
-        <div id="defBody" style="font-family:'Montserrat';font-size:14px;line-height:1.7;color:#4a3a3a;white-space:pre-wrap;"></div>
-        <button onclick="window.closeDefinition()" style="margin-top:20px;width:100%;padding:12px;background:var(--header-pink);color:white;border:none;border-radius:12px;font-weight:bold;cursor:pointer;font-family:'Montserrat';">Got it</button>
-    </div>
-</div>
-
-</body>
-</html>
+        <div id="defBody" style="font-family:'Mo
