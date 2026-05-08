@@ -1278,8 +1278,188 @@
             historyCharts = [];
         }
 
-        // ── HISTORY: load + render ────────────────────────────────────────────
-        function renderHistory() {
+
+        // ── ANALYTICS & DASHBOARD ─────────────────────────────────────────
+        let analyticsWeeksRange = 4;
+        let analyticsCharts = [];
+
+        function getAnalyticsData(weeksBack) {
+            const categoryMap = {};
+            const habitsByCategory = {};
+            
+            if (!habitsList || habitsList.length === 0) return { categoryMap, habitsByCategory };
+            
+            habitsList.forEach(h => {
+                if (!categoryMap[h.category]) {
+                    categoryMap[h.category] = { Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0, Sun: 0 };
+                    habitsByCategory[h.category] = {};
+                }
+                habitsByCategory[h.category][h.id] = [0,0,0,0,0,0,0];
+            });
+            
+            for (let w = 0; w < weeksBack && w < weeklyHistory.length; w++) {
+                const week = weeklyHistory[w];
+                if (!week.days) continue;
+                
+                week.days.forEach((dayRecord, dayIdx) => {
+                    if (!dayRecord.habits) return;
+                    dayRecord.habits.forEach(hid => {
+                        const habit = habitsList.find(h => h.id === hid);
+                        if (!habit) return;
+                        const dayName = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][dayIdx];
+                        categoryMap[habit.category][dayName]++;
+                        if (habitsByCategory[habit.category][hid]) {
+                            habitsByCategory[habit.category][hid][dayIdx]++;
+                        }
+                    });
+                });
+            }
+            
+            return { categoryMap, habitsByCategory };
+        }
+
+        function renderAnalyticsDashboard() {
+            const root = document.getElementById('analyticsRoot');
+            if (!root) return;
+            
+            const data = getAnalyticsData(analyticsWeeksRange);
+            const cats = Object.keys(data.categoryMap || {});
+            
+            if (window.analyticsDrilldownCategory) {
+                const catName = window.analyticsDrilldownCategory;
+                const habits = data.habitsByCategory[catName] || {};
+                let html = `<button style="padding:6px 10px;background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);font-size:12px;cursor:pointer;margin-bottom:12px;" onclick="window.analyticsDrilldownCategory=null;render();">← Back to categories</button>`;
+                html += `<div style="font-size:11px;font-weight:600;color:var(--color-text-secondary);margin-bottom:8px;">${catName.toUpperCase()}</div>`;
+                html += `<div style="background:var(--color-background-primary);border:1px solid var(--color-border-tertiary);padding:10px;"><div style="display:grid;grid-template-columns:65px repeat(7,1fr);gap:0.5px;background:transparent;">`;
+                html += `<div style="padding:5px 3px;font-size:8px;color:var(--color-text-secondary);"></div>`;
+                ['M','T','W','Th','F','S','Su'].forEach(d => {
+                    html += `<div style="padding:5px 3px;font-size:8px;color:var(--color-text-secondary);text-align:center;">${d}</div>`;
+                });
+                Object.entries(habits).forEach((entry, idx) => {
+                    const [hid, counts] = entry;
+                    const habit = habitsList.find(h => h.id === hid);
+                    if (!habit) return;
+                    if (idx > 0) html += `<div style="background:var(--color-border-secondary);height:1px;grid-column:1/-1;"></div>`;
+                    html += `<div style="padding:5px 3px;font-size:8px;color:var(--color-text-secondary);text-align:right;">${habit.name.substring(0,8)}</div>`;
+                    counts.forEach(count => {
+                        const heat = count === 0 ? '#f4f0eb' : count === 1 ? '#dcc9b3' : count === 2 ? '#c9a885' : '#8b7d70';
+                        const txt = count === 0 ? '#8b7d70' : count <= 2 ? '#6b5f52' : 'white';
+                        html += `<div style="padding:5px 3px;background:${heat};color:${txt};font-size:10px;font-weight:500;display:flex;align-items:center;justify-content:center;text-align:center;border:0.5px solid var(--color-border-tertiary);">${count}</div>`;
+                    });
+                });
+                html += `</div></div>`;
+                root.innerHTML = html;
+                return;
+            }
+            
+            let html = `<div style="display:grid;grid-template-columns:65px repeat(7,1fr);gap:0.5px;background:transparent;padding:10px;background-color:var(--color-background-primary);border:1px solid var(--color-border-tertiary);">`;
+            html += `<div style="padding:5px 3px;font-size:8px;color:var(--color-text-secondary);"></div>`;
+            ['M','T','W','Th','F','S','Su'].forEach(d => {
+                html += `<div style="padding:5px 3px;font-size:8px;color:var(--color-text-secondary);text-align:center;">${d}</div>`;
+            });
+            
+            cats.forEach((cat, idx) => {
+                const days = data.categoryMap[cat];
+                if (idx > 0) html += `<div style="background:var(--color-border-secondary);height:1px;grid-column:1/-1;"></div>`;
+                html += `<div style="padding:5px 3px;font-size:8px;color:var(--color-text-secondary);text-align:right;">${cat.substring(0,8)}</div>`;
+                ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].forEach(day => {
+                    const count = days[day];
+                    const heat = count === 0 ? '#f4f0eb' : count <= 3 ? '#dcc9b3' : count <= 6 ? '#c9a885' : '#8b7d70';
+                    const txt = count === 0 ? '#8b7d70' : count <= 6 ? '#6b5f52' : 'white';
+                    html += `<div style="padding:5px 3px;background:${heat};color:${txt};font-size:10px;font-weight:500;cursor:pointer;display:flex;align-items:center;justify-content:center;border:0.5px solid var(--color-border-tertiary);" onclick="window.analyticsDrilldownCategory='${cat}';render();">${count}</div>`;
+                });
+            });
+            html += `</div>`;
+            root.innerHTML = html;
+        };
+
+        function getNegativeStreakHabits() {
+            const negativeHabits = [];
+            habitsList.forEach(habit => {
+                const streaks = computeStreaksFromHistory(habit.id);
+                if (streaks.badStreak > 0) {
+                    negativeHabits.push({
+                        id: habit.id,
+                        name: habit.name,
+                        icon: habit.icon,
+                        category: habit.category,
+                        badStreak: streaks.badStreak,
+                        goal: habit.goal || 5,
+                        bonus: habit.bonus || 7,
+                        punishCost: habit.punishCost || 0
+                    });
+                }
+            });
+            return negativeHabits.sort((a, b) => b.badStreak - a.badStreak);
+        }
+
+        function renderNegativeStreaks() {
+            const root = document.getElementById('analyticsNegativeStreaksRoot');
+            if (!root) return;
+            
+            const habits = getNegativeStreakHabits();
+            
+            if (habits.length === 0) {
+                root.innerHTML = `<div style="font-size:12px;color:var(--color-text-secondary);padding:10px 0;text-align:center;">All habits on track! 🎉</div>`;
+                return;
+            }
+            
+            let html = '';
+            habits.forEach((h) => {
+                const cost = h.punishCost ? `-$${h.punishCost}` : '$0';
+                html += `<div style="display:flex;align-items:flex-start;gap:10px;padding:10px;background:var(--color-background-primary);border:1px solid var(--color-border-tertiary);border-radius:4px;margin-bottom:8px;">
+                    <div style="font-size:18px;">${h.icon}</div>
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-size:12px;font-weight:600;color:var(--color-text-primary);">${h.name}</div>
+                        <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px;">${h.category}</div>
+                        <div style="font-size:11px;color:var(--color-text-secondary);margin-top:4px;">Goal: ${h.goal}, Bonus: ${h.bonus}</div>
+                    </div>
+                    <div style="text-align:right;white-space:nowrap;">
+                        <div style="font-size:13px;font-weight:600;color:#a32d2d;">🌧️ ${h.badStreak}w</div>
+                        <div style="font-size:10px;color:var(--color-text-secondary);margin-top:2px;">${cost}/week</div>
+                    </div>
+                </div>`;
+            });
+            
+            root.innerHTML = html;
+        };
+
+        function renderAnalyticsTrendChart() {
+            if (!window.Chart) return;
+            if (window.analyticsTrendChartInstance) {
+                try { window.analyticsTrendChartInstance.destroy(); } catch(e) {}
+            }
+            const canvas = document.getElementById('analyticsTrendChart');
+            if (!canvas) return;
+            const weeks = [];
+            const earnings = [];
+            for (let w = 0; w < analyticsWeeksRange && w < weeklyHistory.length; w++) {
+                const week = weeklyHistory[w];
+                const weekNum = analyticsWeeksRange - w;
+                weeks.unshift('W' + weekNum);
+                earnings.unshift(week.balance || 0);
+            }
+            window.analyticsTrendChartInstance = new Chart(canvas, {
+                type: 'line',
+                data: {
+                    labels: weeks,
+                    datasets: [{
+                        label: 'Earnings',
+                        data: earnings,
+                        borderColor: '#8b7d70',
+                        backgroundColor: 'rgba(139,125,112,0.08)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 3,
+                        pointBackgroundColor: '#8b7d70'
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+            });
+        }
+
+        
             const root = document.getElementById('historyRoot');
             if (!root) return;
             destroyHistoryCharts();
@@ -1766,6 +1946,22 @@
             // during normal use, so building it on every render is pure wasted work.
             const manageVisible = document.getElementById('managePanel')?.style.display !== 'none';
             if (manageVisible && !cycleHistoryLoaded) { loadCycleHistory(); }
+            if (manageVisible) {
+                renderAnalyticsDashboard();
+                renderAnalyticsTrendChart();
+                renderNegativeStreaks();
+                const slider = document.getElementById('analyticsWeeksSlider');
+                if (slider && !slider.__listenerAdded) {
+                    slider.addEventListener('input', (e) => {
+                        analyticsWeeksRange = parseInt(e.target.value);
+                        document.getElementById('analyticsWeeksDisplay').textContent = analyticsWeeksRange;
+                        renderAnalyticsDashboard();
+                        renderAnalyticsTrendChart();
+                        renderNegativeStreaks();
+                    });
+                    slider.__listenerAdded = true;
+                }
+            }
 
             const dIdx = getDayIdx(viewingDate);
 
@@ -3574,4 +3770,129 @@
                         <input type="number" id="evPay" placeholder="e.g. 5.00" step="0.50" style="width:100%;padding:8px;border:1px solid #eee;border-radius:8px;font-size:12px;box-sizing:border-box;">
                     </div>
                 </div>
-                <textarea id="evNote" placeholder="Definition / rules (optional)" style="width:100%;padding:8px;border:1px solid #eee;border-radius:8px;font-family:
+                <textarea id="evNote" placeholder="Definition / rules (optional)" style="width:100%;padding:8px;border:1px solid #eee;border-radius:8px;font-family:'Montserrat';font-size:12px;resize:vertical;min-height:48px;box-sizing:border-box;margin-bottom:8px;"></textarea>
+                <button onclick="window.addEvent()" style="width:100%;background:var(--header-pink);color:white;border:none;padding:12px;border-radius:10px;font-weight:bold;cursor:pointer;">Create Event</button>
+            </div>
+
+</div>
+            <div id="eventsManageRoot"></div>
+<div class="manage-section-header" onclick="window.toggleManageSection('ms-starshop')"><span style="font-family:'Playfair Display';font-size:13px;font-weight:700;color:var(--header-pink);">✨ Star Shop</span><span id="msc-ms-starshop" style="color:#ccc;font-size:18px;transition:transform 0.2s;transform:;">&#8250;</span></div>
+<div id="ms-ms-starshop" style="display:none;">
+            <div class="manage-card" style="margin-bottom:14px;">
+                <h4 style="font-family:'Great Vibes'; font-size:28px; color:var(--header-pink); margin:0 0 12px 0;">✨ Star Shop</h4>
+                <div style="font-size:11px;color:#aaa;margin-bottom:10px;">Award stars manually or add/remove shop items.</div>
+                <div style="display:flex;gap:8px;margin-bottom:10px;">
+                    <input type="number" id="awardAmt" placeholder="Amount" min="1" style="width:72px;padding:10px;border:1px solid #eee;border-radius:8px;font-family:'Montserrat';font-size:13px;">
+                    <input type="text" id="awardNote" placeholder="Reason (optional)" style="flex:1;padding:10px;border:1px solid #eee;border-radius:8px;font-family:'Montserrat';font-size:13px;">
+                    <button onclick="window.awardStars()" style="padding:10px 14px;background:var(--header-pink);color:white;border:none;border-radius:8px;font-weight:bold;cursor:pointer;white-space:nowrap;">✨ Award</button>
+                </div>
+                <div style="font-size:11px;color:#aaa;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Add Shop Item</div>
+                <div style="display:flex;gap:6px;margin-bottom:6px;">
+                    <input type="text" id="shopItemIcon" placeholder="Icon" style="width:18%;padding:8px;border:1px solid #eee;border-radius:8px;">
+                    <input type="text" id="shopItemName" placeholder="Item name" style="flex:1;padding:8px;border:1px solid #eee;border-radius:8px;">
+                    <input type="number" id="shopItemCost" placeholder="✨ cost" min="1" style="width:22%;padding:8px;border:1px solid #eee;border-radius:8px;">
+                </div>
+                <button onclick="window.addShopItem()" style="width:100%;background:#4a3a3a;color:white;border:none;padding:10px;border-radius:8px;font-weight:bold;cursor:pointer;margin-bottom:10px;">Add Item</button>
+                <div id="shopManageRoot"></div>
+            </div>
+
+</div>
+<div class="manage-section-header" onclick="window.toggleManageSection('ms-habits')"><span style="font-family:'Playfair Display';font-size:13px;font-weight:700;color:var(--header-pink);">Habits &amp; Tiers</span><span id="msc-ms-habits" style="color:#ccc;font-size:18px;transition:transform 0.2s;transform:;">&#8250;</span></div>
+<div id="ms-ms-habits" style="display:none;">
+            <div style="display:flex;gap:10px;margin-bottom:20px;">
+                <button onclick="window.sendVictoriaTestReport()" style="flex:1;padding:15px;background:#8e44ad;color:white;border-radius:12px;border:none;font-weight:bold;cursor:pointer;font-family:'Playfair Display';letter-spacing:1px;">📋 VIEW REPORT</button>
+                <button onclick="window.runWeeklyReport(true)" style="flex:1;padding:15px;background:#4a3a3a;color:white;border-radius:12px;border:none;font-weight:bold;cursor:pointer;font-family:'Playfair Display';letter-spacing:1px;">✓ SUBMIT &amp; RESET</button>
+            </div>
+
+</div>
+
+<div class="manage-section-header" onclick="window.toggleManageSection('ms-cycle')"><span style="font-family:'Playfair Display';font-size:13px;font-weight:700;color:var(--header-pink);">🩸 Cycle Tracking</span><span id="msc-ms-cycle" style="color:#ccc;font-size:18px;transition:transform 0.2s;transform:;">&#8250;</span></div>
+<div id="ms-ms-cycle" style="display:none;padding:14px 16px 4px;">
+    <div id="cycleTrackingRoot">
+        <div style="font-size:12px;color:#ccc;padding:10px 0;text-align:center;">Loading cycle data…</div>
+    </div>
+</div>
+
+<div class="manage-section-header" onclick="window.toggleManageSection('ms-analytics')"><span style="font-family:'Playfair Display';font-size:13px;font-weight:700;color:var(--header-pink);">📊 Analytics</span><span id="msc-ms-analytics" style="color:#ccc;font-size:18px;transition:transform 0.2s;transform:;">&#8250;</span></div>
+<div id="ms-ms-analytics" style="display:none;padding:14px 16px 4px;">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+        <label style="font-size:12px;color:var(--color-text-secondary);">Time range</label>
+        <input type="range" min="1" max="52" value="4" id="analyticsWeeksSlider" step="1" style="flex:1;">
+        <span style="font-size:12px;font-weight:500;min-width:45px;text-align:right;color:var(--color-text-primary);"><span id="analyticsWeeksDisplay">4</span> weeks</span>
+    </div>
+    <div style="position:relative;height:200px;margin-bottom:14px;background:var(--color-background-primary);border:1px solid var(--color-border-tertiary);padding:12px;">
+        <canvas id="analyticsTrendChart" role="img" aria-label="Earnings trend chart"></canvas>
+    </div>
+    <div style="font-size:11px;font-weight:600;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Completion by category & day</div>
+    <div id="analyticsRoot">
+        <div style="font-size:12px;color:#ccc;padding:10px 0;text-align:center;">Loading…</div>
+    </div>
+    <div style="font-size:11px;font-weight:600;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;margin-top:16px;">On negative streaks</div>
+    <div id="analyticsNegativeStreaksRoot">
+        <div style="font-size:12px;color:#ccc;padding:10px 0;text-align:center;">Loading…</div>
+    </div>
+</div>
+
+
+            <div id="manageRoot"></div>
+        </div>
+        <div id="historyRoot"></div>
+    </div>
+
+
+
+    <footer>Victoria Tracker</footer>
+
+<script>
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/VictoriaTracker/sw.js')
+            .catch(err => console.warn('SW registration failed:', err));
+    });
+}
+</script>
+
+<!-- Star Shop Overlay -->
+<div id="shopOverlay" onclick="if(event.target===this)window.closeShop()">
+    <div id="shopSheet">
+        <div class="shop-handle"></div>
+        <div id="shopItemsView">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px;">
+                <div>
+                    <div style="font-family:'Great Vibes';font-size:32px;color:var(--header-pink);">Victoria's Shop</div>
+                    <div id="shopBalDisplay" style="font-size:12px;color:#aaa;margin-bottom:16px;">✨ <strong>0 stars</strong> available</div>
+                </div>
+                <button onclick="window.closeShop()" style="background:none;border:none;font-size:18px;color:#ccc;cursor:pointer;padding:4px;">×</button>
+            </div>
+            <div id="shopGrid" class="shop-grid"></div>
+            <div class="shop-log-title">✨ Star History</div>
+            <div id="shopLogWrap" class="shop-log-wrap"></div>
+        </div>
+        <div id="shopConfirmView" style="display:none;">
+            <div class="shop-confirm-card">
+                <div style="font-family:'Great Vibes';font-size:26px;color:var(--header-pink);margin-bottom:8px;">Confirm Redemption</div>
+                <div style="font-size:13px;color:#888;line-height:1.7;margin-bottom:18px;">
+                    Redeem <strong id="confirmItemName"></strong> for <strong>✨ <span id="confirmCost"></span> stars</strong>?<br>
+                    You have <strong><span id="confirmBefore"></span></strong> stars. After redeeming you'll have <strong><span id="confirmAfter"></span></strong> left.
+                </div>
+                <div style="display:flex;gap:8px;">
+                    <button onclick="window.cancelConfirm()" style="flex:1;padding:11px;border:1px solid #eee;border-radius:10px;background:white;color:#aaa;font-size:12px;font-weight:600;cursor:pointer;font-family:'Montserrat';">Cancel</button>
+                    <button onclick="window.doRedeem()" style="flex:1;padding:11px;border:none;border-radius:10px;background:var(--header-pink);color:white;font-size:12px;font-weight:700;cursor:pointer;font-family:'Montserrat';">✨ Redeem</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</div>
+
+<!-- Definition modal overlay -->
+<div id="defOverlay" onclick="window.closeDefinition()">
+    <div id="defSheet" onclick="event.stopPropagation()">
+        <div id="defTitle" style="font-family:'Great Vibes';font-size:28px;color:var(--header-pink);margin-bottom:12px;"></div>
+        <div id="defBody" style="font-family:'Montserrat';font-size:14px;line-height:1.7;color:#4a3a3a;white-space:pre-wrap;"></div>
+        <button onclick="window.closeDefinition()" style="margin-top:20px;width:100%;padding:12px;background:var(--header-pink);color:white;border:none;border-radius:12px;font-weight:bold;cursor:pointer;font-family:'Montserrat';">Got it</button>
+    </div>
+</div>
+
+</body>
+</html>
