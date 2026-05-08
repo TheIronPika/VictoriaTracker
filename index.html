@@ -135,7 +135,7 @@
         let roomsCollapsed = localStorage.getItem('roomsCollapsed') !== 'false';
 
         // Period tracking — stored in system/period_data
-        let periodData   = { active: false, startTs: null, startDayIdx: null, history: [] };
+        let periodData   = { active: false, startTs: null, startDayIdx: null, history: [], periodWasThisWeek: false };
         let periodLoaded = false;
 
         // Debounce timer for updateField — held between calls so rapid spinner
@@ -512,7 +512,7 @@
         function updateHabitStreaks(habitsArr) {
             return habitsArr.map(h => {
                 if (h.excused) return { ...h };  // freeze streak as-is
-                if (isPeriodActive() && !!h.periodSensitive) return { ...h }; // period: freeze streak
+                if ((isPeriodActive() || periodData.periodWasThisWeek) && !!h.periodSensitive) return { ...h }; // period: freeze streak
                 const hist      = (h.history||[]).slice(0,7);
                 const cur       = hist[6] !== undefined ? hist[6] : (hist[hist.length-1]||0);
                 const tier      = getTier(h, cur);
@@ -575,6 +575,10 @@
                 }));
                 await syncRoomsData();
                 if(roomsLoaded) renderRoomsSection();
+
+                // Clear period flag after reset
+                periodData.periodWasThisWeek = false;
+                await syncPeriodData();
 
                 historyLoaded = false;
                 if (isManual) alert('Weekly report sent and habits reset!');
@@ -1105,11 +1109,18 @@
         }
 
         // Returns the week day index (0=Mon…6=Sun) when period started this week
-        // Returns 7 (out of range) if not active or started before this week
+        // Returns 7 (out of range) if no period active or this week
         function periodStartDayIdx() {
-            if (!periodData.active || !periodData.startTs) return 7;
+            let startTs = null;
+            if (periodData.active && periodData.startTs) {
+                startTs = periodData.startTs;
+            } else if (periodData.periodWasThisWeek && periodData.history && periodData.history.length > 0) {
+                // Period ended this week — use the history entry's start date
+                startTs = periodData.history[0].startTs;
+            }
+            
+            if (!startTs) return 7;
             const weekStart = getWeekStart();
-            const startTs   = periodData.startTs;
             if (startTs < weekStart) return 0; // started before this week — whole week protected
             const d = new Date(startTs);
             return getDayIdx(d);
@@ -1155,7 +1166,7 @@
         window.startPeriod = async () => {
             document.getElementById('periodModalOverlay')?.remove();
             const now = Date.now();
-            periodData = { active: true, startTs: now, startDayIdx: getDayIdx(new Date()), history: periodData.history || [] };
+            periodData = { active: true, startTs: now, startDayIdx: getDayIdx(new Date()), history: periodData.history || [], periodWasThisWeek: true };
             await syncPeriodData();
             render();
         };
@@ -1175,9 +1186,9 @@
                 };
                 const history = periodData.history || [];
                 history.unshift(entry);
-                periodData = { active: false, startTs: null, startDayIdx: null, history: history };
+                periodData = { active: false, startTs: null, startDayIdx: null, history: history, periodWasThisWeek: true };
             } else {
-                periodData = { active: false, startTs: null, startDayIdx: null, history: periodData.history || [] };
+                periodData = { active: false, startTs: null, startDayIdx: null, history: periodData.history || [], periodWasThisWeek: true };
             }
             await syncPeriodData();
             render();
@@ -1879,8 +1890,8 @@
                         const stepTier  = getTier(h, i);
                         const isFilled  = i <= cur;
                         const dayLetter = isFilled ? dayForBubble(h.history, i) : '';
-                        // Pink bubble: period-sensitive + period active + this bubble not yet earned + day is in period window
-                        const isPaused  = !isFilled && isPeriodActive() && !!h.periodSensitive && dIdx >= pStartIdx;
+                        // Pink bubble: period-sensitive + (period active OR was this week) + this bubble not yet earned + day is in period window
+                        const isPaused  = !isFilled && (isPeriodActive() || periodData.periodWasThisWeek) && !!h.periodSensitive && dIdx >= pStartIdx;
                         bubblesHtml += `
                             <div class="bubble day-bub ${isFilled ? 'filled ' + stepTier : ''} ${isPaused ? 'period-paused' : ''}"
                                  style="border-color:var(--color-${stepTier})"
