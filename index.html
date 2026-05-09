@@ -1825,10 +1825,13 @@
                             </div>
                 `;
 
-                // Manage tab: build simple list rows
+                // Manage tab: build simple list rows with collapsible categories
                 let manageCatHtml = '';
                 if (manageVisible) {
-                    manageCatHtml = `<div class="msp-cat-label">${cat}</div>`;
+                    const catId = cat.replace(/[^a-zA-Z0-9]/g, '_');
+                    const mspCatCollapsed = JSON.parse(localStorage.getItem('mspCatCollapsed') || '{}');
+                    const isCatCollapsed = mspCatCollapsed[catId] === true;
+                    manageCatHtml = `<div class="msp-cat-label msp-cat-toggle" onclick="window.toggleMspCat('${catId}')"><span>${cat}</span><span id="msp-chev-${catId}" style="transition:transform 0.2s;display:inline-block;${isCatCollapsed ? 'transform:rotate(-90deg)' : ''}">&#9662;</span></div><div id="msp-cat-${catId}" style="${isCatCollapsed ? 'display:none' : ''}">`;
                 }
 
                 items.forEach(h => {
@@ -1971,6 +1974,7 @@
                 });
 
                 if (manageVisible && manageListRoot) {
+                    if (manageCatHtml) manageCatHtml += '</div>'; // close cat body
                     manageListRoot.innerHTML += manageCatHtml;
                 }
 
@@ -2101,7 +2105,7 @@
 
         window.switchManageSection = (section) => {
             currentManageSection = section;
-            ['habits','add','events','stars','period'].forEach(s => {
+            ['add','events','stars','period'].forEach(s => {
                 const btn = document.getElementById('msp-nav-' + s);
                 if (btn) btn.classList.toggle('msp-nav-active', s === section);
                 const panel = document.getElementById('msp-right-' + s);
@@ -2118,6 +2122,18 @@
             if (section === 'stars')  renderShopManage();
             if (section === 'events') renderEventsManage();
             if (section === 'period') renderPeriodHistory();
+        };
+
+        window.toggleMspCat = (catId) => {
+            const body = document.getElementById('msp-cat-' + catId);
+            const chev = document.getElementById('msp-chev-' + catId);
+            if (!body) return;
+            const isCollapsed = body.style.display === 'none';
+            body.style.display = isCollapsed ? '' : 'none';
+            if (chev) chev.style.transform = isCollapsed ? '' : 'rotate(-90deg)';
+            const stored = JSON.parse(localStorage.getItem('mspCatCollapsed') || '{}');
+            stored[catId] = !isCollapsed;
+            localStorage.setItem('mspCatCollapsed', JSON.stringify(stored));
         };
 
         // Build cycle row HTML without nested template literals
@@ -2140,6 +2156,16 @@
             currentManageHabitId = id;
             const h = habits.find(x => x.id === id);
             if (!h) return;
+            // Switch right panel to habits view regardless of current section
+            ['add','events','stars','period'].forEach(s => {
+                const p = document.getElementById('msp-right-' + s);
+                if (p) p.style.display = 'none';
+                const btn = document.getElementById('msp-nav-' + s);
+                if (btn) btn.classList.remove('msp-nav-active');
+            });
+            const habitsPanel = document.getElementById('msp-right-habits');
+            if (habitsPanel) habitsPanel.style.display = '';
+            currentManageSection = 'habits';
             document.querySelectorAll('.msp-habit-row').forEach(r =>
                 r.classList.toggle('msp-row-selected', r.id === 'msp-row-' + id));
             const detail = document.getElementById('msp-detail');
@@ -3627,9 +3653,20 @@
             letter-spacing: 2px;
             font-weight: 700;
             color: var(--header-pink);
-            padding: 12px 14px 4px;
-            opacity: 0.5;
+            padding: 10px 14px 4px;
+            opacity: 0.6;
         }
+        .msp-cat-toggle {
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            user-select: none;
+            padding: 10px 12px 6px;
+            border-radius: 6px;
+            transition: opacity 0.15s;
+        }
+        .msp-cat-toggle:hover { opacity: 1; }
         .msp-habit-row {
             display: flex;
             align-items: center;
@@ -3784,7 +3821,6 @@
             <!-- LEFT: nav + always-visible habit list -->
             <div class="msp-left">
               <nav class="msp-nav">
-                <button class="msp-nav-btn msp-nav-active" id="msp-nav-habits" onclick="window.switchManageSection('habits')">&#9998; Edit Habits</button>
                 <button class="msp-nav-btn" id="msp-nav-add"    onclick="window.switchManageSection('add')">&#43; Add Habit</button>
                 <button class="msp-nav-btn" id="msp-nav-events" onclick="window.switchManageSection('events')">&#128197; Events</button>
                 <button class="msp-nav-btn" id="msp-nav-stars"  onclick="window.switchManageSection('stars')">&#10024; Stars</button>
