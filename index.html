@@ -948,11 +948,11 @@
                 return;
             }
             root.innerHTML = shopItems.map(it =>
-                '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f5f5f5;">'
-                + '<span style="font-size:18px;">' + it.icon + '</span>'
-                + '<span style="flex:1;font-size:12px;font-weight:600;color:#4a3a3a;">' + it.name + '</span>'
-                + '<span style="font-size:11px;color:#c8942a;font-weight:700;">✨ ' + it.cost + '</span>'
-                + '<button class="btn-delete" style="padding:3px 8px;font-size:9px;" onclick="window.deleteShopItem(\'' + it.id + '\')">DEL</button>'
+                '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.07);">'
+                + '<span style="font-size:20px;">' + it.icon + '</span>'
+                + '<span style="flex:1;font-size:13px;font-weight:600;color:#e8e3f5;font-family:Montserrat,sans-serif;">' + it.name + '</span>'
+                + '<span style="font-size:12px;color:#f0c040;font-weight:700;">✨ ' + it.cost + '</span>'
+                + '<button class="btn-delete" style="padding:4px 10px;font-size:10px;" onclick="window.deleteShopItem(\'' + it.id + '\')">DEL</button>'
                 + '</div>'
             ).join('');
         }
