@@ -2084,7 +2084,8 @@
                     const panel = document.getElementById('managePanel');
                     if (panel) {
                         panel.style.display = 'block';
-                        panel.scrollIntoView({behavior:'smooth'});
+                        const panelTop = panel.getBoundingClientRect().top + window.pageYOffset - 100;
+                        window.scrollTo({top: panelTop, behavior: 'smooth'});
                         render();
                         renderEventsManage();
                         renderShopManage();
@@ -2100,23 +2101,23 @@
 
         window.switchManageSection = (section) => {
             currentManageSection = section;
-            ['habits','add','events','shop','award'].forEach(s => {
-                const el = document.getElementById('msp-panel-' + s);
-                if (el) el.style.display = s === section ? '' : 'none';
+            ['habits','add','events','stars','period'].forEach(s => {
                 const btn = document.getElementById('msp-nav-' + s);
                 if (btn) btn.classList.toggle('msp-nav-active', s === section);
+                const panel = document.getElementById('msp-right-' + s);
+                if (panel) panel.style.display = s === section ? '' : 'none';
             });
             if (section === 'habits') {
                 if (currentManageHabitId) {
                     window.showManageDetail(currentManageHabitId);
                 } else {
                     const d = document.getElementById('msp-detail');
-                    if (d) d.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:200px;color:#ccc;font-size:13px;">Select a habit to edit</div>';
+                    if (d) d.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:200px;color:#5a5470;font-size:13px;">Select a habit to edit</div>';
                 }
             }
-            if (section === 'shop') renderShopManage();
+            if (section === 'stars')  renderShopManage();
             if (section === 'events') renderEventsManage();
-            if (section === 'award') renderPeriodHistory();
+            if (section === 'period') renderPeriodHistory();
         };
 
         // Build cycle row HTML without nested template literals
@@ -2143,6 +2144,7 @@
                 r.classList.toggle('msp-row-selected', r.id === 'msp-row-' + id));
             const detail = document.getElementById('msp-detail');
             if (!detail) return;
+            detail.removeAttribute('style');
             const sv = (v) => (v === undefined || v === null || v === '') ? '' : v;
             const ni = (field, val, w, step) =>
                 '<input type="number" class="msp-num" style="width:' + w + 'px" ' +
@@ -2150,92 +2152,102 @@
                 'value="' + sv(val) + '" ' +
                 'onchange="window.updateField(\'' + h.id + '\',\'' + field + '\',this.value)">';
             const niPh = (field, val, w) =>
-                '<input type="number" class="msp-num" style="width:' + w + 'px" ' +
-                'value="' + sv(val) + '" placeholder="&#8212;" min="0" ' +
+                '<input type="number" class="msp-num msp-num-star" style="width:' + w + 'px" ' +
+                'value="' + sv(val) + '" placeholder="—" min="0" ' +
                 'onchange="window.updateField(\'' + h.id + '\',\'' + field + '\',this.value)">';
 
+            const headerHtml =
+                '<div style="display:flex;align-items:center;gap:16px;margin-bottom:20px;padding-bottom:18px;border-bottom:1px solid rgba(255,255,255,0.08);">'
+                + '<span style="font-size:40px;line-height:1;margin-left:4px;display:inline-block">' + h.icon + '</span>'
+                + '<div style="flex:1">'
+                +   '<div style="font-family:\'Playfair Display\',serif;font-size:24px;font-weight:700;color:var(--header-pink);line-height:1.1">' + h.name + '</div>'
+                +   '<div style="font-size:13px;color:#9d99b8;margin-top:4px">' + h.cat + '</div>'
+                + '</div>'
+                + '<div style="display:flex;gap:10px;align-items:flex-end">'
+                +   '<div class="msp-field-row">'
+                +     '<span class="msp-field-label">Icon</span>'
+                +     '<input type="text" class="msp-field-input" value="' + sv(h.icon) + '" maxlength="5" style="width:60px;box-sizing:border-box;font-size:20px;text-align:center" onchange="window.updateField(\'' + h.id + '\',\'icon\',this.value)">'
+                +   '</div>'
+                +   '<button class="btn-delete" style="padding:9px 18px;font-size:12px" onclick="window.deleteTask(\'' + h.id + '\')">Delete habit</button>'
+                + '</div>'
+                + '</div>';
+
+            const payoutHtml =
+                '<div class="msp-section">'
+                +   '<div class="msp-section-title">Payouts &amp; Stars</div>'
+                +   '<table class="msp-tier-table">'
+                +     '<tr><th>Tier</th><th>Qty needed</th><th>$ value</th><th>&#10024; Stars</th></tr>'
+                +     '<tr><td><span style="color:#e05c5c;font-weight:700;font-size:13px">Debt</span></td>'
+                +       '<td>' + ni('punish', h.punish, 70) + '</td>'
+                +       '<td>' + ni('valPunish', h.valPunish, 80, 0.25) + '</td>'
+                +       '<td style="color:#4a4460;font-size:20px;text-align:center">&#8212;</td></tr>'
+                +     '<tr><td><span style="color:#e0963c;font-weight:700;font-size:13px">Low</span></td>'
+                +       '<td>' + ni('low', h.low, 70) + '</td>'
+                +       '<td>' + ni('valLow', h.valLow, 80, 0.25) + '</td>'
+                +       '<td style="color:#4a4460;font-size:20px;text-align:center">&#8212;</td></tr>'
+                +     '<tr><td><span style="color:#4caf78;font-weight:700;font-size:13px">Goal</span></td>'
+                +       '<td>' + ni('goal', h.goal, 70) + '</td>'
+                +       '<td>' + ni('valGoal', h.valGoal, 80, 0.25) + '</td>'
+                +       '<td>' + niPh('starGoal', h.starGoal, 70) + '</td></tr>'
+                +     '<tr><td><span style="color:#a87cd4;font-weight:700;font-size:13px">Bonus</span></td>'
+                +       '<td>' + ni('bonus', h.bonus, 70) + '</td>'
+                +       '<td>' + ni('valBonus', h.valBonus, 80, 0.25) + '</td>'
+                +       '<td>' + niPh('starBonus', h.starBonus, 70) + '</td></tr>'
+                +     '<tr><td><span style="color:#f0c040;font-weight:700;font-size:13px">&#128293; Streak</span></td>'
+                +       '<td colspan="2" style="font-size:11px;color:#7a7390">Stars per reset if streak &ge; 2</td>'
+                +       '<td>' + niPh('starStreak', h.starStreak, 70) + '</td></tr>'
+                +   '</table>'
+                + '</div>';
+
+            const rightColHtml =
+                '<div style="display:flex;flex-direction:column;gap:14px">'
+                +   '<div class="msp-section">'
+                +     '<div class="msp-section-title">Schedule</div>'
+                +     '<div class="msp-field-grid">'
+                +       '<div class="msp-field-row"><span class="msp-field-label">Max circles/wk</span><input type="number" class="msp-field-input" value="' + (h.max||7) + '" min="1" max="49" style="width:100%;box-sizing:border-box" onchange="window.updateField(\'' + h.id + '\',\'max\',this.value)"></div>'
+                +       '<div class="msp-field-row"><span class="msp-field-label">Daily max</span><input type="number" class="msp-field-input" value="' + (h.dailyMax||1) + '" min="1" max="7" style="width:100%;box-sizing:border-box" onchange="window.updateField(\'' + h.id + '\',\'dailyMax\',this.value)"></div>'
+                +       '<div class="msp-field-row"><span class="msp-field-label">Cycle</span>'
+                +         '<select class="msp-field-input" style="width:100%;box-sizing:border-box" onchange="window.updateField(\'' + h.id + '\',\'cycleType\',this.value)">'
+                +           '<option value="none"' + ((!h.cycleType||h.cycleType==='none')?' selected':'') + '>None</option>'
+                +           '<option value="weeks"' + (h.cycleType==='weeks'?' selected':'') + '>Every N wks</option>'
+                +           '<option value="monthly"' + (h.cycleType==='monthly'?' selected':'') + '>Monthly</option>'
+                +           '<option value="quarterly"' + (h.cycleType==='quarterly'?' selected':'') + '>Quarterly</option>'
+                +           '<option value="yearly"' + (h.cycleType==='yearly'?' selected':'') + '>Yearly</option>'
+                +         '</select>'
+                +       '</div>'
+                +     '</div>'
+                +     (h.cycleType==='weeks' ? '<div style="margin-top:12px;font-size:13px;color:#ccc8e0">Every <input type="number" class="msp-num" style="width:60px;margin:0 6px" value="' + (h.cycleEvery||1) + '" min="1" max="52" onchange="window.updateField(\'' + h.id + '\',\'cycleEvery\',this.value)"> weeks</div>' : '')
+                +     (h.cycleNextDue ? '<div style="margin-top:8px;font-size:11px;color:#7a7390">' + cycleDueLabel(h) + '</div>' : '')
+                +   '</div>'
+                +   '<div class="msp-section">'
+                +     '<div class="msp-section-title">Streak Payouts</div>'
+                +     '<div class="msp-streak-grid">'
+                +       '<div class="msp-field-row"><span class="msp-field-label">&#128293; Bonus $/wk</span><input type="number" class="msp-field-input" step="0.05" value="' + sv(h.streakBonusPer) + '" placeholder="&#8212;" style="width:100%;box-sizing:border-box" onchange="window.updateField(\'' + h.id + '\',\'streakBonusPer\',this.value)"></div>'
+                +       '<div class="msp-field-row"><span class="msp-field-label">&#127783; Penalty $/wk</span><input type="number" class="msp-field-input" step="0.05" value="' + sv(h.streakPenaltyPer) + '" placeholder="&#8212;" style="width:100%;box-sizing:border-box" onchange="window.updateField(\'' + h.id + '\',\'streakPenaltyPer\',this.value)"></div>'
+                +       '<div class="msp-field-row"><span class="msp-field-label">Cap $</span><input type="number" class="msp-field-input" step="0.25" value="' + sv(h.streakCap) + '" placeholder="none" style="width:100%;box-sizing:border-box" onchange="window.updateField(\'' + h.id + '\',\'streakCap\',this.value)"></div>'
+                +     '</div>'
+                +   '</div>'
+                +   '<div class="msp-section">'
+                +     '<div class="msp-section-title">Flags</div>'
+                +     '<label style="display:flex;align-items:center;gap:10px;font-size:13px;color:#ccc8e0;cursor:pointer">'
+                +       '<input type="checkbox" ' + (h.periodSensitive?'checked':'') + ' style="width:16px;height:16px;accent-color:var(--header-pink)" onchange="window.updateField(\'' + h.id + '\',\'periodSensitive\',this.checked)">'
+                +       '<span>&#129656; Period sensitive<br><span style="font-size:11px;color:#7a7390">No penalties during period</span></span>'
+                +     '</label>'
+                +   '</div>'
+                + '</div>';
+
+            const definitionHtml =
+                '<div class="msp-section" style="margin-top:14px">'
+                +   '<div class="msp-section-title">Definition / Rules</div>'
+                +   '<textarea placeholder="Describe exactly what counts for this habit&#8230;" style="width:100%;padding:12px 14px;border:1px solid rgba(255,255,255,0.14);border-radius:8px;font-family:Montserrat,sans-serif;font-size:13px;resize:vertical;min-height:120px;box-sizing:border-box;line-height:1.7;color:#e8e3f5;background:#362f52;" onchange="window.updateField(\'' + h.id + '\',\'note\',this.value)">' + (h.note||'') + '</textarea>'
+                + '</div>';
+
             detail.innerHTML =
-            '<div style="display:flex;align-items:center;gap:16px;margin-bottom:24px;padding-bottom:20px;border-bottom:2px solid #f5f5f5;">'
-            + '<span style="font-size:40px;line-height:1">' + h.icon + '</span>'
-            + '<div style="flex:1">'
-            +   '<div style="font-family:\'Playfair Display\',serif;font-size:24px;font-weight:700;color:var(--header-pink);line-height:1.1">' + h.name + '</div>'
-            +   '<div style="font-size:13px;color:#bbb;margin-top:4px">' + h.cat + '</div>'
-            + '</div>'
-            + '<div style="display:flex;gap:10px;align-items:flex-end">'
-            +   '<div class="msp-field-row">'
-            +     '<span class="msp-field-label">Icon</span>'
-            +     '<input type="text" class="msp-field-input" value="' + sv(h.icon) + '" maxlength="5" style="width:60px;box-sizing:border-box;font-size:20px;text-align:center" onchange="window.updateField(\'' + h.id + '\',\'icon\',this.value)">'
-            +   '</div>'
-            +   '<button class="btn-delete" style="padding:9px 18px;font-size:12px" onclick="window.deleteTask(\'' + h.id + '\')">Delete habit</button>'
-            + '</div>'
-            + '</div>'
-            + '<div class="msp-two-col">'
-            + '<div class="msp-section">'
-            +   '<div class="msp-section-title">Payouts &amp; Stars</div>'
-            +   '<table class="msp-tier-table">'
-            +     '<tr><th>Tier</th><th>Qty needed</th><th>$ value</th><th>&#10024; Stars</th></tr>'
-            +     '<tr><td><span style="color:#c0392b;font-weight:700;font-size:13px">Debt</span></td>'
-            +       '<td>' + ni('punish', h.punish, 70) + '</td>'
-            +       '<td>' + ni('valPunish', h.valPunish, 80, 0.25) + '</td>'
-            +       '<td style="color:#ddd;font-size:20px;text-align:center">—</td></tr>'
-            +     '<tr><td><span style="color:#e67e22;font-weight:700;font-size:13px">Low</span></td>'
-            +       '<td>' + ni('low', h.low, 70) + '</td>'
-            +       '<td>' + ni('valLow', h.valLow, 80, 0.25) + '</td>'
-            +       '<td style="color:#ddd;font-size:20px;text-align:center">—</td></tr>'
-            +     '<tr><td><span style="color:#27ae60;font-weight:700;font-size:13px">Goal</span></td>'
-            +       '<td>' + ni('goal', h.goal, 70) + '</td>'
-            +       '<td>' + ni('valGoal', h.valGoal, 80, 0.25) + '</td>'
-            +       '<td>' + niPh('starGoal', h.starGoal, 70) + '</td></tr>'
-            +     '<tr><td><span style="color:#8e44ad;font-weight:700;font-size:13px">Bonus</span></td>'
-            +       '<td>' + ni('bonus', h.bonus, 70) + '</td>'
-            +       '<td>' + ni('valBonus', h.valBonus, 80, 0.25) + '</td>'
-            +       '<td>' + niPh('starBonus', h.starBonus, 70) + '</td></tr>'
-            +     '<tr><td><span style="color:#f0c040;font-weight:700;font-size:13px">&#128293; Streak</span></td>'
-            +       '<td colspan="2" style="font-size:11px;color:#bbb">Stars per reset if streak &ge; 2</td>'
-            +       '<td>' + niPh('starStreak', h.starStreak, 70) + '</td></tr>'
-            +   '</table>'
-            + '</div>'
-            + '<div style="display:flex;flex-direction:column;gap:16px">'
-            +   '<div class="msp-section">'
-            +     '<div class="msp-section-title">Schedule</div>'
-            +     '<div class="msp-field-grid">'
-            +       '<div class="msp-field-row"><span class="msp-field-label">Max circles/wk</span><input type="number" class="msp-field-input" value="' + (h.max||7) + '" min="1" max="49" style="width:100%;box-sizing:border-box" onchange="window.updateField(\'' + h.id + '\',\'max\',this.value)"></div>'
-            +       '<div class="msp-field-row"><span class="msp-field-label">Daily max</span><input type="number" class="msp-field-input" value="' + (h.dailyMax||1) + '" min="1" max="7" style="width:100%;box-sizing:border-box" onchange="window.updateField(\'' + h.id + '\',\'dailyMax\',this.value)"></div>'
-            +       '<div class="msp-field-row"><span class="msp-field-label">Cycle</span>'
-            +         '<select class="msp-field-input" style="width:100%;box-sizing:border-box" onchange="window.updateField(\'' + h.id + '\',\'cycleType\',this.value)">'
-            +           '<option value="none"' + ((!h.cycleType||h.cycleType==='none')?' selected':'') + '>None</option>'
-            +           '<option value="weeks"' + (h.cycleType==='weeks'?' selected':'') + '>Every N wks</option>'
-            +           '<option value="monthly"' + (h.cycleType==='monthly'?' selected':'') + '>Monthly</option>'
-            +           '<option value="quarterly"' + (h.cycleType==='quarterly'?' selected':'') + '>Quarterly</option>'
-            +           '<option value="yearly"' + (h.cycleType==='yearly'?' selected':'') + '>Yearly</option>'
-            +         '</select>'
-            +       '</div>'
-            +     '</div>'
-            +     (h.cycleType==='weeks' ? '<div style="margin-top:12px;font-size:13px;color:#666">Every <input type="number" class="msp-num" style="width:60px;margin:0 6px" value="' + (h.cycleEvery||1) + '" min="1" max="52" onchange="window.updateField(\'' + h.id + '\',\'cycleEvery\',this.value)"> weeks</div>' : '')
-            +     (h.cycleNextDue ? '<div style="margin-top:8px;font-size:11px;color:#bbb">' + cycleDueLabel(h) + '</div>' : '')
-            +   '</div>'
-            +   '<div class="msp-section">'
-            +     '<div class="msp-section-title">Streak Payouts</div>'
-            +     '<div class="msp-streak-grid">'
-            +       '<div class="msp-field-row"><span class="msp-field-label">&#128293; Bonus $/wk</span><input type="number" class="msp-field-input" step="0.05" value="' + sv(h.streakBonusPer) + '" placeholder="—" style="width:100%;box-sizing:border-box" onchange="window.updateField(\'' + h.id + '\',\'streakBonusPer\',this.value)"></div>'
-            +       '<div class="msp-field-row"><span class="msp-field-label">&#127783; Penalty $/wk</span><input type="number" class="msp-field-input" step="0.05" value="' + sv(h.streakPenaltyPer) + '" placeholder="—" style="width:100%;box-sizing:border-box" onchange="window.updateField(\'' + h.id + '\',\'streakPenaltyPer\',this.value)"></div>'
-            +       '<div class="msp-field-row"><span class="msp-field-label">Cap $</span><input type="number" class="msp-field-input" step="0.25" value="' + sv(h.streakCap) + '" placeholder="none" style="width:100%;box-sizing:border-box" onchange="window.updateField(\'' + h.id + '\',\'streakCap\',this.value)"></div>'
-            +     '</div>'
-            +   '</div>'
-            +   '<div class="msp-section">'
-            +     '<div class="msp-section-title">Flags</div>'
-            +     '<label style="display:flex;align-items:center;gap:10px;font-size:13px;color:#666;cursor:pointer">'
-            +       '<input type="checkbox" ' + (h.periodSensitive?'checked':'') + ' style="width:16px;height:16px;accent-color:var(--header-pink)" onchange="window.updateField(\'' + h.id + '\',\'periodSensitive\',this.checked)">'
-            +       '<span>&#129305; Period sensitive<br><span style="font-size:11px;color:#bbb">No penalties during period</span></span>'
-            +     '</label>'
-            +   '</div>'
-            + '</div>'
-            + '</div>'
-            + '<div class="msp-section">'
-            +   '<div class="msp-section-title">Definition / Rules</div>'
-            +   '<textarea placeholder="Describe exactly what counts for this habit&#8230;" style="width:100%;padding:10px 12px;border:1px solid #e8e8e8;border-radius:8px;font-family:Montserrat,sans-serif;font-size:13px;resize:vertical;min-height:80px;box-sizing:border-box;line-height:1.6;color:#555" onchange="window.updateField(\'' + h.id + '\',\'note\',this.value)">' + (h.note||'') + '</textarea>'
-            + '</div>';
+                headerHtml
+                + '<div class="msp-two-col">' + payoutHtml + rightColHtml + '</div>'
+                + definitionHtml;
         };
+
 
                 function updateFiltersUI() {
             const tiers = ['punish', 'low', 'goal', 'bonus'];
@@ -3546,31 +3558,33 @@
             display: flex;
             gap: 0;
             min-height: 560px;
-            background: rgba(255,255,255,0.6);
+            background: #272140;
             border-radius: 18px;
-            overflow: hidden;
-            border: 1px solid rgba(212,163,163,0.2);
+            border: 1px solid rgba(255,255,255,0.09);
             width: calc(100vw - 40px);
             margin-left: calc(-50vw + 50%);
         }
         .msp-left {
-            width: 280px;
-            min-width: 280px;
-            border-right: 1px solid rgba(212,163,163,0.15);
+            width: 260px;
+            min-width: 260px;
+            border-right: 1px solid rgba(255,255,255,0.09);
             display: flex;
             flex-direction: column;
-            background: rgba(255,255,255,0.5);
+            background: #1e1a30;
+            border-radius: 18px 0 0 18px;
+            overflow: hidden;
         }
         .msp-right {
             flex: 1;
-            padding: 28px 32px;
+            padding: 28px 36px 28px 48px;
             overflow-y: auto;
-            background: rgba(255,255,255,0.7);
+            background: #272140;
             min-width: 0;
+            border-radius: 0 18px 18px 0;
         }
         .msp-nav {
-            padding: 14px 10px 10px;
-            border-bottom: 1px solid rgba(212,163,163,0.15);
+            padding: 16px 10px 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.09);
             display: flex;
             flex-direction: column;
             gap: 3px;
@@ -3579,20 +3593,20 @@
             display: block;
             width: 100%;
             text-align: left;
-            padding: 8px 12px;
+            padding: 9px 12px;
             border: none;
             background: transparent;
             border-radius: 8px;
             font-family: 'Montserrat', sans-serif;
             font-size: 12px;
             font-weight: 600;
-            color: #999;
+            color: #8a84a0;
             cursor: pointer;
             transition: all 0.15s ease;
         }
         .msp-nav-btn:hover {
             background: rgba(212,163,163,0.1);
-            color: var(--header-pink);
+            color: #c9a0a0;
         }
         .msp-nav-btn.msp-nav-active {
             background: rgba(212,163,163,0.15);
@@ -3608,83 +3622,85 @@
             padding: 14px 12px;
         }
         .msp-cat-label {
-            font-size: 10px;
+            font-size: 9px;
             text-transform: uppercase;
-            letter-spacing: 1.5px;
+            letter-spacing: 2px;
             font-weight: 700;
             color: var(--header-pink);
-            padding: 10px 14px 4px;
-            opacity: 0.7;
+            padding: 12px 14px 4px;
+            opacity: 0.5;
         }
         .msp-habit-row {
             display: flex;
             align-items: center;
             padding: 9px 14px;
             cursor: pointer;
-            border-bottom: 1px solid rgba(212,163,163,0.08);
+            border-bottom: 1px solid rgba(255,255,255,0.07);
             transition: background 0.12s;
         }
         .msp-habit-row:hover {
-            background: rgba(212,163,163,0.08);
+            background: rgba(255,255,255,0.04);
         }
         .msp-habit-row.msp-row-selected {
-            background: rgba(212,163,163,0.15);
+            background: rgba(212,163,163,0.12);
             border-left: 3px solid var(--header-pink);
         }
         #msp-detail {
             max-width: 900px;
         }
         .msp-section {
-            background: #fafafa;
-            border: 1px solid #f0f0f0;
+            background: #2e2948;
+            border: 1px solid rgba(255,255,255,0.09);
             border-radius: 12px;
             padding: 18px 20px;
-            margin-bottom: 16px;
+            margin-bottom: 14px;
         }
         .msp-section-title {
-            font-size: 10px;
-            color: #bbb;
+            font-size: 9px;
+            color: #7a7390;
             text-transform: uppercase;
-            letter-spacing: 1.5px;
+            letter-spacing: 2px;
             font-weight: 700;
             margin-bottom: 14px;
         }
         .msp-two-col {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 16px;
-            margin-bottom: 16px;
+            gap: 14px;
+            margin-bottom: 14px;
         }
         .msp-tier-table {
             width: 100%;
             border-collapse: collapse;
         }
         .msp-tier-table th {
-            font-size: 10px;
-            color: #bbb;
+            font-size: 9px;
+            color: #7a7390;
             text-transform: uppercase;
-            letter-spacing: 1px;
+            letter-spacing: 1.5px;
             font-weight: 700;
             padding: 0 0 10px 0;
             text-align: left;
-            border-bottom: 1px solid #eee;
+            border-bottom: 1px solid rgba(255,255,255,0.09);
         }
         .msp-tier-table th:not(:first-child) { text-align: center; }
         .msp-tier-table td {
             padding: 8px 0;
-            border-bottom: 1px solid #f5f5f5;
+            border-bottom: 1px solid rgba(255,255,255,0.07);
             vertical-align: middle;
         }
         .msp-tier-table tr:last-child td { border-bottom: none; }
         .msp-tier-table td:not(:first-child) { text-align: center; }
-        .msp-num { width:70px; padding:7px 10px; font-size:13px; border:1px solid #e8e8e8; border-radius:7px; background:white; text-align:right; font-family:Montserrat,sans-serif; transition:border-color 0.15s; }
+        .msp-num { width:70px; padding:7px 10px; font-size:13px; border:1px solid rgba(255,255,255,0.14); border-radius:7px; background:#362f52; color:#e8e3f5; text-align:right; font-family:Montserrat,sans-serif; transition:border-color 0.15s; }
         .msp-num:focus { outline:none; border-color:var(--header-pink); }
         .msp-field-row { display:flex; flex-direction:column; gap:5px; }
-        .msp-field-label { font-size:10px; color:#bbb; text-transform:uppercase; letter-spacing:1px; font-weight:700; }
-        .msp-field-input { padding:8px 10px; font-size:13px; border:1px solid #e8e8e8; border-radius:7px; background:white; font-family:Montserrat,sans-serif; transition:border-color 0.15s; }
+        .msp-field-label { font-size:9px; color:#7a7390; text-transform:uppercase; letter-spacing:1.5px; font-weight:700; }
+        .msp-field-input { padding:8px 10px; font-size:13px; border:1px solid rgba(255,255,255,0.14); border-radius:7px; background:#362f52; color:#e8e3f5; font-family:Montserrat,sans-serif; transition:border-color 0.15s; }
         .msp-field-input:focus { outline:none; border-color:var(--header-pink); }
         .msp-field-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
         .msp-streak-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+        .msp-num-star { border-color: rgba(212,163,163,0.3) !important; background:#3d3058 !important; }
+        .msp-num-star:focus { border-color:var(--header-pink) !important; }
 
     </style>
 </head>
@@ -3764,77 +3780,112 @@
         <!-- Manage panel lives here, hidden until unlocked -->
         <div id="managePanel" style="display:none; margin-bottom:20px;">
           <div class="msp-layout">
+
+            <!-- LEFT: nav + always-visible habit list -->
             <div class="msp-left">
               <nav class="msp-nav">
                 <button class="msp-nav-btn msp-nav-active" id="msp-nav-habits" onclick="window.switchManageSection('habits')">&#9998; Edit Habits</button>
-                <button class="msp-nav-btn" id="msp-nav-add" onclick="window.switchManageSection('add')">&#43; Add Habit</button>
+                <button class="msp-nav-btn" id="msp-nav-add"    onclick="window.switchManageSection('add')">&#43; Add Habit</button>
                 <button class="msp-nav-btn" id="msp-nav-events" onclick="window.switchManageSection('events')">&#128197; Events</button>
-                <button class="msp-nav-btn" id="msp-nav-shop" onclick="window.switchManageSection('shop')">&#10024; Star Shop</button>
-                <button class="msp-nav-btn" id="msp-nav-award" onclick="window.switchManageSection('award')">&#127873; Award Stars</button>
+                <button class="msp-nav-btn" id="msp-nav-stars"  onclick="window.switchManageSection('stars')">&#10024; Stars</button>
+                <button class="msp-nav-btn" id="msp-nav-period" onclick="window.switchManageSection('period')">&#129656; Period</button>
                 <div style="flex:1"></div>
                 <button onclick="window.sendVictoriaTestReport()" style="padding:8px;background:#8e44ad;color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;margin-bottom:6px;">&#128203; View Report</button>
                 <button onclick="window.runWeeklyReport(true)" style="padding:8px;background:#4a3a3a;color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">&#10003; Submit &amp; Reset</button>
               </nav>
-              <div id="msp-panel-habits" class="msp-habit-list-wrap">
+              <div class="msp-habit-list-wrap">
                 <div id="manageListRoot"></div>
               </div>
-              <div id="msp-panel-add" class="msp-form-panel" style="display:none;">
-                <div style="font-size:13px;font-weight:700;color:var(--header-pink);font-family:'Playfair Display';margin-bottom:14px;">New Habit</div>
-                <div style="display:flex;gap:8px;margin-bottom:8px;">
-                  <input type="text" id="newIcon" placeholder="Icon" style="width:52px;padding:8px;border:1px solid #eee;border-radius:8px;">
-                  <input type="text" id="newName" placeholder="Habit name" style="flex:1;padding:8px;border:1px solid #eee;border-radius:8px;">
-                </div>
-                <input type="text" id="newCat" placeholder="Category" style="width:100%;padding:8px;border:1px solid #eee;border-radius:8px;box-sizing:border-box;margin-bottom:8px;">
-                <textarea id="newNote" placeholder="Definition / rules (optional)" style="width:100%;padding:8px;border:1px solid #eee;border-radius:8px;font-family:'Montserrat';font-size:12px;resize:vertical;min-height:52px;box-sizing:border-box;margin-bottom:10px;"></textarea>
-                <button onclick="window.addTask()" style="width:100%;background:var(--header-pink);color:white;border:none;padding:10px;border-radius:8px;font-weight:bold;cursor:pointer;">Create Habit</button>
-              </div>
-              <div id="msp-panel-events" class="msp-form-panel" style="display:none;">
-                <div style="font-size:13px;font-weight:700;color:var(--header-pink);font-family:'Playfair Display';margin-bottom:14px;">Seasonal Events</div>
-                <div id="eventsManageRoot" style="margin-bottom:12px;"></div>
-                <div style="font-size:10px;color:#aaa;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Add Event</div>
-                <div style="display:flex;gap:6px;margin-bottom:7px;">
-                  <input type="text" id="evIcon" placeholder="Icon" style="width:18%;padding:8px;border:1px solid #eee;border-radius:8px;">
-                  <input type="text" id="evName" placeholder="Event Name" style="flex:1;padding:8px;border:1px solid #eee;border-radius:8px;">
-                </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:7px;">
-                  <div style="font-size:11px;color:#aaa;">Start (month/day)</div><div style="font-size:11px;color:#aaa;">End (month/day)</div>
-                  <div style="display:flex;gap:4px;"><input type="number" id="evStartM" placeholder="Mo" min="1" max="12" style="flex:1;padding:7px;border:1px solid #eee;border-radius:8px;font-size:12px;"><input type="number" id="evStartD" placeholder="Dy" min="1" max="31" style="flex:1;padding:7px;border:1px solid #eee;border-radius:8px;font-size:12px;"></div>
-                  <div style="display:flex;gap:4px;"><input type="number" id="evEndM" placeholder="Mo" min="1" max="12" style="flex:1;padding:7px;border:1px solid #eee;border-radius:8px;font-size:12px;"><input type="number" id="evEndD" placeholder="Dy" min="1" max="31" style="flex:1;padding:7px;border:1px solid #eee;border-radius:8px;font-size:12px;"></div>
-                </div>
-                <div style="display:flex;gap:6px;margin-bottom:7px;">
-                  <div style="flex:1;font-size:11px;color:#aaa;">Max completions<br><input type="number" id="evMax" placeholder="e.g. 3" min="1" style="width:100%;padding:7px;border:1px solid #eee;border-radius:8px;font-size:12px;box-sizing:border-box;margin-top:3px;"></div>
-                  <div style="flex:1;font-size:11px;color:#aaa;">$ per completion<br><input type="number" id="evPay" placeholder="5.00" step="0.50" style="width:100%;padding:7px;border:1px solid #eee;border-radius:8px;font-size:12px;box-sizing:border-box;margin-top:3px;"></div>
-                </div>
-                <textarea id="evNote" placeholder="Notes (optional)" style="width:100%;padding:8px;border:1px solid #eee;border-radius:8px;font-family:'Montserrat';font-size:12px;resize:vertical;min-height:44px;box-sizing:border-box;margin-bottom:8px;"></textarea>
-                <button onclick="window.addEvent()" style="width:100%;background:var(--header-pink);color:white;border:none;padding:10px;border-radius:8px;font-weight:bold;cursor:pointer;">Create Event</button>
-              </div>
-              <div id="msp-panel-shop" class="msp-form-panel" style="display:none;">
-                <div style="font-size:13px;font-weight:700;color:var(--header-pink);font-family:'Playfair Display';margin-bottom:14px;">&#10024; Star Shop</div>
-                <div id="shopManageRoot" style="margin-bottom:12px;"></div>
-                <div style="font-size:10px;color:#aaa;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Add Item</div>
-                <div style="display:flex;gap:6px;margin-bottom:7px;">
-                  <input type="text" id="shopItemIcon" placeholder="Icon" style="width:18%;padding:8px;border:1px solid #eee;border-radius:8px;">
-                  <input type="text" id="shopItemName" placeholder="Item name" style="flex:1;padding:8px;border:1px solid #eee;border-radius:8px;">
-                  <input type="number" id="shopItemCost" placeholder="cost" min="1" style="width:22%;padding:8px;border:1px solid #eee;border-radius:8px;">
-                </div>
-                <button onclick="window.addShopItem()" style="width:100%;background:#4a3a3a;color:white;border:none;padding:10px;border-radius:8px;font-weight:bold;cursor:pointer;">Add Item</button>
-              </div>
-              <div id="msp-panel-award" class="msp-form-panel" style="display:none;">
-                <div style="font-size:13px;font-weight:700;color:var(--header-pink);font-family:'Playfair Display';margin-bottom:14px;">&#127873; Award Stars</div>
-                <div style="display:flex;gap:8px;margin-bottom:10px;">
-                  <input type="number" id="awardAmt" placeholder="Amount" min="1" style="width:70px;padding:8px;border:1px solid #eee;border-radius:8px;font-family:'Montserrat';font-size:13px;">
-                  <input type="text" id="awardNote" placeholder="Reason (optional)" style="flex:1;padding:8px;border:1px solid #eee;border-radius:8px;font-family:'Montserrat';font-size:13px;">
-                  <button onclick="window.awardStars()" style="padding:8px 12px;background:var(--header-pink);color:white;border:none;border-radius:8px;font-weight:bold;cursor:pointer;white-space:nowrap;">&#10024; Award</button>
-                </div>
-                <div id="periodHistoryRoot"></div>
-              </div>
             </div>
+
+            <!-- RIGHT: switches between sections -->
             <div class="msp-right">
-              <div id="msp-detail" style="display:flex;align-items:center;justify-content:center;height:200px;color:#ccc;font-size:13px;">
-                Select a habit to edit
+
+              <!-- Edit Habits -->
+              <div id="msp-right-habits">
+                <div id="msp-detail"><div style="display:flex;align-items:center;justify-content:center;height:200px;color:#5a5470;font-size:13px;">Select a habit to edit</div></div>
               </div>
-            </div>
-          </div>
+
+              <!-- Add Habit -->
+              <div id="msp-right-add" style="display:none">
+                <div class="msp-section" style="max-width:560px">
+                  <div class="msp-section-title">New Habit</div>
+                  <div style="display:flex;gap:10px;margin-bottom:12px;">
+                    <div class="msp-field-row" style="width:80px"><span class="msp-field-label">Icon</span><input type="text" id="newIcon" placeholder="🧘" style="width:100%;padding:9px 10px;border:1px solid rgba(255,255,255,0.14);border-radius:8px;background:#362f52;color:#e8e3f5;font-size:18px;text-align:center;box-sizing:border-box;"></div>
+                    <div class="msp-field-row" style="flex:1"><span class="msp-field-label">Habit name</span><input type="text" id="newName" placeholder="e.g. Meditation" style="width:100%;padding:9px 10px;border:1px solid rgba(255,255,255,0.14);border-radius:8px;background:#362f52;color:#e8e3f5;box-sizing:border-box;font-family:Montserrat,sans-serif;"></div>
+                  </div>
+                  <div class="msp-field-row" style="margin-bottom:12px"><span class="msp-field-label">Category</span><input type="text" id="newCat" placeholder="e.g. Health, Learning" style="width:100%;padding:9px 10px;border:1px solid rgba(255,255,255,0.14);border-radius:8px;background:#362f52;color:#e8e3f5;box-sizing:border-box;font-family:Montserrat,sans-serif;"></div>
+                  <div class="msp-field-row" style="margin-bottom:16px"><span class="msp-field-label">Definition / Rules (optional)</span><textarea id="newNote" placeholder="Describe what counts as completion…" style="width:100%;padding:9px 10px;border:1px solid rgba(255,255,255,0.14);border-radius:8px;background:#362f52;color:#e8e3f5;font-family:Montserrat,sans-serif;font-size:13px;resize:vertical;min-height:80px;box-sizing:border-box;line-height:1.6;"></textarea></div>
+                  <button onclick="window.addTask()" style="padding:10px 24px;background:var(--header-pink);color:white;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px;">Create Habit</button>
+                </div>
+              </div>
+
+              <!-- Events -->
+              <div id="msp-right-events" style="display:none">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;">
+                  <div class="msp-section">
+                    <div class="msp-section-title">Add Event</div>
+                    <div style="display:flex;gap:8px;margin-bottom:10px;">
+                      <div class="msp-field-row" style="width:70px"><span class="msp-field-label">Icon</span><input type="text" id="evIcon" placeholder="🎄" style="width:100%;padding:8px;border:1px solid rgba(255,255,255,0.14);border-radius:8px;background:#362f52;color:#e8e3f5;font-size:18px;text-align:center;box-sizing:border-box;"></div>
+                      <div class="msp-field-row" style="flex:1"><span class="msp-field-label">Event name</span><input type="text" id="evName" placeholder="e.g. Spring Cleaning" style="width:100%;padding:8px;border:1px solid rgba(255,255,255,0.14);border-radius:8px;background:#362f52;color:#e8e3f5;box-sizing:border-box;font-family:Montserrat,sans-serif;"></div>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+                      <div><div class="msp-field-label" style="margin-bottom:5px">Start</div><div style="display:flex;gap:4px;"><input type="number" id="evStartM" placeholder="Mo" min="1" max="12" style="flex:1;padding:8px;border:1px solid rgba(255,255,255,0.14);border-radius:8px;background:#362f52;color:#e8e3f5;font-size:12px;"><input type="number" id="evStartD" placeholder="Dy" min="1" max="31" style="flex:1;padding:8px;border:1px solid rgba(255,255,255,0.14);border-radius:8px;background:#362f52;color:#e8e3f5;font-size:12px;"></div></div>
+                      <div><div class="msp-field-label" style="margin-bottom:5px">End</div><div style="display:flex;gap:4px;"><input type="number" id="evEndM" placeholder="Mo" min="1" max="12" style="flex:1;padding:8px;border:1px solid rgba(255,255,255,0.14);border-radius:8px;background:#362f52;color:#e8e3f5;font-size:12px;"><input type="number" id="evEndD" placeholder="Dy" min="1" max="31" style="flex:1;padding:8px;border:1px solid rgba(255,255,255,0.14);border-radius:8px;background:#362f52;color:#e8e3f5;font-size:12px;"></div></div>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+                      <div class="msp-field-row"><span class="msp-field-label">Max completions</span><input type="number" id="evMax" placeholder="1" min="1" style="width:100%;padding:8px;border:1px solid rgba(255,255,255,0.14);border-radius:8px;background:#362f52;color:#e8e3f5;box-sizing:border-box;"></div>
+                      <div class="msp-field-row"><span class="msp-field-label">$ per completion</span><input type="number" id="evPay" placeholder="5.00" step="0.50" style="width:100%;padding:8px;border:1px solid rgba(255,255,255,0.14);border-radius:8px;background:#362f52;color:#e8e3f5;box-sizing:border-box;"></div>
+                    </div>
+                    <div class="msp-field-row" style="margin-bottom:14px"><span class="msp-field-label">Notes (optional)</span><textarea id="evNote" placeholder="Additional details…" style="width:100%;padding:8px;border:1px solid rgba(255,255,255,0.14);border-radius:8px;background:#362f52;color:#e8e3f5;font-family:Montserrat,sans-serif;font-size:12px;resize:vertical;min-height:50px;box-sizing:border-box;line-height:1.5;"></textarea></div>
+                    <button onclick="window.addEvent()" style="padding:10px 24px;background:var(--header-pink);color:white;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px;">Create Event</button>
+                  </div>
+                  <div class="msp-section">
+                    <div class="msp-section-title">Existing Events</div>
+                    <div id="eventsManageRoot"></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Stars (Shop + Award combined) -->
+              <div id="msp-right-stars" style="display:none">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;">
+                  <div style="display:flex;flex-direction:column;gap:14px;">
+                    <div class="msp-section">
+                      <div class="msp-section-title">Award Stars to Victoria</div>
+                      <div style="display:flex;gap:10px;align-items:flex-end;">
+                        <div class="msp-field-row" style="width:90px"><span class="msp-field-label">Amount</span><input type="number" id="awardAmt" placeholder="10" min="1" style="width:100%;padding:9px 10px;border:1px solid rgba(255,255,255,0.14);border-radius:8px;background:#362f52;color:#e8e3f5;font-size:16px;font-weight:700;text-align:center;box-sizing:border-box;"></div>
+                        <div class="msp-field-row" style="flex:1"><span class="msp-field-label">Reason (optional)</span><input type="text" id="awardNote" placeholder="e.g. Great week!" style="width:100%;padding:9px 10px;border:1px solid rgba(255,255,255,0.14);border-radius:8px;background:#362f52;color:#e8e3f5;box-sizing:border-box;font-family:Montserrat,sans-serif;"></div>
+                        <button onclick="window.awardStars()" style="padding:10px 18px;background:var(--header-pink);color:white;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px;white-space:nowrap;">&#10024; Award</button>
+                      </div>
+                    </div>
+                    <div class="msp-section">
+                      <div class="msp-section-title">Add Shop Item</div>
+                      <div style="display:flex;gap:8px;margin-bottom:10px;">
+                        <div class="msp-field-row" style="width:70px"><span class="msp-field-label">Icon</span><input type="text" id="shopItemIcon" placeholder="✨" style="width:100%;padding:8px;border:1px solid rgba(255,255,255,0.14);border-radius:8px;background:#362f52;color:#e8e3f5;font-size:18px;text-align:center;box-sizing:border-box;"></div>
+                        <div class="msp-field-row" style="flex:1"><span class="msp-field-label">Item name</span><input type="text" id="shopItemName" placeholder="e.g. Movie night" style="width:100%;padding:8px;border:1px solid rgba(255,255,255,0.14);border-radius:8px;background:#362f52;color:#e8e3f5;box-sizing:border-box;font-family:Montserrat,sans-serif;"></div>
+                      </div>
+                      <div class="msp-field-row" style="margin-bottom:14px"><span class="msp-field-label">Star cost</span><input type="number" id="shopItemCost" placeholder="50" min="1" style="width:120px;padding:8px;border:1px solid rgba(255,255,255,0.14);border-radius:8px;background:#362f52;color:#e8e3f5;"></div>
+                      <button onclick="window.addShopItem()" style="padding:10px 24px;background:var(--header-pink);color:white;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px;">Add Item</button>
+                    </div>
+                  </div>
+                  <div class="msp-section">
+                    <div class="msp-section-title">Shop Items</div>
+                    <div id="shopManageRoot"></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Period History -->
+              <div id="msp-right-period" style="display:none">
+                <div class="msp-section">
+                  <div class="msp-section-title">&#129656; Period History</div>
+                  <div id="periodHistoryRoot"></div>
+                </div>
+              </div>
+
+            </div><!-- /msp-right -->
+          </div><!-- /msp-layout -->
           <div id="manageRoot" style="display:none;"></div>
         </div>
         <div id="historyRoot"></div>
