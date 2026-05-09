@@ -2105,19 +2105,14 @@
 
         window.switchManageSection = (section) => {
             currentManageSection = section;
-            ['add','events','stars','period'].forEach(s => {
+            ['habits','add','events','stars','period'].forEach(s => {
                 const btn = document.getElementById('msp-nav-' + s);
                 if (btn) btn.classList.toggle('msp-nav-active', s === section);
                 const panel = document.getElementById('msp-right-' + s);
                 if (panel) panel.style.display = s === section ? '' : 'none';
             });
-            if (section === 'habits') {
-                if (currentManageHabitId) {
-                    window.showManageDetail(currentManageHabitId);
-                } else {
-                    const d = document.getElementById('msp-detail');
-                    if (d) d.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:200px;color:#5a5470;font-size:13px;">Select a habit to edit</div>';
-                }
+            if (section === 'habits' && currentManageHabitId) {
+                window.showManageDetail(currentManageHabitId);
             }
             if (section === 'stars')  renderShopManage();
             if (section === 'events') renderEventsManage();
@@ -3837,9 +3832,9 @@
             <!-- RIGHT: switches between sections -->
             <div class="msp-right">
 
-              <!-- Edit Habits -->
-              <div id="msp-right-habits">
-                <div id="msp-detail"><div style="display:flex;align-items:center;justify-content:center;height:200px;color:#5a5470;font-size:13px;">Select a habit to edit</div></div>
+              <!-- Edit Habits (hidden until a habit is clicked) -->
+              <div id="msp-right-habits" style="display:none">
+                <div id="msp-detail"></div>
               </div>
 
               <!-- Add Habit -->
