@@ -1,161 +1,127 @@
+// ─────────────────────────────────────────────────────────────────────
+// core/events.js
+// Seasonal events: date-range based, auto-reset yearly.
+// ─────────────────────────────────────────────────────────────────────
+
+import { state, setSeasonalEvents } from './state.js';
+import { readDoc, writeDoc } from './firebase.js';
+import { FIRESTORE_DOCS, SEASON_META } from './config.js';
+
 /**
- * VICTORIA TRACKER — Seasonal Events
- * Date-based events with completion tracking
+ * Load events from Firestore into state.
  */
+export async function loadSeasonalEvents() {
+    try {
+        const data = await readDoc(FIRESTORE_DOCS.EVENTS);
+        setSeasonalEvents(data?.events || []);
+        state.eventsLoaded = true;
+    } catch (e) { console.error('loadSeasonalEvents:', e); }
+}
 
-export const seasonalEvents = {
-    /**
-     * Season metadata for styling
-     */
-    SEASON_META: {
-        spring: {
-            label: 'Spring',
-            months: [3, 4, 5],
-            accent: '#4a7c1f',
-            bg: 'rgba(240,250,232,0.7)',
-            border: '#b8d98a',
-            badge: '#eaf5d8'
-        },
-        summer: {
-            label: 'Summer',
-            months: [6, 7, 8],
-            accent: '#8a5a00',
-            bg: 'rgba(255,248,225,0.7)',
-            border: '#f5cc70',
-            badge: '#fff8e1'
-        },
-        fall: {
-            label: 'Fall',
-            months: [9, 10, 11],
-            accent: '#8a3a10',
-            bg: 'rgba(253,240,232,0.7)',
-            border: '#f0a880',
-            badge: '#fdeee5'
-        },
-        winter: {
-            label: 'Winter',
-            months: [12, 1, 2],
-            accent: '#1a5c8a',
-            bg: 'rgba(232,245,253,0.7)',
-            border: '#90c8f0',
-            badge: '#e6f4fd'
-        }
-    },
+/**
+ * Push current events to Firestore.
+ */
+export async function syncEvents() {
+    await writeDoc(FIRESTORE_DOCS.EVENTS, { events: state.seasonalEvents });
+}
 
-    /**
-     * Get current season
-     */
-    getCurrentSeason() {
-        const m = new Date().getMonth() + 1;
-        for (const [key, meta] of Object.entries(this.SEASON_META)) {
-            if (meta.months.includes(m)) return key;
-        }
-        return 'spring';
-    },
+/**
+ * Whether an event should be visible right now based on today's date.
+ * Handles year-boundary wrap-around (e.g. Dec 15 – Feb 15).
+ */
+export function isEventActive(ev) {
+    const today = new Date();
+    const m = today.getMonth() + 1;
+    const d = today.getDate();
+    const y = today.getFullYear();
 
-    /**
-     * Get season by month
-     */
-    getSeasonByMonth(month) {
-        for (const [key, meta] of Object.entries(this.SEASON_META)) {
-            if (meta.months.includes(month)) return key;
-        }
-        return 'spring';
-    },
+    const start = ev.startMonth * 100 + ev.startDay;
+    const end   = ev.endMonth   * 100 + ev.endDay;
+    const now   = m * 100 + d;
 
-    /**
-     * Check if an event is currently in its date range
-     */
-    isEventActive(event) {
-        const today = new Date();
-        const m = today.getMonth() + 1;
-        const d = today.getDate();
-
-        const start = event.startMonth * 100 + event.startDay;
-        const end = event.endMonth * 100 + event.endDay;
-        const now = m * 100 + d;
-
-        let inRange;
-        if (start <= end) {
-            inRange = now >= start && now <= end;
-        } else {
-            // Wraps across year boundary (e.g. Dec–Feb)
-            inRange = now >= start || now <= end;
-        }
-
-        if (!inRange) return false;
-
-        // Auto-reset completions each year
-        const y = today.getFullYear();
-        if ((event.resetYear || 0) < y) return true;
-
-        return true;
-    },
-
-    /**
-     * Check if an event is completed
-     */
-    isEventCompleted(event) {
-        return event.completions >= event.maxCompletions;
-    },
-
-    /**
-     * Increment event completion
-     */
-    completeEvent(event) {
-        const y = new Date().getFullYear();
-        const updated = { ...event };
-
-        // Auto-reset if new year
-        if ((updated.resetYear || 0) < y) {
-            updated.completions = 0;
-            updated.resetYear = y;
-        }
-
-        if (updated.completions < updated.maxCompletions) {
-            updated.completions++;
-            updated.resetYear = y;
-        }
-
-        return updated;
-    },
-
-    /**
-     * Decrement event completion
-     */
-    uncompleteEvent(event) {
-        if (event.completions <= 0) return event;
-        return { ...event, completions: event.completions - 1 };
-    },
-
-    /**
-     * Calculate days remaining in event
-     */
-    daysRemaining(event) {
-        const today = new Date();
-        const endDate = new Date(today.getFullYear(), event.endMonth - 1, event.endDay);
-        return Math.max(0, Math.ceil((endDate - today) / 86400000));
-    },
-
-    /**
-     * Create a new event
-     */
-    createEvent(data) {
-        return {
-            id: Date.now().toString(),
-            name: data.name,
-            icon: data.icon || '🗓️',
-            note: data.note || '',
-            startMonth: data.startMonth,
-            startDay: data.startDay,
-            endMonth: data.endMonth,
-            endDay: data.endDay,
-            maxCompletions: data.maxCompletions || 1,
-            completions: 0,
-            payout: data.payout || 5,
-            resetYear: new Date().getFullYear()
-        };
+    let inRange;
+    if (start <= end) {
+        inRange = now >= start && now <= end;
+    } else {
+        // wraps across year boundary (Dec–Feb)
+        inRange = now >= start || now <= end;
     }
-};
+    if (!inRange) return false;
 
-export default seasonalEvents;
+    // Auto-reset on new year — caller resets completions on first interaction.
+    if ((ev.resetYear || 0) < y) return true;
+
+    // Even completed events stay visible (UI dims them) until weekly reset.
+    return true;
+}
+
+/**
+ * Determine which season key an event belongs to, based on its start month.
+ */
+export function getEventSeason(ev) {
+    for (const [key, meta] of Object.entries(SEASON_META)) {
+        if (meta.months.includes(ev.startMonth)) return key;
+    }
+    return 'spring';
+}
+
+/**
+ * Mark an event as completed +1. Auto-resets if it's a new year.
+ * Returns the updated event, or null if cap reached.
+ */
+export async function completeEvent(id) {
+    const ev = state.seasonalEvents.find(e => e.id === id);
+    if (!ev) return null;
+    const y = new Date().getFullYear();
+    if ((ev.resetYear || 0) < y) {
+        ev.completions = 0;
+        ev.resetYear = y;
+    }
+    if (ev.completions >= ev.maxCompletions) return null;
+    ev.completions++;
+    ev.resetYear = y;
+    await syncEvents();
+    return ev;
+}
+
+/**
+ * Decrement an event's completion count.
+ */
+export async function uncompleteEvent(id) {
+    const ev = state.seasonalEvents.find(e => e.id === id);
+    if (!ev || ev.completions <= 0) return null;
+    ev.completions--;
+    await syncEvents();
+    return ev;
+}
+
+/**
+ * Delete an event entirely.
+ */
+export async function deleteEvent(id) {
+    setSeasonalEvents(state.seasonalEvents.filter(e => e.id !== id));
+    await syncEvents();
+}
+
+/**
+ * Add a new event. Validates required fields.
+ */
+export async function addEvent({
+    name, icon = '🗓️', note = '',
+    startMonth, startDay, endMonth, endDay,
+    maxCompletions = 1, payout = 0
+}) {
+    if (!name) throw new Error('Event requires a name');
+    const ev = {
+        id: Date.now().toString(),
+        name, icon, note,
+        startMonth, startDay, endMonth, endDay,
+        maxCompletions,
+        completions: 0,
+        payout,
+        resetYear: new Date().getFullYear()
+    };
+    state.seasonalEvents.push(ev);
+    await syncEvents();
+    return ev;
+}

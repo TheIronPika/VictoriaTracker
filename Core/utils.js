@@ -1,111 +1,55 @@
+// ─────────────────────────────────────────────────────────────────────
+// core/utils.js
+// Pure utility functions. No state, no Firebase, no DOM dependencies.
+// Safe to import anywhere.
+// ─────────────────────────────────────────────────────────────────────
+
 /**
- * VICTORIA TRACKER — Core Utilities
- * Shared helper functions used across all modules
+ * Convert a Date's day-of-week to a Monday-first index (0..6).
+ * Sunday is mapped to 6 (end of week).
  */
+export function getDayIdx(d) {
+    let day = d.getDay();
+    return (day === 0) ? 6 : day - 1;
+}
 
-export const utils = {
-    /**
-     * Get the day index of a date (0=Mon, 6=Sun)
-     */
-    getDayIdx(date) {
-        const d = date.getDay();
-        return d === 0 ? 6 : d - 1;
-    },
-
-    /**
-     * Get milliseconds for a cycle interval
-     */
-    cycleIntervalMs(habit) {
-        const DAY = 86400000;
-        switch (habit.cycleType) {
-            case 'weeks':     return (habit.cycleEvery || 1) * 7 * DAY;
-            case 'monthly':   return 30 * DAY;
-            case 'quarterly': return 91 * DAY;
-            case 'yearly':    return 365 * DAY;
-            default:          return 0;
-        }
-    },
-
-    /**
-     * Check if a cyclic habit is currently due
-     */
-    isCycleDue(habit) {
-        if (!habit.cycleType || habit.cycleType === 'none') return true;
-        const interval = this.cycleIntervalMs(habit);
-        if (!interval) return true;
-        const nextDue = habit.cycleNextDue || 0;
-        return Date.now() >= nextDue;
-    },
-
-    /**
-     * Get the cycle schedule label for display
-     */
-    cycleLabel(habit) {
-        if (!habit.cycleType || habit.cycleType === 'none') return '';
-        const labels = {
-            weeks: `Every ${habit.cycleEvery || 1}w`,
-            monthly: 'Monthly',
-            quarterly: 'Quarterly',
-            yearly: 'Yearly'
-        };
-        return labels[habit.cycleType] || '';
-    },
-
-    /**
-     * Get the "Due back" label for cyclic habits
-     */
-    cycleDueLabel(habit) {
-        if (!habit.cycleNextDue) return '';
-        const d = new Date(habit.cycleNextDue);
-        return 'Due back ' + (d.getMonth() + 1) + '/' + d.getDate();
-    },
-
-    /**
-     * Format currency for display
-     */
-    formatMoney(amount) {
-        return (amount < 0 ? '-$' : '$') + Math.abs(amount).toFixed(2);
-    },
-
-    /**
-     * Slice history array safely (max 7 days)
-     */
-    sliceHistory(history) {
-        return (history || []).slice(0, 7);
-    },
-
-    /**
-     * Get current tier label name
-     */
-    getTierLabel(tier) {
-        const labels = { punish: 'DEBT', low: 'LOW', goal: 'GOAL', bonus: 'BONUS' };
-        return labels[tier] || 'UNKNOWN';
-    },
-
-    /**
-     * Get tier color hex
-     */
-    getTierColor(tier) {
-        const colors = {
-            punish: '#d9534f',
-            low: '#e67e22',
-            goal: '#27ae60',
-            bonus: '#8e44ad'
-        };
-        return colors[tier] || '#999';
-    },
-
-    /**
-     * Parse threshold tiers from habit
-     */
-    getThresholds(habit) {
-        return {
-            punish: habit.punish || 1,
-            low: habit.low || 3,
-            goal: habit.goal || 5,
-            bonus: habit.bonus || 7
-        };
+/**
+ * Returns the season key ('spring' | 'summer' | 'fall' | 'winter')
+ * for the current month, given a SEASON_META lookup table.
+ */
+export function getCurrentSeason(seasonMeta) {
+    const m = new Date().getMonth() + 1;
+    for (const [key, meta] of Object.entries(seasonMeta)) {
+        if (meta.months.includes(m)) return key;
     }
-};
+    return 'spring';
+}
 
-export default utils;
+/**
+ * Format a timestamp into "M/D" (e.g. "11/24").
+ */
+export function shortDate(ts) {
+    const d = new Date(ts);
+    return (d.getMonth() + 1) + '/' + d.getDate();
+}
+
+/**
+ * Format a Date into "Month D, YYYY" (e.g. "November 24, 2025").
+ */
+export function longDate(d = new Date()) {
+    const months = ['January','February','March','April','May','June',
+                    'July','August','September','October','November','December'];
+    return months[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
+}
+
+/**
+ * Format a number as a US-dollar string with sign prefix.
+ *   formatMoney(-1.5)  -> "-$1.50"
+ *   formatMoney(2)     -> "$2.00"
+ *   formatMoney(2, true) -> "+$2.00"
+ */
+export function formatMoney(n, alwaysShowSign = false) {
+    const abs = Math.abs(n).toFixed(2);
+    if (n < 0) return '-$' + abs;
+    return (alwaysShowSign ? '+$' : '$') + abs;
+}
