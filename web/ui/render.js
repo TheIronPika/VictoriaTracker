@@ -126,6 +126,8 @@ export function render() {
             const cur  = h.history[dIdx];
             const tier = getTier(h, cur);
             const periodProtected = isPeriodActive() && !!h.periodSensitive;
+
+            let payout = 0;
             if (!h.excused) {
                 if (tier === 'punish')     payout = periodProtected ? 0 : (h.valPunish || 0);
                 else if (tier === 'low')   payout = h.valLow;
