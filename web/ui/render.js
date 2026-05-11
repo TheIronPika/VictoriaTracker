@@ -26,9 +26,6 @@ import { computeForecast } from './manage-ui.js';
 // ── Main render ───────────────────────────────────────────────────────
 
 export function render() {
-    // Lazy-load period data on first render — returns early; re-renders when loaded
-    if (!state.periodLoaded) { import('../../Core/period.js').then(m => m.loadPeriodData()); return; }
-
     buildDateStrip();
     updateFiltersUI();
 

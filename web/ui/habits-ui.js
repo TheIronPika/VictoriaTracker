@@ -84,7 +84,7 @@ window.toggleBubble = async (id, val) => {
         const cardEl = document.querySelector(`.habit-card[data-habit-id="${id}"]`);
         if (cardEl) {
             cardEl.classList.add('card-leaving');
-            await new Promise(r => setTimeout(r, 260));
+            await new Promise(r => setTimeout(r, 150));
         }
     }
 
