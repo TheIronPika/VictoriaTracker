@@ -440,6 +440,7 @@ window.handleManageClick = () => {
                 panel.scrollIntoView({ behavior: 'smooth' });
                 renderEventsManage();
                 renderShopManage();
+                window.render?.();
             }
         }, 80);
     }
