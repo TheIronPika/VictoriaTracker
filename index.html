@@ -14,130 +14,134 @@
     
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script type="module">
-        // ── DATA LAYER ───────────────────────────────────────────────────────
-        import { watchHabits } from './core/habits-data.js';
-        import { loadStarData } from './core/stars.js';
-        import { loadWeeklyHistory } from './core/history.js';
-        import { generateWeeklyReport } from './core/reports.js';
-        import { getTier, getStarsEarned } from './core/habits.js';
-        import { cycleIntervalMs } from './core/cycles.js';
-        import { syncHabits } from './core/habits-data.js';
-        import { syncStarData, addStarLog } from './core/stars.js';
-        import { saveWeekSnapshot } from './core/history.js';
-        import { EMAIL_CONFIG } from './core/config.js';
-        import { state } from './core/state.js';
+        // ─────────────────────────────────────────────────────────────────────
+        // Victoria Tracker — modular shell
+        // Everything in /core is framework-agnostic (no DOM).
+        // Everything in /web/ui is web-only (renders to DOM, registers handlers).
+        // This file only does: imports → emailjs init → runWeeklyReport orchestrator
+        // → watchHabits subscription → startup loaders.
+        // ─────────────────────────────────────────────────────────────────────
 
-        // ── UI LAYER ─────────────────────────────────────────────────────────
+        // ── CORE (data + pure logic) ─────────────────────────────────────────
+        import { state } from './core/state.js';
+        import { EMAIL_CONFIG } from './core/config.js';
+        import { watchHabits, syncHabits } from './core/habits-data.js';
+        import { loadStarData } from './core/stars.js';
+        import { loadWeeklyHistory, saveWeekSnapshot } from './core/history.js';
+        import { loadPeriodData, syncPeriodData } from './core/period.js';
+        import { loadRoomsData, syncRoomsData } from './core/rooms.js';
+        import {
+            buildWeeklyReport,
+            awardWeeklyStars,
+            applyStreakPayouts,
+            updateHabitStreaks,
+            advanceHabitCycles
+        } from './core/reports.js';
+
+        // ── UI (DOM rendering + window.* handler registration) ───────────────
         import { uiState } from './web/ui/ui-state.js';
         import { render } from './web/ui/render.js';
         import { loadSeasonalEventsUI } from './web/ui/events-ui.js';
         import { updateStarDisplay } from './web/ui/shop-ui.js';
+        import { loadRoomsDataUI, renderRoomsSection } from './web/ui/rooms-ui.js';
+        import { buildVictoriaReportHtml } from './web/ui/manage-ui.js';
         import {
             applyTimeColor, initParticles,
-            updateGreeting, fetchWeatherAndUV
+            updateGreeting, fetchWeatherAndUV,
+            cleanupOldPerfectWeekKeys
         } from './web/ui/animations.js';
 
-        // Side-effect imports — these modules self-register window.* handlers
+        // Side-effect imports — these modules register window.* handlers on load
         import './web/ui/habits-ui.js';
         import './web/ui/shop-ui.js';
         import './web/ui/history-ui.js';
+        import './web/ui/lucky-draw.js';
+        import './web/ui/period-ui.js';
+        import './web/ui/manage-ui.js';
+        import './web/ui/rooms-ui.js';
 
-        // EMAILJS INIT
+        // ── EmailJS init ─────────────────────────────────────────────────────
         emailjs.init(EMAIL_CONFIG.publicKey);
 
-        // ── WEEKLY REPORT ─────────────────────────────────────────────────────
-        // Orchestrates: email send → star awards → streak update → snapshot → reset
+        // ── Weekly report orchestrator ───────────────────────────────────────
+        // Phases (in order, all guarded by single try/catch around email send):
+        //   1. Build text + HTML report
+        //   2. Send email (must succeed before anything writes)
+        //   3. Award stars
+        //   4. Add streak bonuses/penalties to total
+        //   5. Update streak counters
+        //   6. Save week snapshot
+        //   7. Reset habit histories + advance cyclic habits
+        //   8. Advance room streaks + clear period flag
         window.runWeeklyReport = async (isManual = true) => {
-            const { text: reportText, totalMoney: baseMoney, dateStr } = generateWeeklyReport(uiState.habits);
-            let totalMoney = baseMoney;
+            const { totalMoney: baseMoney, dateStr } = buildWeeklyReport(uiState.habits);
+            const reportHtml = buildVictoriaReportHtml(uiState.habits, baseMoney);
 
             try {
-                await emailjs.send(EMAIL_CONFIG.serviceId, EMAIL_CONFIG.templateId, { summary_text: reportText });
+                // EmailJS template body MUST use {{{summary_text}}} (triple braces) to inject raw HTML
+                await emailjs.send(EMAIL_CONFIG.serviceId, EMAIL_CONFIG.templateId, { summary_text: reportHtml });
 
-                // Award stars
-                let totalStarsEarned = 0;
-                uiState.habits.forEach(h => {
-                    const { earned, reasons } = getStarsEarned(h);
-                    if (earned > 0) { totalStarsEarned += earned; addStarLog('earn', earned, reasons.join(' + ')); }
-                });
-                if (totalStarsEarned > 0) {
-                    state.starBalance += totalStarsEarned;
-                    await syncStarData();
-                    updateStarDisplay();
-                }
+                // Phase 3: star awards
+                await awardWeeklyStars(uiState.habits);
+                updateStarDisplay();
 
-                // Streak payouts
-                uiState.habits.forEach(h => {
-                    if (h.excused) return;
-                    const hist = (h.history||[]).slice(0,7);
-                    const cur  = hist[6] !== undefined ? hist[6] : (hist[hist.length-1]||0);
-                    const tier = getTier(h, cur);
-                    const streak    = h.streak    || 0;
-                    const badStreak = h.badStreak || 0;
-                    if ((tier==='goal'||tier==='bonus') && streak>=2 && (h.streakBonusPer||0)>0) {
-                        const raw = streak * h.streakBonusPer;
-                        totalMoney += Math.min(raw, h.streakCap ? parseFloat(h.streakCap) : Infinity);
-                    }
-                    if ((tier==='punish'||tier==='low') && badStreak>=2 && (h.streakPenaltyPer||0)>0) {
-                        const raw = badStreak * h.streakPenaltyPer;
-                        totalMoney -= Math.min(raw, h.streakCap ? parseFloat(h.streakCap) : Infinity);
-                    }
-                });
+                // Phase 4: streak bonus/penalty payouts
+                const totalMoney = applyStreakPayouts(uiState.habits, baseMoney);
 
-                // Update streaks (excused habits freeze as-is)
-                uiState.habits = uiState.habits.map(h => {
-                    if (h.excused) return { ...h };
-                    const hist    = (h.history||[]).slice(0,7);
-                    const cur     = hist[6] !== undefined ? hist[6] : (hist[hist.length-1]||0);
-                    const tier    = getTier(h, cur);
-                    const isGood  = tier === 'goal' || tier === 'bonus';
-                    const streak    = isGood ? (h.streak||0) + 1 : 0;
-                    const badStreak = !isGood ? (h.badStreak||0) + 1 : 0;
-                    return { ...h, streak, badStreak, bestStreak: Math.max(streak, h.bestStreak||0) };
-                });
+                // Phase 5: update streak counters
+                uiState.habits = updateHabitStreaks(uiState.habits);
                 await saveWeekSnapshot(uiState.habits, totalMoney, dateStr);
 
-                // Advance cyclic habits + reset all histories
-                uiState.habits = uiState.habits.map(h => {
-                    if (h.cycleType && h.cycleType !== 'none') {
-                        const hist = (h.history||[]).slice(0,7);
-                        const cur  = hist[6] !== undefined ? hist[6] : (hist[hist.length-1]||0);
-                        if (getTier(h, cur) === 'goal' || getTier(h, cur) === 'bonus') {
-                            return { ...h, history:[0,0,0,0,0,0,0], excused:false,
-                                          cycleNextDue: Date.now() + cycleIntervalMs(h) };
-                        }
-                    }
-                    return { ...h, history:[0,0,0,0,0,0,0], excused:false };
-                });
+                // Phase 6: reset histories + advance cycles
+                uiState.habits = advanceHabitCycles(uiState.habits);
                 await syncHabits();
+
+                // Phase 7: advance room streaks
+                state.roomsData = state.roomsData.map(r => ({
+                    ...r,
+                    streak: r.checked ? Math.min(r.streak + 1, r.maxStreak) : 0,
+                    checked: false
+                }));
+                await syncRoomsData();
+                if (state.roomsLoaded) renderRoomsSection();
+
+                // Phase 8: clear period flag so streak protection resumes normal rules
+                state.periodData.periodWasThisWeek = false;
+                await syncPeriodData();
+
                 state.historyLoaded = false;
                 if (isManual) alert('Weekly report sent and habits reset!');
             } catch (error) {
                 const msg = error?.text || error?.message || JSON.stringify(error);
-                console.error('EmailJS send failed:', error);
+                console.error('Weekly report failed:', error);
                 if (isManual) alert('Email failed to send.\n\nError: ' + msg);
             }
         };
 
-        // ── DATA WATCHER ──────────────────────────────────────────────────────
-        // The onSnapshot listener: keeps uiState.habits in sync and re-renders.
+        // ── Data watcher ─────────────────────────────────────────────────────
+        // onSnapshot keeps uiState.habits in sync with Firestore and re-renders.
+        // Fires on initial load, after our own writes, and on any other client's writes.
         watchHabits((newHabits) => {
             uiState.habits = newHabits;
             render();
         });
 
-        // ── STARTUP ───────────────────────────────────────────────────────────
+        // ── Startup ──────────────────────────────────────────────────────────
         window.addEventListener('load', () => {
             updateGreeting();
             fetchWeatherAndUV();
             applyTimeColor();
             setInterval(applyTimeColor, 60000);
             initParticles();
+            cleanupOldPerfectWeekKeys();
             loadSeasonalEventsUI();
             loadStarData();
+            loadPeriodData().then(() => render()).catch(() => {});
+            loadRoomsDataUI();
             // Pre-load history so streak badges render immediately
             loadWeeklyHistory().then(() => render()).catch(() => {});
         });
+
     </script>
 
     <style>
@@ -1416,4 +1420,9 @@ if ('serviceWorker' in navigator) {
 <div id="defOverlay" onclick="window.closeDefinition()">
     <div id="defSheet" onclick="event.stopPropagation()">
         <div id="defTitle" style="font-family:'Great Vibes';font-size:28px;color:var(--header-pink);margin-bottom:12px;"></div>
-        <div id="defBody" style="font-family:'Mo
+        <div id="defBody" style="font-family:'Montserrat',sans-serif;font-size:14px;line-height:1.7;color:#666;white-space:pre-wrap;"></div>
+    </div>
+</div>
+
+</body>
+</html>
