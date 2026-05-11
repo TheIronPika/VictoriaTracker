@@ -1,0 +1,9 @@
+{
+  "name": "Victoria Tracker",
+  "short_name": "Victoria",
+  "start_url": "/VictoriaTracker/",
+  "display": "standalone",
+  "background_color": "#f9ecec",
+  "theme_color": "#d4a3a3",
+  "icons": []
+}
