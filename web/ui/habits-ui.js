@@ -96,11 +96,12 @@ window.toggleBubble = async (id, val) => {
     // Optimistic render — show the result immediately, don't wait for Firebase
     window.render?.();
 
-    await syncHabits();
-
+    // Fire fanfare immediately (before the network round-trip)
     if (newVal > oldQty && newTier !== 'punish' && newTier !== oldTier) {
         triggerFanfare(newTier);
     }
+
+    await syncHabits();
 
     // ── Lucky draw (2% chance per completion, max once per habit per day) ──
     if (newVal > oldQty) {
