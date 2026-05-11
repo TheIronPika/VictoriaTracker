@@ -1,0 +1,90 @@
+// ─────────────────────────────────────────────────────────────────────
+// core/config.js
+// Centralized configuration. Edit ONLY this file when keys/IDs change.
+// ─────────────────────────────────────────────────────────────────────
+
+export const FIREBASE_CONFIG = {
+    apiKey: "AIzaSyB9ztBUJyUvlyycujmDjbTcKT-GIejpsM4",
+    authDomain: "victoria-tracker-1d2ab.firebaseapp.com",
+    projectId: "victoria-tracker-1d2ab",
+    storageBucket: "victoria-tracker-1d2ab.firebasestorage.app",
+    messagingSenderId: "893813838454",
+    appId: "1:893813838454:web:72ac9f21756d00f8a88557"
+};
+
+export const EMAIL_CONFIG = {
+    publicKey:  "NBsqPD18bw0R4XtcM",
+    serviceId:  "service_gj1f9sj",
+    templateId: "template_2cyqti5"
+};
+
+export const WEATHER_CONFIG = {
+    openWeatherKey: "ff4155f6320e193fc795a67d1b40b6dd",
+    openUVKey:      "openuv-q3onrmo2zfflc-io"
+};
+
+// Firestore document paths — [collection, docId]
+export const FIRESTORE_DOCS = {
+    HABITS:  ['system', 'habits_list'],
+    HISTORY: ['system', 'weekly_history'],
+    STARS:   ['system', 'star_data'],
+    EVENTS:  ['system', 'seasonal_events'],
+    RESET:   ['system', 'reset_state'],
+    PERIOD:  ['system', 'period_data'],
+    ROOMS:   ['system', 'rooms_data']
+};
+
+// Season metadata — months, accent colors, backgrounds, borders.
+// Used by both the seasonal events feature and the time-of-day color shift.
+export const SEASON_META = {
+    spring: { label: 'Spring', months: [3, 4, 5],   accent: '#4a7c1f', bg: 'rgba(240,250,232,0.7)', border: '#b8d98a', badge: '#eaf5d8' },
+    summer: { label: 'Summer', months: [6, 7, 8],   accent: '#8a5a00', bg: 'rgba(255,248,225,0.7)', border: '#f5cc70', badge: '#fff8e1' },
+    fall:   { label: 'Fall',   months: [9, 10, 11], accent: '#8a3a10', bg: 'rgba(253,240,232,0.7)', border: '#f0a880', badge: '#fdeee5' },
+    winter: { label: 'Winter', months: [12, 1, 2],  accent: '#1a5c8a', bg: 'rgba(232,245,253,0.7)', border: '#90c8f0', badge: '#e6f4fd' }
+};
+
+// Tier display constants — referenced by reports and history rendering.
+export const TIER_COLORS = {
+    punish: '#d9534f',
+    low:    '#e67e22',
+    goal:   '#27ae60',
+    bonus:  '#8e44ad'
+};
+
+export const TIER_LABELS = {
+    punish: 'DEBT',
+    low:    'LOW',
+    goal:   'GOAL',
+    bonus:  'BONUS'
+};
+
+// Single-char tier codes for the email report (keeps payload tiny —
+// emoji get JSON-encoded as 12-char escape sequences which can blow up
+// the EmailJS 50KB limit).
+export const TIER_DOTS = {
+    punish: 'D',
+    low:    'L',
+    goal:   'G',
+    bonus:  'B'
+};
+
+// Manage tab passcode.
+export const MANAGE_PASSCODE = '1234';
+
+// Limits.
+export const HISTORY_MAX_WEEKS = 52;
+export const STAR_LOG_MAX = 200;
+
+// Default room list — seeded to Firestore on first use if rooms_data doc doesn't exist.
+export const DEFAULT_ROOMS = [
+    { id: 'bedroom',    name: 'Bedroom',         icon: '🛏️',  maxStreak: 7, streak: 0, checked: false },
+    { id: 'office',     name: 'Office',           icon: '🖥️',  maxStreak: 3, streak: 0, checked: false },
+    { id: 'dining',     name: 'Dining Room',      icon: '🍽️',  maxStreak: 4, streak: 0, checked: false },
+    { id: 'closet',     name: 'Closet',           icon: '🚪',  maxStreak: 3, streak: 0, checked: false },
+    { id: 'masterbath', name: 'Master Bath',      icon: '🛁',  maxStreak: 3, streak: 0, checked: false },
+    { id: 'officebath', name: 'Office Bathroom',  icon: '🚿',  maxStreak: 3, streak: 0, checked: false },
+    { id: 'kitchen',    name: 'Kitchen',           icon: '🍳',  maxStreak: 4, streak: 0, checked: false },
+    { id: 'livingroom', name: 'Living Room',       icon: '🛋️',  maxStreak: 5, streak: 0, checked: false },
+    { id: 'basement',   name: 'Basement',          icon: '📦',  maxStreak: 7, streak: 0, checked: false },
+    { id: 'garage',     name: 'Garage',            icon: '🚗',  maxStreak: 5, streak: 0, checked: false },
+];
