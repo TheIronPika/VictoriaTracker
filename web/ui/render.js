@@ -71,6 +71,8 @@ export function render() {
     categories.forEach(cat => {
         const isCol = uiState.collapsed[cat] !== false;
         let items   = uiState.habits.filter(h => h.cat === cat && isCycleDue(h));
+        // For manage panel: include ALL habits in this category, not just cycle-due
+        let allItemsForManage = uiState.habits.filter(h => h.cat === cat);
 
         if (!uiState.sortLocked) {
             items.sort((a, b) => {
@@ -124,8 +126,6 @@ export function render() {
             const cur  = h.history[dIdx];
             const tier = getTier(h, cur);
             const periodProtected = isPeriodActive() && !!h.periodSensitive;
-
-            let payout = 0;
             if (!h.excused) {
                 if (tier === 'punish')     payout = periodProtected ? 0 : (h.valPunish || 0);
                 else if (tier === 'low')   payout = h.valLow;
@@ -235,11 +235,6 @@ export function render() {
                     <div class="weekly-dots-row">${weeklyDotsHtml}</div>
                 </div>`;
 
-            // Manage list: clickable item in left panel
-            if (manageVisible) {
-                manageListHtml += `<div class="msp-item" onclick="window.selectMspItem('${h.id}')" id="msp-item-${h.id}" style="padding:10px;cursor:pointer;border-radius:6px;margin:4px 0;display:flex;gap:8px;align-items:center;background:#f5f5f5;transition:all 0.2s;">${h.icon} <span style="flex:1;font-size:14px;font-family:'Montserrat';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${h.name}</span></div>`;
-            }
-
             manageHtml += `
                 <div class="manage-card">
                     <h4 class="beloved-small" style="font-family:'Great Vibes'; font-size:24px; color:var(--header-pink); margin:0 0 10px 0;">${h.icon} ${h.name}</h4>
@@ -295,7 +290,11 @@ export function render() {
                 </div>`;
         });
 
+        // Build manage list items using allItemsForManage (includes cycle-inactive habits)
         if (manageVisible) {
+            allItemsForManage.forEach(h => {
+                manageListHtml += `<div class="msp-item" onclick="window.selectMspItem('${h.id}')" id="msp-item-${h.id}" style="padding:10px;cursor:pointer;border-radius:6px;margin:4px 0;display:flex;gap:8px;align-items:center;background:#f5f5f5;transition:all 0.2s;">${h.icon} <span style="flex:1;font-size:14px;font-family:'Montserrat';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${h.name}</span></div>`;
+            });
             manageListHtml += `</div>`;
         }
 
