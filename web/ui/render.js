@@ -117,6 +117,7 @@ export function render() {
             const mspCatCollapsed = JSON.parse(localStorage.getItem('mspCatCollapsed') || '{}');
             const isCatCollapsed  = mspCatCollapsed[catId] === true;
             manageCatHtml = `<div class="msp-cat-label msp-cat-toggle" onclick="window.toggleMspCat('${catId}')"><span>${cat}</span><span id="msp-chev-${catId}" style="transition:transform 0.2s;display:inline-block;${isCatCollapsed ? 'transform:rotate(-90deg)' : ''}">&#9662;</span></div><div id="msp-cat-${catId}" style="${isCatCollapsed ? 'display:none' : ''}">`;
+            manageListHtml += manageCatHtml;
         }
 
         items.forEach(h => {
@@ -288,6 +289,10 @@ export function render() {
                     <button class="btn-delete" onclick="window.deleteTask('${h.id}')">DELETE TASK</button>
                 </div>`;
         });
+
+        if (manageVisible) {
+            manageListHtml += `</div>`;
+        }
 
         weekSectionHtml += `</div></div>`;
         weeklyHtml += weekSectionHtml;
