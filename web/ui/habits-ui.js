@@ -88,29 +88,19 @@ window.toggleBubble = async (id, val) => {
         }
     }
 
-    // Re-fetch from state.habits in case watchHabits fired during the wait
-    // (watchHabits can replace uiState.habits with fresh Firebase data)
-    const hState = state.habits.find(x => x.id === id);
-    if (!hState) return;
-
     uiState.lastActedId = willMove ? id : null;
 
     // Propagate value to all remaining days this week
-    for (let i = dIdx; i < 7; i++) hState.history[i] = newVal;
-    
-    // Sync uiState.habits with state.habits before rendering
-    // This ensures the render operates on the correct (mutated) data
-    uiState.habits = state.habits;
+    for (let i = dIdx; i < 7; i++) h.history[i] = newVal;
 
     // Optimistic render — show the result immediately, don't wait for Firebase
     window.render?.();
 
-    // Fire fanfare immediately (before the network round-trip)
+    await syncHabits();
+
     if (newVal > oldQty && newTier !== 'punish' && newTier !== oldTier) {
         triggerFanfare(newTier);
     }
-
-    await syncHabits();
 
     // ── Lucky draw (2% chance per completion, max once per habit per day) ──
     if (newVal > oldQty) {
