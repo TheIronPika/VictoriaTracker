@@ -23,20 +23,20 @@
         // ─────────────────────────────────────────────────────────────────────
 
         // ── CORE (data + pure logic) ─────────────────────────────────────────
-        import { state } from './core/state.js';
-        import { EMAIL_CONFIG } from './core/config.js';
-        import { watchHabits, syncHabits } from './core/habits-data.js';
-        import { loadStarData } from './core/stars.js';
-        import { loadWeeklyHistory, saveWeekSnapshot } from './core/history.js';
-        import { loadPeriodData, syncPeriodData } from './core/period.js';
-        import { loadRoomsData, syncRoomsData } from './core/rooms.js';
+        import { state } from './Core/state.js';
+        import { EMAIL_CONFIG } from './Core/config.js';
+        import { watchHabits, syncHabits } from './Core/habits-data.js';
+        import { loadStarData } from './Core/stars.js';
+        import { loadWeeklyHistory, saveWeekSnapshot } from './Core/history.js';
+        import { loadPeriodData, syncPeriodData } from './Core/period.js';
+        import { loadRoomsData, syncRoomsData } from './Core/rooms.js';
         import {
             buildWeeklyReport,
             awardWeeklyStars,
             applyStreakPayouts,
             updateHabitStreaks,
             advanceHabitCycles
-        } from './core/reports.js';
+        } from './Core/reports.js';
 
         // ── UI (DOM rendering + window.* handler registration) ───────────────
         import { uiState } from './web/ui/ui-state.js';
