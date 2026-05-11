@@ -145,8 +145,8 @@ function _paintHistory(root) {
         const tCol     = isP ? '#27ae60' : '#d9534f';
         const tStr     = (isP ? '+$' : '-$') + Math.abs(wk.totalBalance).toFixed(2);
         const cats     = [...new Set((wk.habits || []).map(h => h.cat))];
-        const weekLabel = wk.id === mostRecentId ? 'Current Week' : 'Week of ' + wk.weekEnding;
-        const weekSub   = wk.id === mostRecentId ? wk.weekEnding : '';
+        const weekLabel = 'Week of ' + wk.weekEnding;
+        const weekSub   = '';
         let body = '';
         cats.forEach(cat => {
             body += '<div style="font-size:9px;font-weight:800;color:#bbb;text-transform:uppercase;letter-spacing:1px;margin:10px 0 4px;">' + cat + '</div>';
@@ -168,7 +168,7 @@ function _paintHistory(root) {
         html += '<div class="history-week-card">'
               + '<div class="history-week-header" onclick="window.toggleHistoryWeek(\'' + wk.id + '\')">'
               + '<div><div style="font-family:\'Playfair Display\';font-size:13px;font-weight:700;">' + weekLabel + '</div>'
-              + '<div style="font-size:10px;color:#bbb;margin-top:2px;">' + (weekSub ? weekSub + ' · ' : '') + (wk.habits || []).length + ' habits</div></div>'
+              + '<div style="font-size:10px;color:#bbb;margin-top:2px;">' + (wk.habits || []).length + ' habits</div></div>'
               + '<div style="display:flex;align-items:center;gap:8px;">'
               + '<div style="font-family:\'Great Vibes\';font-size:26px;color:' + tCol + ';">' + tStr + '</div>'
               + '<div id="chv-' + wk.id + '" style="color:#ccc;font-size:18px;transition:transform 0.2s;">&#8250;</div>'
@@ -189,8 +189,7 @@ function _storeCategoryData(wks) { _categoryData = wks; _wksData = wks; }
 
 function _drawBalanceChart(wks) {
     const el = document.getElementById('hchart-balance'); if (!el) return;
-    const newestId = wks.length ? wks[wks.length - 1].id : null;
-    const labels   = wks.map(w => w.id === newestId ? 'Now' : (() => { const d = new Date(w.timestamp); return (d.getMonth() + 1) + '/' + d.getDate(); })());
+    const labels   = wks.map(w => { const d = new Date(w.timestamp); return (d.getMonth() + 1) + '/' + d.getDate(); });
     const data     = wks.map(w => +w.totalBalance.toFixed(2));
     const c = new Chart(el, {
         type: 'bar',
