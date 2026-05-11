@@ -93,6 +93,9 @@ window.toggleBubble = async (id, val) => {
     // Propagate value to all remaining days this week
     for (let i = dIdx; i < 7; i++) h.history[i] = newVal;
 
+    // Optimistic render — show the result immediately, don't wait for Firebase
+    window.render?.();
+
     await syncHabits();
 
     if (newVal > oldQty && newTier !== 'punish' && newTier !== oldTier) {
