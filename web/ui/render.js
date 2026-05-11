@@ -235,6 +235,11 @@ export function render() {
                     <div class="weekly-dots-row">${weeklyDotsHtml}</div>
                 </div>`;
 
+            // Manage list: clickable item in left panel
+            if (manageVisible) {
+                manageListHtml += `<div class="msp-item" onclick="window.selectMspItem('${h.id}')" id="msp-item-${h.id}" style="padding:10px;cursor:pointer;border-radius:6px;margin:4px 0;display:flex;gap:8px;align-items:center;background:#f5f5f5;transition:all 0.2s;">${h.icon} <span style="flex:1;font-size:14px;font-family:'Montserrat';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${h.name}</span></div>`;
+            }
+
             manageHtml += `
                 <div class="manage-card">
                     <h4 class="beloved-small" style="font-family:'Great Vibes'; font-size:24px; color:var(--header-pink); margin:0 0 10px 0;">${h.icon} ${h.name}</h4>
