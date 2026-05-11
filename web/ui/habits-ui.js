@@ -9,9 +9,10 @@ import { uiState, saveCollapsedState } from './ui-state.js';
 import { state } from '../../core/state.js';
 import { getDayIdx } from '../../core/utils.js';
 import { getTier } from '../../core/habits.js';
-import { cycleIntervalMs } from '../../core/cycles.js';
 import { syncHabits, toggleExcused as coreToggleExcused } from '../../core/habits-data.js';
-import { playBubblePop, triggerFanfare, checkPerfectWeek } from './animations.js';
+import { syncStarData, addStarLog } from '../../core/stars.js';
+import { playBubblePop, triggerFanfare, checkPerfectWeek, checkStreakMilestones } from './animations.js';
+import { showCloverPopup, showLuckyDrawToast } from './lucky-draw.js';
 
 // ── CRUD ──────────────────────────────────────────────────────────────
 
@@ -41,12 +42,13 @@ window.deleteTask = async (id) => {
 window.updateField = async (id, field, value) => {
     const h = uiState.habits.find(x => x.id === id);
     if (!h) return;
-    if (field === 'note' || field === 'cycleType')       h[field] = value;
-    else if (field.startsWith('val'))                    h[field] = parseFloat(value);
-    else if (field.startsWith('star'))                   h[field] = parseInt(value) || 0;
+    if (field === 'note' || field === 'cycleType')           h[field] = value;
+    else if (field === 'periodSensitive')                    h[field] = !!value;
+    else if (field.startsWith('val'))                        h[field] = parseFloat(value);
+    else if (field.startsWith('star'))                       h[field] = parseInt(value) || 0;
     else if (field === 'streakBonusPer' || field === 'streakPenaltyPer' || field === 'streakCap')
-                                                          h[field] = parseFloat(value) || 0;
-    else                                                  h[field] = parseInt(value)   || 1;
+                                                              h[field] = parseFloat(value) || 0;
+    else                                                      h[field] = parseInt(value)   || 1;
     await syncHabits();
 };
 
@@ -96,7 +98,27 @@ window.toggleBubble = async (id, val) => {
     if (newVal > oldQty && newTier !== 'punish' && newTier !== oldTier) {
         triggerFanfare(newTier);
     }
+
+    // ── Lucky draw (2% chance per completion, max once per habit per day) ──
+    if (newVal > oldQty) {
+        const today = new Date().toISOString().split('T')[0];
+        if (h.lastLuckyDrawDate !== today && Math.random() * 100 < 2) {
+            state.starBalance += 1;
+            h.lastLuckyDrawDate = today;
+            addStarLog('luckyDraw', 1, 'Lucky draw! 🍀');
+            await syncStarData();
+            await syncHabits();
+
+            const bubbleEl = document.querySelector(
+                `.habit-card[data-habit-id="${id}"] .bubble[onclick*="toggleBubble('${id}',${val})"]`
+            );
+            if (bubbleEl) showCloverPopup(bubbleEl);
+            showLuckyDrawToast();
+        }
+    }
+
     checkPerfectWeek();
+    checkStreakMilestones();
 };
 
 // ── Long-press definition modal ───────────────────────────────────────

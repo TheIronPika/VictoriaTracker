@@ -6,8 +6,10 @@
 // ─────────────────────────────────────────────────────────────────────
 
 import { uiState } from './ui-state.js';
+import { state } from '../../core/state.js';
 import { getTier } from '../../core/habits.js';
 import { getDayIdx } from '../../core/utils.js';
+import { computeStreaksFromHistory } from '../../core/streaks.js';
 
 // ── Bubble pop sound ──────────────────────────────────────────────────
 
@@ -53,17 +55,33 @@ export function playBubblePop(isFilling) {
 
 export function triggerFanfare(tier) {
     if (tier === 'low') {
-        confetti({ particleCount: 40, spread: 50, origin: { y: 0.8 } });
+        const shapes = [confetti.shapeFromText({ text: '🎀', scalar: 2 })];
+        confetti({ particleCount: 9, spread: 45, origin: { y: 0.8 }, shapes, scalar: 2 });
+        confetti({ particleCount: 36, spread: 45, origin: { y: 0.8 }, colors: ['#f6d365', '#e67e22'] });
     } else if (tier === 'goal') {
-        confetti({ particleCount: 100, spread: 70, origin: { y: 0.7 } });
+        const shapes = [confetti.shapeFromText({ text: '🌸', scalar: 2 })];
+        confetti({ particleCount: 12, spread: 55, origin: { y: 0.7 }, shapes, scalar: 2 });
+        confetti({ particleCount: 48, spread: 55, origin: { y: 0.7 }, colors: ['#84fab0', '#27ae60'] });
+        setTimeout(() => confetti({ particleCount: 4, spread: 35, origin: { y: 0.75, x: 0.5 }, colors: ['#84fab0', '#27ae60'], startVelocity: 20 }), 150);
     } else if (tier === 'bonus') {
-        const end = Date.now() + 3000;
-        (function frame() {
-            confetti({ particleCount: 3, angle: 60,  spread: 55, origin: { x: 0 } });
-            confetti({ particleCount: 3, angle: 120, spread: 55, origin: { x: 1 } });
-            if (Date.now() < end) requestAnimationFrame(frame);
-        }());
+        const shapes = [confetti.shapeFromText({ text: '🦋', scalar: 2 })];
+        confetti({ particleCount: 27, spread: 65, origin: { y: 0.75, x: 0.5 }, shapes, scalar: 2 });
+        confetti({ particleCount: 108, spread: 65, origin: { y: 0.75, x: 0.5 }, colors: ['#d4a0fc', '#8e44ad'] });
     }
+}
+
+// ── Cleanup old perfectWeek localStorage keys ─────────────────────────
+export function cleanupOldPerfectWeekKeys() {
+    const cutoff   = Date.now() - (7 * 24 * 60 * 60 * 1000);
+    const toRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('perfectWeek_')) {
+            const d = new Date(k.replace('perfectWeek_', '')).getTime();
+            if (!isNaN(d) && d < cutoff) toRemove.push(k);
+        }
+    }
+    toRemove.forEach(k => localStorage.removeItem(k));
 }
 
 // ── Perfect week confetti ─────────────────────────────────────────────
@@ -88,6 +106,32 @@ export function triggerPerfectWeek() {
         confetti({ particleCount: 5, angle: 90,  spread: 60, origin: { x: 0.5, y: 0.9 }, colors });
         if (Date.now() < end) requestAnimationFrame(frame);
     }());
+}
+
+// ── Streak milestone confetti ─────────────────────────────────────────
+// Fires when a habit's streak hits 1, 2, 4, or 14+ weeks exactly.
+// Uses localStorage to avoid re-triggering on every page load.
+
+export function checkStreakMilestones() {
+    if (!state.weeklyHistory.length) return;
+    const milestones = [1, 2, 4, 14];
+    uiState.habits.forEach(h => {
+        const { streak } = computeStreaksFromHistory(state.weeklyHistory, h.id);
+        if (!milestones.includes(streak)) return;
+        const key = `streakMilestone_${h.id}_${streak}`;
+        if (localStorage.getItem(key)) return;
+        localStorage.setItem(key, '1');
+
+        const shapes = [confetti.shapeFromText({ text: '🔥', scalar: 2 })];
+        confetti({ particleCount: 60, spread: 50, origin: { x: 0.4, y: 0.8 }, shapes, scalar: 2, startVelocity: 45 });
+        confetti({ particleCount: 60, spread: 50, origin: { x: 0.6, y: 0.8 }, colors: ['#ff6b5b', '#ff3d3d'], startVelocity: 45 });
+        setTimeout(() => {
+            confetti({ particleCount: 40, spread: 70, origin: { x: 0.5, y: 0.75 }, shapes, scalar: 2, startVelocity: 35 });
+        }, 300);
+        setTimeout(() => {
+            confetti({ particleCount: 30, spread: 60, origin: { x: 0.5, y: 0.75 }, colors: ['#ff6b5b', '#ff3d3d'], startVelocity: 30 });
+        }, 300);
+    });
 }
 
 // ── Animated balance counter ──────────────────────────────────────────

@@ -17,17 +17,41 @@ import { animateMoneyDisplay } from './animations.js';
 import { renderSeasonalSection, renderEventsManage } from './events-ui.js';
 import { renderShopManage } from './shop-ui.js';
 import { renderHistory, destroyHistoryCharts } from './history-ui.js';
+import { isPeriodActive, periodDayCount, periodStartDayIdx } from '../../core/period.js';
+import { getRoomPayoutsTotal } from '../../core/rooms.js';
+import { renderPeriodHistory } from './period-ui.js';
+import { renderRoomsSection } from './rooms-ui.js';
+import { computeForecast } from './manage-ui.js';
 
 // ── Main render ───────────────────────────────────────────────────────
 
 export function render() {
+    // Lazy-load period data on first render — returns early; re-renders when loaded
+    if (!state.periodLoaded) { import('../../core/period.js').then(m => m.loadPeriodData()); return; }
+
     buildDateStrip();
     updateFiltersUI();
+
+    // Update period pill in header
+    const pill = document.getElementById('periodPill');
+    if (pill) {
+        if (isPeriodActive()) {
+            pill.textContent = `🩸 Day ${periodDayCount()}`;
+            pill.classList.remove('period-inactive');
+        } else {
+            pill.textContent = '🩸';
+            pill.classList.add('period-inactive');
+        }
+    }
 
     const todayRoot    = document.getElementById('todayRoot');
     const priorityRoot = document.getElementById('priorityRoot');
     const weeklyRoot   = document.getElementById('weeklyRoot');
     const manageRoot   = document.getElementById('manageRoot');
+    const manageListRoot = document.getElementById('manageListRoot');
+
+    // Only rebuild manage panel when visible (behind passcode — expensive to rebuild every render)
+    const manageVisible = document.getElementById('managePanel')?.style.display !== 'none';
 
     document.querySelectorAll('.pmode-btn').forEach(b => {
         b.classList.toggle('pmode-active', b.dataset.mode === uiState.priorityMode);
@@ -38,7 +62,8 @@ export function render() {
     todayRoot.innerHTML    = '';
     priorityRoot.innerHTML = '';
     weeklyRoot.innerHTML   = '';
-    manageRoot.innerHTML   = '';
+    if (manageVisible) manageRoot.innerHTML = '';
+    if (manageVisible && manageListRoot) manageListRoot.innerHTML = '';
 
     let totalMoney = 0;
     let counts = { punish: 0, low: 0, goal: 0, bonus: 0 };
@@ -87,13 +112,23 @@ export function render() {
                     </div>
         `;
 
+        // Manage panel: collapsible category header for left panel list
+        let manageCatHtml = '';
+        if (manageVisible) {
+            const catId = cat.replace(/[^a-zA-Z0-9]/g, '_');
+            const mspCatCollapsed = JSON.parse(localStorage.getItem('mspCatCollapsed') || '{}');
+            const isCatCollapsed  = mspCatCollapsed[catId] === true;
+            manageCatHtml = `<div class="msp-cat-label msp-cat-toggle" onclick="window.toggleMspCat('${catId}')"><span>${cat}</span><span id="msp-chev-${catId}" style="transition:transform 0.2s;display:inline-block;${isCatCollapsed ? 'transform:rotate(-90deg)' : ''}">&#9662;</span></div><div id="msp-cat-${catId}" style="${isCatCollapsed ? 'display:none' : ''}">`;
+        }
+
         items.forEach(h => {
             const cur  = h.history[dIdx];
             const tier = getTier(h, cur);
+            const periodProtected = isPeriodActive() && !!h.periodSensitive;
 
             let payout = 0;
             if (!h.excused) {
-                if (tier === 'punish')     payout = h.valPunish;
+                if (tier === 'punish')     payout = periodProtected ? 0 : (h.valPunish || 0);
                 else if (tier === 'low')   payout = h.valLow;
                 else if (tier === 'goal')  payout = h.valGoal;
                 else if (tier === 'bonus') payout = h.valBonus;
@@ -102,7 +137,7 @@ export function render() {
                     const raw = (h.streak || 0) * h.streakBonusPer;
                     payout += Math.min(raw, h.streakCap ? parseFloat(h.streakCap) : Infinity);
                 }
-                if ((tier === 'punish' || tier === 'low') && (h.badStreak || 0) >= 2 && (h.streakPenaltyPer || 0) > 0) {
+                if (!periodProtected && (tier === 'punish' || tier === 'low') && (h.badStreak || 0) >= 2 && (h.streakPenaltyPer || 0) > 0) {
                     const raw = (h.badStreak || 0) * h.streakPenaltyPer;
                     payout -= Math.min(raw, h.streakCap ? parseFloat(h.streakCap) : Infinity);
                 }
@@ -117,6 +152,27 @@ export function render() {
             const isUrgent      = !h.excused && (modeThresh - cur) >= possible && (modeThresh - cur) > 0;
             const isArriving    = h.id === uiState.lastActedId;
 
+            // Cache streak computation (called twice per habit otherwise)
+            const streaks = computeStreaksFromHistory(state.weeklyHistory, h.id);
+            const glowClass = streaks.streak >= 14 ? 'glow-intense'
+                            : streaks.streak >=  4 ? 'glow-bright'
+                            : streaks.streak >=  2 ? 'glow-medium'
+                            : streaks.streak >=  1 ? 'glow-light'
+                            : '';
+
+            // Forecast badge (📈/📉 vs last week pace)
+            const forecast = computeForecast(h);
+            const forecastBadgeSpan = forecast
+                ? `<span class="forecast-badge ${forecast.dir}" onclick="event.stopPropagation();document.getElementById('fc-${h.id}').classList.toggle('show')">
+                       ${forecast.dir === 'up' ? '📈' : '📉'} ${forecast.pace}
+                   </span>` : '';
+            const forecastDetailDiv = forecast
+                ? `<div class="forecast-detail" id="fc-${h.id}">On pace for ${forecast.pace} · last week: ${forecast.lastWeek}</div>`
+                : '';
+
+            const periodProtectedCard = isPeriodActive() && !!h.periodSensitive;
+            const pStartIdx = periodStartDayIdx(getDayIdx);
+
             const _DS = ['M', 'T', 'W', 'Th', 'F', 'S', 'Su'];
             function dayForBubble(hist, i) {
                 for (let d = 0; d < 7; d++) { if ((hist[d] || 0) >= i) return _DS[d]; }
@@ -127,13 +183,14 @@ export function render() {
                 const stepTier  = getTier(h, i);
                 const isFilled  = i <= cur;
                 const dayLetter = isFilled ? dayForBubble(h.history, i) : '';
-                bubblesHtml += `<div class="bubble day-bub ${isFilled ? 'filled ' + stepTier : ''}"
+                const isPaused  = !isFilled && (isPeriodActive() || state.periodData.periodWasThisWeek) && !!h.periodSensitive && dIdx >= pStartIdx;
+                bubblesHtml += `<div class="bubble day-bub ${isFilled ? 'filled ' + stepTier : ''} ${isPaused ? 'period-paused' : ''}"
                     style="border-color:var(--color-${stepTier})"
                     onclick="window.toggleBubble('${h.id}',${i})">${dayLetter}</div>`;
             }
 
             const cardHtml = `
-                <div class="habit-card ${isUrgent ? 'priority-border' : ''} ${isArriving ? 'card-arriving' : ''}"
+                <div class="habit-card ${isUrgent ? 'priority-border' : ''} ${isArriving ? 'card-arriving' : ''} ${glowClass} ${periodProtectedCard ? 'period-protected-card' : ''}"
                      data-habit-id="${h.id}"
                      ontouchstart="window.startLongPress('${h.id}')"
                      ontouchend="window.cancelLongPress()"
@@ -141,14 +198,17 @@ export function render() {
                     <div style="font-size:24px; margin-right:15px;">${h.icon}</div>
                     <div style="flex:1">
                         ${isUrgent ? `<span class="priority-tag">✦ ${uiState.priorityMode === 'bonus' ? 'Bonus' : 'Goal'} at Risk</span>` : ''}
+                        ${periodProtectedCard ? '<span class="period-tag">✦ Period protected</span>' : ''}
                         ${h.excused ? '<span class="excused-tag">✦ Excused this week</span>' : ''}
-                        <div style="display:flex;align-items:center;gap:8px;">
+                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                             <p style="margin:0; font-weight:600;">${h.name}</p>
-                            ${(() => { const s = computeStreaksFromHistory(state.weeklyHistory, h.id); return s.streak >= 1 ? `<span class="streak-badge">🔥 ${s.streak}</span>` : ''; })()}
-                            ${(() => { const s = computeStreaksFromHistory(state.weeklyHistory, h.id); return s.badStreak >= 1 ? `<span class="bad-streak-badge">🌧️ ${s.badStreak}</span>` : ''; })()}
+                            ${streaks.streak >= 1 ? `<span class="streak-badge">🔥 ${streaks.streak}</span>` : ''}
+                            ${streaks.badStreak >= 1 ? `<span class="bad-streak-badge">🌧️ ${streaks.badStreak}</span>` : ''}
                             ${cycleLabel(h) ? `<span class="cycle-badge">🔄 ${cycleLabel(h)}</span>` : ''}
+                            ${forecastBadgeSpan}
                             <button class="excuse-btn ${h.excused ? 'excuse-on' : ''}" onclick="event.stopPropagation();window.toggleExcused('${h.id}')">${h.excused ? 'Unexcuse' : 'Excuse'}</button>
                         </div>
+                        ${forecastDetailDiv}
                         <div class="bubbles">${bubblesHtml}</div>
                     </div>
                 </div>`;
