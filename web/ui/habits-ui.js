@@ -88,10 +88,19 @@ window.toggleBubble = async (id, val) => {
         }
     }
 
+    // Re-fetch from state.habits in case watchHabits fired during the wait
+    // (watchHabits can replace uiState.habits with fresh Firebase data)
+    const hState = state.habits.find(x => x.id === id);
+    if (!hState) return;
+
     uiState.lastActedId = willMove ? id : null;
 
     // Propagate value to all remaining days this week
-    for (let i = dIdx; i < 7; i++) h.history[i] = newVal;
+    for (let i = dIdx; i < 7; i++) hState.history[i] = newVal;
+    
+    // Sync uiState.habits with state.habits before rendering
+    // This ensures the render operates on the correct (mutated) data
+    uiState.habits = state.habits;
 
     // Optimistic render — show the result immediately, don't wait for Firebase
     window.render?.();
