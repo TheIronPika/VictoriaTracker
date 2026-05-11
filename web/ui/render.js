@@ -56,11 +56,12 @@ export function render() {
 
     const dIdx = getDayIdx(uiState.viewingDate);
 
-    todayRoot.innerHTML    = '';
-    priorityRoot.innerHTML = '';
-    weeklyRoot.innerHTML   = '';
-    if (manageVisible) manageRoot.innerHTML = '';
-    if (manageVisible && manageListRoot) manageListRoot.innerHTML = '';
+    // Build HTML strings instead of using += in loops (much faster)
+    let todayHtml = '';
+    let priorityHtml = '';
+    let weeklyHtml = '';
+    let manageHtml = '';
+    let manageListHtml = '';
 
     let totalMoney = 0;
     let counts = { punish: 0, low: 0, goal: 0, bonus: 0 };
@@ -87,7 +88,7 @@ export function render() {
             return `<div class="mini-dot" style="background:var(--grad-${t})"></div>`;
         }).join('');
 
-        todayRoot.innerHTML += `
+        todayHtml += `
             <div class="category-header" onclick="window.toggleCol('${cat}')">
                 <div style="flex:1">
                     <span class="cat-label">${cat}</span>
@@ -211,13 +212,13 @@ export function render() {
                 </div>`;
 
             if (!isCol) {
-                if (!uiState.activeFilter)                             todayRoot.innerHTML += cardHtml;
+                if (!uiState.activeFilter)                             todayHtml += cardHtml;
                 else if (uiState.activeFilter === 'punish' && tier === 'punish' && h.valPunish < 0)
-                                                                        todayRoot.innerHTML += cardHtml;
-                else if (uiState.activeFilter === tier)                todayRoot.innerHTML += cardHtml;
+                                                                        todayHtml += cardHtml;
+                else if (uiState.activeFilter === tier)                todayHtml += cardHtml;
             }
 
-            if (isUrgent) priorityRoot.innerHTML += cardHtml;
+            if (isUrgent) priorityHtml += cardHtml;
 
             const weeklyDotsHtml = h.history.map((c, i) => {
                 const isActionDay = (i === 0 && c > 0) || (i > 0 && c !== h.history[i - 1]);
@@ -233,7 +234,7 @@ export function render() {
                     <div class="weekly-dots-row">${weeklyDotsHtml}</div>
                 </div>`;
 
-            manageRoot.innerHTML += `
+            manageHtml += `
                 <div class="manage-card">
                     <h4 class="beloved-small" style="font-family:'Great Vibes'; font-size:24px; color:var(--header-pink); margin:0 0 10px 0;">${h.icon} ${h.name}</h4>
                     <div style="margin-bottom:10px; display:flex; gap:20px; align-items:center; flex-wrap:wrap;">
@@ -289,7 +290,7 @@ export function render() {
         });
 
         weekSectionHtml += `</div></div>`;
-        weeklyRoot.innerHTML += weekSectionHtml;
+        weeklyHtml += weekSectionHtml;
     });
 
     uiState.lastActedId = null;
@@ -307,10 +308,17 @@ export function render() {
     document.getElementById('countLow').innerText    = counts.low;
     document.getElementById('countGoal').innerText   = counts.goal;
     document.getElementById('countBonus').innerText  = counts.bonus;
-}
 
+    // Assign all HTML at once (instead of repeated += operations)
+    todayRoot.innerHTML = todayHtml;
+    priorityRoot.innerHTML = priorityHtml;
+    weeklyRoot.innerHTML = weeklyHtml;
+    if (manageVisible) {
+        manageRoot.innerHTML = manageHtml;
+        if (manageListRoot) manageListRoot.innerHTML = manageListHtml;
+    }
+}
 // Debounce render() to batch multiple calls into one animation frame
-// When toggleBubble + watchHabits both call render(), only execute once
 let renderScheduled = false;
 function debouncedRender() {
     if (renderScheduled) return;
