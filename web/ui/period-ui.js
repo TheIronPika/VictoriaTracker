@@ -4,10 +4,10 @@
 // history table in the Manage panel, delete history entries.
 // ─────────────────────────────────────────────────────────────────────
 
-import { state } from '../../core/state.js';
+import { state } from '../../Core/state.js';
 import {
     isPeriodActive, periodDayCount, syncPeriodData
-} from '../../core/period.js';
+} from '../../Core/period.js';
 
 // ── Modal ─────────────────────────────────────────────────────────────
 
@@ -41,7 +41,7 @@ window.startPeriod = async () => {
     document.getElementById('periodModalOverlay')?.remove();
     const now = Date.now();
     // dynamic import avoids a top-level circular dep if utils ever changes
-    const { getDayIdx } = await import('../../core/utils.js');
+    const { getDayIdx } = await import('../../Core/utils.js');
     state.periodData = {
         active: true,
         startTs: now,

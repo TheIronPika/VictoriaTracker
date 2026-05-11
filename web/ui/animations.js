@@ -6,10 +6,10 @@
 // ─────────────────────────────────────────────────────────────────────
 
 import { uiState } from './ui-state.js';
-import { state } from '../../core/state.js';
-import { getTier } from '../../core/habits.js';
-import { getDayIdx } from '../../core/utils.js';
-import { computeStreaksFromHistory } from '../../core/streaks.js';
+import { state } from '../../Core/state.js';
+import { getTier } from '../../Core/habits.js';
+import { getDayIdx } from '../../Core/utils.js';
+import { computeStreaksFromHistory } from '../../Core/streaks.js';
 
 // ── Bubble pop sound ──────────────────────────────────────────────────
 

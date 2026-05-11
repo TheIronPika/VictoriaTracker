@@ -5,12 +5,12 @@
 // ─────────────────────────────────────────────────────────────────────
 
 import { uiState } from './ui-state.js';
-import { state } from '../../core/state.js';
-import { cycleDueLabel } from '../../core/cycles.js';
-import { computeStreaksFromHistory } from '../../core/streaks.js';
-import { getTier } from '../../core/habits.js';
-import { getDayIdx } from '../../core/utils.js';
-import { loadWeeklyHistory } from '../../core/history.js';
+import { state } from '../../Core/state.js';
+import { cycleDueLabel } from '../../Core/cycles.js';
+import { computeStreaksFromHistory } from '../../Core/streaks.js';
+import { getTier } from '../../Core/habits.js';
+import { getDayIdx } from '../../Core/utils.js';
+import { loadWeeklyHistory } from '../../Core/history.js';
 import { renderPeriodHistory } from './period-ui.js';
 import { renderEventsManage } from './events-ui.js';
 import { renderShopManage } from './shop-ui.js';

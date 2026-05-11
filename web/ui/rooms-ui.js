@@ -3,8 +3,8 @@
 // Room-check section: collapsible list with streak badges and payouts.
 // ─────────────────────────────────────────────────────────────────────
 
-import { state } from '../../core/state.js';
-import { loadRoomsData as coreLoadRoomsData, syncRoomsData, toggleRoomCheck as coreToggleRoomCheck } from '../../core/rooms.js';
+import { state } from '../../Core/state.js';
+import { loadRoomsData as coreLoadRoomsData, syncRoomsData, toggleRoomCheck as coreToggleRoomCheck } from '../../Core/rooms.js';
 import { playBubblePop } from './animations.js';
 
 export async function loadRoomsDataUI() {

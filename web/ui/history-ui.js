@@ -5,9 +5,9 @@
 // ─────────────────────────────────────────────────────────────────────
 
 import { uiState } from './ui-state.js';
-import { state } from '../../core/state.js';
-import { loadWeeklyHistory } from '../../core/history.js';
-import { MANAGE_PASSCODE } from '../../core/config.js';
+import { state } from '../../Core/state.js';
+import { loadWeeklyHistory } from '../../Core/history.js';
+import { MANAGE_PASSCODE } from '../../Core/config.js';
 
 // ── Chart lifecycle ───────────────────────────────────────────────────
 

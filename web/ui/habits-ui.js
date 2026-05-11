@@ -6,11 +6,11 @@
 // ─────────────────────────────────────────────────────────────────────
 
 import { uiState, saveCollapsedState } from './ui-state.js';
-import { state } from '../../core/state.js';
-import { getDayIdx } from '../../core/utils.js';
-import { getTier } from '../../core/habits.js';
-import { syncHabits, toggleExcused as coreToggleExcused } from '../../core/habits-data.js';
-import { syncStarData, addStarLog } from '../../core/stars.js';
+import { state } from '../../Core/state.js';
+import { getDayIdx } from '../../Core/utils.js';
+import { getTier } from '../../Core/habits.js';
+import { syncHabits, toggleExcused as coreToggleExcused } from '../../Core/habits-data.js';
+import { syncStarData, addStarLog } from '../../Core/stars.js';
 import { playBubblePop, triggerFanfare, checkPerfectWeek, checkStreakMilestones } from './animations.js';
 import { showCloverPopup, showLuckyDrawToast } from './lucky-draw.js';
 

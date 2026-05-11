@@ -4,14 +4,14 @@
 // ─────────────────────────────────────────────────────────────────────
 
 import { uiState } from './ui-state.js';
-import { state } from '../../core/state.js';
+import { state } from '../../Core/state.js';
 import {
     syncStarData,
     awardStars      as coreAwardStars,
     spendStars,
     addShopItem     as coreAddShopItem,
     deleteShopItem  as coreDeleteShopItem
-} from '../../core/stars.js';
+} from '../../Core/stars.js';
 
 // ── Display helpers ───────────────────────────────────────────────────
 

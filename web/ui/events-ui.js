@@ -4,8 +4,8 @@
 // ─────────────────────────────────────────────────────────────────────
 
 import { uiState } from './ui-state.js';
-import { state } from '../../core/state.js';
-import { SEASON_META } from '../../core/config.js';
+import { state } from '../../Core/state.js';
+import { SEASON_META } from '../../Core/config.js';
 import {
     loadSeasonalEvents as coreLoadSeasonalEvents,
     isEventActive,
@@ -13,7 +13,7 @@ import {
     uncompleteEvent as coreUncompleteEvent,
     deleteEvent     as coreDeleteEvent,
     addEvent        as coreAddEvent
-} from '../../core/events.js';
+} from '../../Core/events.js';
 import { playBubblePop } from './animations.js';
 
 // ── Load ──────────────────────────────────────────────────────────────

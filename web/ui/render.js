@@ -7,18 +7,18 @@
 // ─────────────────────────────────────────────────────────────────────
 
 import { uiState, saveCollapsedState } from './ui-state.js';
-import { state } from '../../core/state.js';
-import { getDayIdx } from '../../core/utils.js';
-import { getTier } from '../../core/habits.js';
-import { isCycleDue, cycleLabel, cycleDueLabel } from '../../core/cycles.js';
-import { computeStreaksFromHistory } from '../../core/streaks.js';
-import { MANAGE_PASSCODE } from '../../core/config.js';
+import { state } from '../../Core/state.js';
+import { getDayIdx } from '../../Core/utils.js';
+import { getTier } from '../../Core/habits.js';
+import { isCycleDue, cycleLabel, cycleDueLabel } from '../../Core/cycles.js';
+import { computeStreaksFromHistory } from '../../Core/streaks.js';
+import { MANAGE_PASSCODE } from '../../Core/config.js';
 import { animateMoneyDisplay } from './animations.js';
 import { renderSeasonalSection, renderEventsManage } from './events-ui.js';
 import { renderShopManage } from './shop-ui.js';
 import { renderHistory, destroyHistoryCharts } from './history-ui.js';
-import { isPeriodActive, periodDayCount, periodStartDayIdx } from '../../core/period.js';
-import { getRoomPayoutsTotal } from '../../core/rooms.js';
+import { isPeriodActive, periodDayCount, periodStartDayIdx } from '../../Core/period.js';
+import { getRoomPayoutsTotal } from '../../Core/rooms.js';
 import { renderPeriodHistory } from './period-ui.js';
 import { renderRoomsSection } from './rooms-ui.js';
 import { computeForecast } from './manage-ui.js';
@@ -27,7 +27,7 @@ import { computeForecast } from './manage-ui.js';
 
 export function render() {
     // Lazy-load period data on first render — returns early; re-renders when loaded
-    if (!state.periodLoaded) { import('../../core/period.js').then(m => m.loadPeriodData()); return; }
+    if (!state.periodLoaded) { import('../../Core/period.js').then(m => m.loadPeriodData()); return; }
 
     buildDateStrip();
     updateFiltersUI();
