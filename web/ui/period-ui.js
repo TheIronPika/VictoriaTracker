@@ -84,6 +84,22 @@ window.deletePeriodEntry = async (entryId) => {
     renderPeriodHistory();
 };
 
+// ── Clear all period data ────────────────────────────────────────────
+
+window.clearPeriodWeekFlag = async () => {
+    if (!confirm('Clear the period protection for this week? This will end any active period, remove pink bubbles and period protection from habits, and clear the period-was-this-week flag. Your period history log will not be changed.')) return;
+    state.periodData = {
+        ...state.periodData,
+        active: false,
+        startTs: null,
+        startDayIdx: null,
+        periodWasThisWeek: false
+    };
+    await syncPeriodData();
+    renderPeriodHistory();
+    window.render?.();
+};
+
 // ── History panel (Manage tab) ────────────────────────────────────────
 
 export function renderPeriodHistory() {
@@ -106,7 +122,15 @@ export function renderPeriodHistory() {
         ? (nextPeriodDate.getMonth() + 1) + '/' + nextPeriodDate.getDate() + '/' + nextPeriodDate.getFullYear()
         : '--';
 
+    const isActive = isPeriodActive();
     let html = `
+        <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
+            <button onclick="window.clearPeriodWeekFlag()"
+                style="background:none;border:1px solid rgba(217,83,79,0.3);color:#d9534f;border-radius:8px;padding:6px 14px;font-size:11px;font-weight:600;cursor:pointer;font-family:'Montserrat',sans-serif;letter-spacing:0.5px;">
+                ✕ Clear this week's period flag
+            </button>
+        </div>
+        ${isActive ? `<div style="background:rgba(217,83,79,0.08);border:1px solid rgba(217,83,79,0.2);border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:#d9534f;font-weight:600;">⚠ Period is currently active — this will end it and remove pink bubbles. History log is untouched.</div>` : ''}
         <div class="period-history-card" style="background:rgba(255,255,255,0.85);border-radius:16px;padding:18px;margin-bottom:14px;box-shadow:0 4px 15px rgba(0,0,0,0.04);">
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:18px;">
                 <div style="background:rgba(232,100,100,0.08);border-radius:8px;padding:1rem;">
