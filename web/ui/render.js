@@ -308,7 +308,19 @@ export function render() {
     document.getElementById('countGoal').innerText   = counts.goal;
     document.getElementById('countBonus').innerText  = counts.bonus;
 }
-window.render = render;
+
+// Debounce render() to batch multiple calls into one animation frame
+// When toggleBubble + watchHabits both call render(), only execute once
+let renderScheduled = false;
+function debouncedRender() {
+    if (renderScheduled) return;
+    renderScheduled = true;
+    requestAnimationFrame(() => {
+        render();
+        renderScheduled = false;
+    });
+}
+window.render = debouncedRender;
 
 // ── Date strip ────────────────────────────────────────────────────────
 
