@@ -1,151 +1,54 @@
+// ─────────────────────────────────────────────────────────────────────
+// Core/firebase.js
+// Firebase init + three thin wrappers used by every data module:
+//   readDoc  — one-time getDoc
+//   writeDoc — setDoc (merge: false, full overwrite)
+//   watchDoc — onSnapshot live listener, returns unsubscribe fn
+// ─────────────────────────────────────────────────────────────────────
+
+import { initializeApp }                        from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+import { getFirestore, doc, getDoc, setDoc, onSnapshot }
+    from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+import { FIREBASE_CONFIG } from './config.js';
+
+// ── Init ─────────────────────────────────────────────────────────────
+
+const app = initializeApp(FIREBASE_CONFIG);
+const db  = getFirestore(app);
+
+// ── Wrappers ──────────────────────────────────────────────────────────
+
 /**
- * VICTORIA TRACKER — Firebase Operations
- * All Firestore database reads and writes
+ * One-time read of a Firestore document.
+ * @param {[string, string]} docPath  e.g. ['system', 'habits_list']
+ * @returns {object|null}  document data, or null if it doesn't exist
  */
-
-export const firebaseConfig = {
-    apiKey: "AIzaSyB9ztBUJyUvlyycujmDjbTcKT-GIejpsM4",
-    authDomain: "victoria-tracker-1d2ab.firebaseapp.com",
-    projectId: "victoria-tracker-1d2ab",
-    storageBucket: "victoria-tracker-1d2ab.firebasestorage.app",
-    messagingSenderId: "893813838454",
-    appId: "1:893813838454:web:72ac9f21756d00f8a88557"
-};
-
-let db = null;
-
-/**
- * Initialize Firebase app and Firestore
- * Must be called once before any DB operations
- */
-export async function initializeFirebase() {
-    // This will be done in the web layer with actual Firebase SDK
-    // Core just defines the config
-    return firebaseConfig;
+export async function readDoc([col, id]) {
+    const snap = await getDoc(doc(db, col, id));
+    return snap.exists() ? snap.data() : null;
 }
 
 /**
- * Set the Firestore instance (called from web layer)
+ * Write (overwrite) a Firestore document.
+ * @param {[string, string]} docPath
+ * @param {object}           data
  */
-export function setFirestoreInstance(firestoreInstance) {
-    db = firestoreInstance;
+export async function writeDoc([col, id], data) {
+    await setDoc(doc(db, col, id), data);
 }
 
 /**
- * Sync habits to Firebase
+ * Subscribe to live updates on a Firestore document.
+ * Fires immediately with current data, then on every change.
+ * @param {[string, string]} docPath
+ * @param {function}         callback  receives document data object
+ * @returns {function}  unsubscribe function
  */
-export async function syncHabits(habits) {
-    if (!db) throw new Error('Firestore not initialized');
-    const { setDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
-    await setDoc(doc(db, 'system', 'habits_list'), { data: habits });
-}
-
-/**
- * Load habits from Firebase
- */
-export async function loadHabits() {
-    if (!db) throw new Error('Firestore not initialized');
-    const { getDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
-    const snap = await getDoc(doc(db, 'system', 'habits_list'));
-    return snap.exists() ? snap.data().data : [];
-}
-
-/**
- * Save a weekly history snapshot
- */
-export async function saveWeeklySnapshot(entry) {
-    if (!db) throw new Error('Firestore not initialized');
-    const { setDoc, getDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
-    
-    const histRef = doc(db, 'system', 'weekly_history');
-    const histSnap = await getDoc(histRef);
-    let weeks = histSnap.exists() ? (histSnap.data().weeks || []) : [];
-
-    weeks.unshift(entry);
-    if (weeks.length > 52) weeks = weeks.slice(0, 52);
-
-    await setDoc(histRef, { weeks });
-}
-
-/**
- * Load weekly history
- */
-export async function loadWeeklyHistory() {
-    if (!db) throw new Error('Firestore not initialized');
-    const { getDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
-    const snap = await getDoc(doc(db, 'system', 'weekly_history'));
-    return snap.exists() ? (snap.data().weeks || []) : [];
-}
-
-/**
- * Load seasonal events
- */
-export async function loadSeasonalEvents() {
-    if (!db) throw new Error('Firestore not initialized');
-    const { getDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
-    const snap = await getDoc(doc(db, 'system', 'seasonal_events'));
-    return snap.exists() ? (snap.data().events || []) : [];
-}
-
-/**
- * Sync seasonal events
- */
-export async function syncSeasonalEvents(events) {
-    if (!db) throw new Error('Firestore not initialized');
-    const { setDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
-    await setDoc(doc(db, 'system', 'seasonal_events'), { events });
-}
-
-/**
- * Load star data (balance, spent, items, log)
- */
-export async function loadStarData() {
-    if (!db) throw new Error('Firestore not initialized');
-    const { getDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
-    const snap = await getDoc(doc(db, 'system', 'star_data'));
-    if (snap.exists()) {
-        return {
-            balance: snap.data().balance || 0,
-            spent: snap.data().spent || 0,
-            items: snap.data().items || [],
-            log: snap.data().log || []
-        };
-    }
-    return { balance: 0, spent: 0, items: [], log: [] };
-}
-
-/**
- * Sync star data
- */
-export async function syncStarData(data) {
-    if (!db) throw new Error('Firestore not initialized');
-    const { setDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
-    await setDoc(doc(db, 'system', 'star_data'), data);
-}
-
-/**
- * Subscribe to habits changes (real-time listener)
- */
-export async function onHabitsChange(callback) {
-    if (!db) throw new Error('Firestore not initialized');
-    const { onSnapshot, doc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
-    return onSnapshot(doc(db, 'system', 'habits_list'), (snap) => {
-        if (snap.exists()) {
-            callback(snap.data().data);
-        }
+export function watchDoc([col, id], callback) {
+    return onSnapshot(doc(db, col, id), (snap) => {
+        if (snap.exists()) callback(snap.data());
     });
 }
 
-export default {
-    initializeFirebase,
-    setFirestoreInstance,
-    syncHabits,
-    loadHabits,
-    saveWeeklySnapshot,
-    loadWeeklyHistory,
-    loadSeasonalEvents,
-    syncSeasonalEvents,
-    loadStarData,
-    syncStarData,
-    onHabitsChange
-};
+// Export db instance for any module that needs it directly
+export { db };
