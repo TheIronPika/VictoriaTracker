@@ -106,7 +106,7 @@ export function renderEventsManage() {
     const root = document.getElementById('eventsManageRoot');
     if (!root) return;
     if (!state.seasonalEvents.length) {
-        root.innerHTML = '<div style="font-size:12px;color:#aaa;padding:8px 0;">No events yet.</div>';
+        root.innerHTML = '<div style="font-size:12px;color:#9d99b8;padding:8px 0;">No events yet.</div>';
         return;
     }
     root.innerHTML = state.seasonalEvents.map(ev => {
@@ -117,13 +117,13 @@ export function renderEventsManage() {
                 <span style="font-family:'Great Vibes';font-size:20px;color:${meta.accent};flex:1;">${ev.name}</span>
                 <button class="btn-delete" style="padding:4px 10px;font-size:9px;" onclick="window.deleteEvent('${ev.id}')">DELETE</button>
             </div>
-            <div style="font-size:11px;color:#888;">
+            <div style="font-size:11px;color:#ccc8e0;">
                 ${ev.startMonth}/${ev.startDay} – ${ev.endMonth}/${ev.endDay} &nbsp;·&nbsp;
                 Max: ${ev.maxCompletions} &nbsp;·&nbsp;
                 Done: ${ev.completions} &nbsp;·&nbsp;
                 $${ev.payout.toFixed(2)}/ea
             </div>
-            ${ev.note ? `<div style="font-size:11px;color:#aaa;margin-top:4px;">${ev.note}</div>` : ''}
+            ${ev.note ? `<div style="font-size:11px;color:#9d99b8;margin-top:4px;">${ev.note}</div>` : ''}
         </div>`;
     }).join('');
 }
