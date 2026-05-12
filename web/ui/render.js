@@ -295,7 +295,7 @@ export function render() {
         // Build manage list items using allItemsForManage (includes cycle-inactive habits)
         if (manageVisible) {
             allItemsForManage.forEach(h => {
-                manageListHtml += `<div class="msp-item" onclick="window.selectMspItem('${h.id}')" id="msp-item-${h.id}" style="padding:10px;cursor:pointer;border-radius:6px;margin:4px 0;display:flex;gap:8px;align-items:center;background:#f5f5f5;transition:all 0.2s;">${h.icon} <span style="flex:1;font-size:14px;font-family:'Montserrat';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${h.name}</span></div>`;
+                manageListHtml += `<div class="msp-habit-row" onclick="window.showManageDetail('${h.id}')" id="msp-row-${h.id}">${h.icon} <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${h.name}</span></div>`;
             });
             manageListHtml += `</div>`;
         }
