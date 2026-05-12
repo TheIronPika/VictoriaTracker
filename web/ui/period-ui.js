@@ -165,7 +165,7 @@ export function renderPeriodHistory() {
                                     <div style="font-weight:500;">${e.startDate} – ${e.endDate || '—'}</div>
                                     <div style="font-size:11px;color:#999;">${e.duration} day${e.duration !== 1 ? 's' : ''}</div>
                                 </div>
-                                <button onclick="window.deletePeriodEntry('${e.id}')" style="background:none;border:none;color:#ccc;cursor:pointer;font-size:14px;padding:2px 8px;">×</button>
+                                <button onclick="window.deletePeriodEntry('${e.id}')" style="background:none;border:1px solid rgba(217,83,79,0.35);color:#d9534f;border-radius:6px;cursor:pointer;font-size:10px;font-weight:700;padding:3px 10px;font-family:'Montserrat',sans-serif;">DEL</button>
                             </div>
                         `).join('')}
                     </div>
