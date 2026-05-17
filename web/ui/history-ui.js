@@ -104,10 +104,16 @@ function _paintHistory(root) {
     }));
     const hmLblRow = '<div class="hm-label-spacer"></div>' + hmWkLabels.map(l => '<div class="hm-wlbl">' + l + '</div>').join('');
     const hmRows   = allHabitIds.slice(0, 25).map(id => {
-        const cells = wks.map(w => {
+        const cells = wks.map((w, wi) => {
             const h = (w.habits || []).find(x => x.id === id);
             const t = h ? h.tier : 'punish';
-            return '<div class="hm-cell" title="' + (h ? TL[t] : '—') + '" style="background:' + (h ? TC[t] : '#eee') + ';opacity:0.82;"></div>';
+            const payout = h ? ((h.payout || 0) < 0 ? '-$' : '+$') + Math.abs(h.payout || 0).toFixed(2) : '—';
+            return '<div class="hm-cell"'
+                + ' data-habit="' + habitMeta[id].name.replace(/"/g, '&quot;') + '"'
+                + ' data-week="' + hmWkLabels[wi] + '"'
+                + ' data-tier="' + (h ? TL[t] : '—') + '"'
+                + ' data-payout="' + payout + '"'
+                + ' style="background:' + (h ? TC[t] : '#eee') + ';opacity:0.82;"></div>';
         }).join('');
         return '<div class="hm-row"><span class="hm-label">' + habitMeta[id].icon + ' ' + habitMeta[id].name + '</span>' + cells + '</div>';
     }).join('');
@@ -178,7 +184,69 @@ function _paintHistory(root) {
     });
 
     root.innerHTML = html;
-    setTimeout(() => { _drawBalanceChart(wks); _storeEarnerData(earnerList); _storeCategoryData(wks); }, 0);
+    setTimeout(() => { _drawBalanceChart(wks); _storeEarnerData(earnerList); _storeCategoryData(wks); _setupHeatmapTooltip(); }, 0);
+}
+
+// ── Heatmap tooltip (long-press / hover) ──────────────────────────────
+
+function _setupHeatmapTooltip() {
+    let tip = document.getElementById('hm-tooltip');
+    if (!tip) {
+        tip = document.createElement('div');
+        tip.id = 'hm-tooltip';
+        Object.assign(tip.style, {
+            display: 'none', position: 'fixed', zIndex: '9999',
+            background: 'rgba(28,18,28,.92)', color: '#fff',
+            padding: '8px 12px', borderRadius: '9px',
+            fontSize: '12px', lineHeight: '1.7', pointerEvents: 'none',
+            boxShadow: '0 4px 16px rgba(0,0,0,.35)', maxWidth: '180px'
+        });
+        document.body.appendChild(tip);
+    }
+
+    let pressTimer = null;
+
+    function show(el, x, y) {
+        tip.innerHTML = '<div style="font-weight:700;font-size:13px;">' + el.dataset.habit + '</div>'
+            + '<div style="color:#c8a0c8;font-size:10px;">Week of ' + el.dataset.week + '</div>'
+            + '<div style="margin-top:2px;">' + el.dataset.tier + ' &nbsp;·&nbsp; ' + el.dataset.payout + '</div>';
+        tip.style.display = 'block';
+        position(x, y);
+    }
+
+    function position(x, y) {
+        const tw = tip.offsetWidth, th = tip.offsetHeight;
+        let left = x + 12, top = y - th - 12;
+        if (left + tw > window.innerWidth - 8) left = x - tw - 12;
+        if (top < 8) top = y + 20;
+        tip.style.left = left + 'px';
+        tip.style.top  = top  + 'px';
+    }
+
+    function hide() { tip.style.display = 'none'; }
+
+    document.querySelectorAll('.hm-cell[data-habit]').forEach(cell => {
+        // Desktop hover
+        cell.addEventListener('mouseenter', e => show(e.currentTarget, e.clientX, e.clientY));
+        cell.addEventListener('mousemove',  e => position(e.clientX, e.clientY));
+        cell.addEventListener('mouseleave', hide);
+
+        // Mobile long press (400 ms)
+        cell.addEventListener('touchstart', e => {
+            pressTimer = setTimeout(() => {
+                const t = e.touches[0];
+                show(e.currentTarget, t.clientX, t.clientY);
+            }, 400);
+        }, { passive: true });
+        cell.addEventListener('touchend', () => {
+            clearTimeout(pressTimer);
+            setTimeout(hide, 1800);
+        }, { passive: true });
+        cell.addEventListener('touchmove', () => {
+            clearTimeout(pressTimer);
+            hide();
+        }, { passive: true });
+    });
 }
 
 // ── Chart drawing ─────────────────────────────────────────────────────
