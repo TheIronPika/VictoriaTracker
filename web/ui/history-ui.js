@@ -13,7 +13,7 @@ import { MANAGE_PASSCODE } from '../../Core/config.js';
 
 export function destroyHistoryCharts() {
     uiState.historyCharts.forEach(c => { try { c.destroy(); } catch (e) {} });
-    uiState.historyCharts = [];
+    uiState.historyCharts = [];h
 }
 
 // ── Entry point ───────────────────────────────────────────────────────
@@ -103,7 +103,7 @@ function _paintHistory(root) {
         if (!habitMeta[h.id]) { habitMeta[h.id] = { name: h.name, icon: h.icon }; allHabitIds.push(h.id); }
     }));
     const hmLblRow = '<div class="hm-label-spacer"></div>' + hmWkLabels.map(l => '<div class="hm-wlbl">' + l + '</div>').join('');
-    const hmRows   = allHabitIds.slice(0, 25).map(id => {
+    const hmRows   = allHabitIds.map(id => {
         const cells = wks.map((w, wi) => {
             const h = (w.habits || []).find(x => x.id === id);
             const t = h ? h.tier : 'punish';
