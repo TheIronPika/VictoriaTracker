@@ -13,7 +13,7 @@ import { MANAGE_PASSCODE } from '../../Core/config.js';
 
 export function destroyHistoryCharts() {
     uiState.historyCharts.forEach(c => { try { c.destroy(); } catch (e) {} });
-    uiState.historyCharts = [];h
+    uiState.historyCharts = [];
 }
 
 // ── Entry point ───────────────────────────────────────────────────────
