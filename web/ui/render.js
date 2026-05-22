@@ -207,6 +207,7 @@ export function render() {
                             ${streaks.streak >= 1 ? `<span class="streak-badge">🔥 ${streaks.streak}</span>` : ''}
                             ${streaks.badStreak >= 1 ? `<span class="bad-streak-badge">🌧️ ${streaks.badStreak}</span>` : ''}
                             ${cycleLabel(h) ? `<span class="cycle-badge">🔄 ${cycleLabel(h)}</span>` : ''}
+                            ${h.bountyActive ? `<span class="bounty-badge">🏆 Bounty${h.bountyNote ? ': ' + h.bountyNote : ''}</span>` : ''}
                             ${forecastBadgeSpan}
                             <button class="excuse-btn ${h.excused ? 'excuse-on' : ''}" onclick="event.stopPropagation();window.toggleExcused('${h.id}')">${h.excused ? 'Unexcuse' : 'Excuse'}</button>
                         </div>
@@ -296,7 +297,7 @@ export function render() {
         // Build manage list items using allItemsForManage (includes cycle-inactive habits)
         if (manageVisible) {
             allItemsForManage.forEach(h => {
-                manageListHtml += `<div class="msp-habit-row" onclick="window.showManageDetail('${h.id}')" id="msp-row-${h.id}"><span class="msp-drag-handle">⠿</span>${h.icon} <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${h.name}</span></div>`;
+                manageListHtml += `<div class="msp-habit-row" onclick="window.showManageDetail('${h.id}')" id="msp-row-${h.id}"><span class="msp-drag-handle">⠿</span>${h.icon} <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${h.name}</span>${h.bountyActive ? '<span style="font-size:10px;flex-shrink:0;margin-left:4px" title="Bounty active">🏆</span>' : ''}</div>`;
             });
             manageListHtml += `</div>`;
         }

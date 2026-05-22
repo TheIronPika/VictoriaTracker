@@ -88,14 +88,39 @@ window.deleteTask = async (id) => {
 window.updateField = async (id, field, value) => {
     const h = uiState.habits.find(x => x.id === id);
     if (!h) return;
-    if (field === 'note' || field === 'cycleType')           h[field] = value;
+    if (field === 'note' || field === 'cycleType' || field === 'bountyNote')
+                                                              h[field] = value;
     else if (field === 'periodSensitive')                    h[field] = !!value;
     else if (field.startsWith('val'))                        h[field] = parseFloat(value);
     else if (field.startsWith('star'))                       h[field] = parseInt(value) || 0;
     else if (field === 'streakBonusPer' || field === 'streakPenaltyPer' || field === 'streakCap')
                                                               h[field] = parseFloat(value) || 0;
+    else if (field === 'bountyDollars' || field === 'bountyStars')
+                                                              h[field] = parseFloat(value) || 0;
     else                                                      h[field] = parseInt(value)   || 1;
     await syncHabits();
+};
+
+window.setBounty = async (id) => {
+    const h = uiState.habits.find(x => x.id === id);
+    if (!h) return;
+    h.bountyActive  = true;
+    h.bountyDollars = 0;
+    h.bountyStars   = 0;
+    h.bountyNote    = '';
+    await syncHabits();
+    window.showManageDetail(id);
+};
+
+window.clearBounty = async (id) => {
+    const h = uiState.habits.find(x => x.id === id);
+    if (!h) return;
+    delete h.bountyActive;
+    delete h.bountyDollars;
+    delete h.bountyStars;
+    delete h.bountyNote;
+    await syncHabits();
+    window.showManageDetail(id);
 };
 
 window.toggleExcused = async (id) => {

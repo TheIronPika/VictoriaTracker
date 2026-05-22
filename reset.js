@@ -147,10 +147,16 @@ async function runReset() {
             payout -= Math.min(raw, cap);
         }
 
+        // Bounty payout (one-time, clears on reset)
+        const bountyTriggered = h.bountyActive && (tier === 'goal' || tier === 'bonus');
+        if (bountyTriggered && (h.bountyDollars || 0) > 0) payout += h.bountyDollars;
+
         totalMoney += payout;
         const tierLabel = { punish:'DEBT', low:'LOW', goal:'GOAL', bonus:'BONUS' }[tier];
         const sign = payout < 0 ? '-$' : '+$';
-        reportLines.push(`${h.icon} ${h.name}: ${tierLabel} (${sign}${Math.abs(payout).toFixed(2)})`);
+        const bountyNote = bountyTriggered && (h.bountyDollars || 0) > 0
+            ? ` 🏆 +$${h.bountyDollars.toFixed(2)} bounty` : '';
+        reportLines.push(`${h.icon} ${h.name}: ${tierLabel} (${sign}${Math.abs(payout).toFixed(2)})${bountyNote}`);
     });
 
     const totalStr = (totalMoney < 0 ? '-$' : '+$') + Math.abs(totalMoney).toFixed(2);
@@ -203,6 +209,9 @@ async function runReset() {
         if (tier==='goal'  && (h.starGoal  ||0)>0) { earned+=h.starGoal;   reasons.push(h.name+' Goal'); }
         if (tier==='bonus' && (h.starBonus ||0)>0) { earned+=h.starBonus;  reasons.push(h.name+' Bonus'); }
         if (newStreak>=2   && (h.starStreak||0)>0) { earned+=h.starStreak; reasons.push(h.name+' Streak'); }
+        if (h.bountyActive && (tier==='goal'||tier==='bonus') && (h.bountyStars||0)>0) {
+            earned+=h.bountyStars; reasons.push(h.name+' Bounty 🏆');
+        }
         if (earned > 0) {
             totalStarsEarned += earned;
             starDoc.log = [{ ts: Date.now(), type:'earn', amount:earned, reason:reasons.join(' + ') },
@@ -262,16 +271,25 @@ async function runReset() {
     // ── Wipe history & advance cycles ────────────────────────────────────────
     console.log('🔄 Resetting habits...');
     habits = habits.map(h => {
-        if (h.cycleType && h.cycleType !== 'none') {
-            const hist3 = (h.history||[]).slice(0,7);
-            const cur3  = hist3[6] !== undefined ? hist3[6] : (hist3[hist3.length-1]||0);
-            const tier3 = getTier(h, cur3);
-            if (tier3 === 'goal' || tier3 === 'bonus') {
-                return { ...h, history:[0,0,0,0,0,0,0], excused:false,
-                               cycleNextDue: Date.now() + cycleIntervalMs(h) };
-            }
+        const hist3 = (h.history||[]).slice(0,7);
+        const cur3  = hist3[6] !== undefined ? hist3[6] : (hist3[hist3.length-1]||0);
+        const tier3 = getTier(h, cur3);
+        const bountyTriggered3 = h.bountyActive && (tier3 === 'goal' || tier3 === 'bonus');
+
+        let updated = { ...h, history:[0,0,0,0,0,0,0], excused:false };
+
+        if (bountyTriggered3) {
+            delete updated.bountyActive;
+            delete updated.bountyDollars;
+            delete updated.bountyStars;
+            delete updated.bountyNote;
         }
-        return { ...h, history:[0,0,0,0,0,0,0], excused:false };
+
+        if (h.cycleType && h.cycleType !== 'none' && (tier3 === 'goal' || tier3 === 'bonus')) {
+            updated.cycleNextDue = Date.now() + cycleIntervalMs(h);
+        }
+
+        return updated;
     });
 
     await firestoreSet('system/habits_list', { data: habits });
