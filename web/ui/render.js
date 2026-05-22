@@ -22,6 +22,7 @@ import { getRoomPayoutsTotal } from '../../Core/rooms.js';
 import { renderPeriodHistory } from './period-ui.js';
 import { renderRoomsSection } from './rooms-ui.js';
 import { computeForecast } from './manage-ui.js';
+import { syncHabits } from '../../Core/habits-data.js';
 
 // ── Main render ───────────────────────────────────────────────────────
 
@@ -295,7 +296,7 @@ export function render() {
         // Build manage list items using allItemsForManage (includes cycle-inactive habits)
         if (manageVisible) {
             allItemsForManage.forEach(h => {
-                manageListHtml += `<div class="msp-habit-row" onclick="window.showManageDetail('${h.id}')" id="msp-row-${h.id}">${h.icon} <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${h.name}</span></div>`;
+                manageListHtml += `<div class="msp-habit-row" onclick="window.showManageDetail('${h.id}')" id="msp-row-${h.id}"><span class="msp-drag-handle">⠿</span>${h.icon} <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${h.name}</span></div>`;
             });
             manageListHtml += `</div>`;
         }
@@ -326,9 +327,37 @@ export function render() {
     weeklyRoot.innerHTML = weeklyHtml;
     if (manageVisible) {
         manageRoot.innerHTML = manageHtml;
-        if (manageListRoot) manageListRoot.innerHTML = manageListHtml;
+        if (manageListRoot) {
+            manageListRoot.innerHTML = manageListHtml;
+            initManageSortable();
+        }
     }
 }
+
+function initManageSortable() {
+    if (typeof Sortable === 'undefined') return;
+    document.querySelectorAll('[id^="msp-cat-"]').forEach(container => {
+        if (container._sortable) container._sortable.destroy();
+        container._sortable = new Sortable(container, {
+            animation: 150,
+            handle: '.msp-drag-handle',
+            ghostClass: 'msp-row-ghost',
+            onEnd() {
+                const newOrder = [];
+                document.querySelectorAll('[id^="msp-cat-"]').forEach(cat => {
+                    cat.querySelectorAll('.msp-habit-row').forEach(row => {
+                        const id = row.id.replace('msp-row-', '');
+                        const h = uiState.habits.find(x => x.id === id);
+                        if (h) newOrder.push(h);
+                    });
+                });
+                uiState.habits = newOrder;
+                syncHabits();
+            }
+        });
+    });
+}
+
 // Debounce render() to batch multiple calls into one animation frame
 let renderScheduled = false;
 function debouncedRender() {

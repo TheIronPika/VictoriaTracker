@@ -20,6 +20,7 @@
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
     
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script type="module">
         // ─────────────────────────────────────────────────────────────────────
         // Victoria Tracker — modular shell
@@ -1135,6 +1136,20 @@
         .msp-habit-row.msp-row-selected {
             background: rgba(212,163,163,0.12);
             border-left: 3px solid var(--header-pink);
+        }
+        .msp-drag-handle {
+            color: #3d3654;
+            font-size: 13px;
+            cursor: grab;
+            margin-right: 7px;
+            flex-shrink: 0;
+            user-select: none;
+            letter-spacing: -1px;
+        }
+        .msp-drag-handle:active { cursor: grabbing; }
+        .msp-row-ghost {
+            opacity: 0.35;
+            background: rgba(212,163,163,0.12);
         }
         #msp-detail {
             max-width: 900px;
