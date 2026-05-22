@@ -368,7 +368,10 @@
         }
 
         .habit-card.bounty-glow {
-            background: linear-gradient(135deg, rgba(255,236,140,0.72), rgba(255,218,80,0.65));
+            background:
+                url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='70' height='70'%3E%3Ctext x='6' y='30' font-size='18' fill='rgb(140,100,0)' opacity='0.18' font-family='Georgia,serif' font-weight='bold'%3E$%3C/text%3E%3Ctext x='40' y='62' font-size='15' fill='rgb(140,100,0)' opacity='0.15' font-family='serif'%3E%E2%98%85%3C/text%3E%3C/svg%3E") repeat,
+                linear-gradient(135deg, rgba(255,236,140,0.72), rgba(255,218,80,0.65));
+            background-size: 70px 70px, auto;
             box-shadow: 5px 5px 15px rgba(212,163,163,0.08),
                         0 0 18px rgba(240,192,64,0.35);
             border-color: rgba(210,160,20,0.4);
