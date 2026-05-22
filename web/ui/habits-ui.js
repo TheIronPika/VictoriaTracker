@@ -213,6 +213,7 @@ window.showDefinition = (id) => {
         if (!ev || !ev.note) return;
         document.getElementById('defTitle').innerText = ev.icon + '  ' + ev.name;
         document.getElementById('defBody').innerText  = ev.note;
+        const b = document.getElementById('defBounty'); if (b) b.style.display = 'none';
         document.getElementById('defOverlay').classList.add('def-open');
         return;
     }
@@ -222,6 +223,20 @@ window.showDefinition = (id) => {
     document.getElementById('defBody').innerText  = h.note && h.note.trim()
         ? h.note
         : 'No definition set yet. Add one in Manage.';
+
+    const bountyEl        = document.getElementById('defBounty');
+    const bountyDetailsEl = document.getElementById('defBountyDetails');
+    if (h.bountyActive && bountyEl) {
+        const parts = [];
+        if ((h.bountyDollars || 0) > 0) parts.push(`+$${parseFloat(h.bountyDollars).toFixed(2)} bonus`);
+        if ((h.bountyStars   || 0) > 0) parts.push(`✨ ${h.bountyStars} stars`);
+        if (h.bountyNote && h.bountyNote.trim()) parts.push(h.bountyNote.trim());
+        bountyDetailsEl.innerText = parts.join(' · ') || 'Bounty active';
+        bountyEl.style.display = '';
+    } else if (bountyEl) {
+        bountyEl.style.display = 'none';
+    }
+
     document.getElementById('defOverlay').classList.add('def-open');
 };
 

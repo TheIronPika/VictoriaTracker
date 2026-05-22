@@ -367,6 +367,13 @@
             border-color: rgba(255, 100, 160, 1);
         }
 
+        .habit-card.bounty-glow {
+            background: linear-gradient(135deg, rgba(255,248,220,0.75), rgba(255,252,235,0.75));
+            box-shadow: 5px 5px 15px rgba(212,163,163,0.08),
+                        0 0 20px rgba(240,192,64,0.4);
+            border-color: rgba(240,192,64,0.5);
+        }
+
         @keyframes streakPulse {
             0%, 100% {
                 box-shadow: 5px 5px 15px rgba(212,163,163,0.08),
@@ -1534,6 +1541,10 @@ if ('serviceWorker' in navigator) {
 <div id="defOverlay" onclick="window.closeDefinition()">
     <div id="defSheet" onclick="event.stopPropagation()">
         <div id="defTitle" style="font-family:'Great Vibes';font-size:28px;color:var(--header-pink);margin-bottom:12px;"></div>
+        <div id="defBounty" style="display:none;margin-bottom:16px;padding:12px 14px;background:rgba(240,192,64,0.08);border:1px solid rgba(240,192,64,0.25);border-radius:12px;">
+            <div style="font-family:'Playfair Display',serif;font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:#c8961a;font-weight:700;margin-bottom:6px;">🏆 Bounty from Drew</div>
+            <div id="defBountyDetails" style="font-family:'Montserrat',sans-serif;font-size:13px;color:#8a6a10;line-height:1.6;"></div>
+        </div>
         <div id="defBody" style="font-family:'Montserrat',sans-serif;font-size:14px;line-height:1.7;color:#666;white-space:pre-wrap;"></div>
     </div>
 </div>
