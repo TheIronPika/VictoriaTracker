@@ -1294,16 +1294,92 @@
 
               <!-- Add Habit -->
               <div id="msp-right-add" style="display:none">
-                <div class="msp-section" style="max-width:560px">
-                  <div class="msp-section-title">New Habit</div>
-                  <div style="display:flex;gap:10px;margin-bottom:12px;">
-                    <div class="msp-field-row" style="width:80px"><span class="msp-field-label">Icon</span><input type="text" id="newIcon" placeholder="🧘" style="width:100%;padding:9px 10px;border:1px solid rgba(255,255,255,0.14);border-radius:8px;background:#362f52;color:#e8e3f5;font-size:18px;text-align:center;box-sizing:border-box;"></div>
-                    <div class="msp-field-row" style="flex:1"><span class="msp-field-label">Habit name</span><input type="text" id="newName" placeholder="e.g. Meditation" style="width:100%;padding:9px 10px;border:1px solid rgba(255,255,255,0.14);border-radius:8px;background:#362f52;color:#e8e3f5;box-sizing:border-box;font-family:Montserrat,sans-serif;"></div>
-                  </div>
-                  <div class="msp-field-row" style="margin-bottom:12px"><span class="msp-field-label">Category</span><input type="text" id="newCat" placeholder="e.g. Health, Learning" style="width:100%;padding:9px 10px;border:1px solid rgba(255,255,255,0.14);border-radius:8px;background:#362f52;color:#e8e3f5;box-sizing:border-box;font-family:Montserrat,sans-serif;"></div>
-                  <div class="msp-field-row" style="margin-bottom:16px"><span class="msp-field-label">Definition / Rules (optional)</span><textarea id="newNote" placeholder="Describe what counts as completion…" style="width:100%;padding:9px 10px;border:1px solid rgba(255,255,255,0.14);border-radius:8px;background:#362f52;color:#e8e3f5;font-family:Montserrat,sans-serif;font-size:13px;resize:vertical;min-height:80px;box-sizing:border-box;line-height:1.6;"></textarea></div>
-                  <button onclick="window.addTask()" style="padding:10px 24px;background:var(--header-pink);color:white;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px;">Create Habit</button>
+                <div class="msp-section-title" style="margin-bottom:16px">New Habit</div>
+                <!-- Identity row -->
+                <div style="display:flex;gap:10px;margin-bottom:12px;align-items:flex-end;">
+                  <div class="msp-field-row" style="width:80px"><span class="msp-field-label">Icon</span><input type="text" id="newIcon" placeholder="🧘" style="width:100%;padding:9px 10px;border:1px solid rgba(255,255,255,0.14);border-radius:8px;background:#362f52;color:#e8e3f5;font-size:18px;text-align:center;box-sizing:border-box;"></div>
+                  <div class="msp-field-row" style="flex:2"><span class="msp-field-label">Habit name</span><input type="text" id="newName" placeholder="e.g. Meditation" style="width:100%;padding:9px 10px;border:1px solid rgba(255,255,255,0.14);border-radius:8px;background:#362f52;color:#e8e3f5;box-sizing:border-box;font-family:Montserrat,sans-serif;"></div>
+                  <div class="msp-field-row" style="flex:1"><span class="msp-field-label">Category</span><input type="text" id="newCat" placeholder="e.g. Health" style="width:100%;padding:9px 10px;border:1px solid rgba(255,255,255,0.14);border-radius:8px;background:#362f52;color:#e8e3f5;box-sizing:border-box;font-family:Montserrat,sans-serif;"></div>
                 </div>
+                <!-- Two-column body matching modify form -->
+                <div class="msp-two-col">
+                  <!-- Left: Payouts & Stars -->
+                  <div class="msp-section">
+                    <div class="msp-section-title">Payouts &amp; Stars</div>
+                    <table class="msp-tier-table">
+                      <tr><th>Tier</th><th>Qty needed</th><th>$ value</th><th>✨ Stars</th></tr>
+                      <tr>
+                        <td><span style="color:#e05c5c;font-weight:700;font-size:13px">Debt</span></td>
+                        <td><input type="number" class="msp-num" style="width:70px" value="1" id="newPunish"></td>
+                        <td><input type="number" class="msp-num" style="width:80px" step="0.25" value="-1.50" id="newValPunish"></td>
+                        <td style="color:#4a4460;font-size:20px;text-align:center">—</td>
+                      </tr>
+                      <tr>
+                        <td><span style="color:#e0963c;font-weight:700;font-size:13px">Low</span></td>
+                        <td><input type="number" class="msp-num" style="width:70px" value="3" id="newLow"></td>
+                        <td><input type="number" class="msp-num" style="width:80px" step="0.25" value="1.00" id="newValLow"></td>
+                        <td style="color:#4a4460;font-size:20px;text-align:center">—</td>
+                      </tr>
+                      <tr>
+                        <td><span style="color:#4caf78;font-weight:700;font-size:13px">Goal</span></td>
+                        <td><input type="number" class="msp-num" style="width:70px" value="5" id="newGoal"></td>
+                        <td><input type="number" class="msp-num" style="width:80px" step="0.25" value="2.00" id="newValGoal"></td>
+                        <td><input type="number" class="msp-num msp-num-star" style="width:70px" placeholder="—" min="0" id="newStarGoal"></td>
+                      </tr>
+                      <tr>
+                        <td><span style="color:#a87cd4;font-weight:700;font-size:13px">Bonus</span></td>
+                        <td><input type="number" class="msp-num" style="width:70px" value="7" id="newBonus"></td>
+                        <td><input type="number" class="msp-num" style="width:80px" step="0.25" value="3.00" id="newValBonus"></td>
+                        <td><input type="number" class="msp-num msp-num-star" style="width:70px" placeholder="—" min="0" id="newStarBonus"></td>
+                      </tr>
+                      <tr>
+                        <td><span style="color:#f0c040;font-weight:700;font-size:13px">🔥 Streak</span></td>
+                        <td colspan="2" style="font-size:11px;color:#7a7390">Stars per reset if streak ≥ 2</td>
+                        <td><input type="number" class="msp-num msp-num-star" style="width:70px" placeholder="—" min="0" id="newStarStreak"></td>
+                      </tr>
+                    </table>
+                  </div>
+                  <!-- Right: Schedule + Streak Payouts + Flags -->
+                  <div style="display:flex;flex-direction:column;gap:14px">
+                    <div class="msp-section">
+                      <div class="msp-section-title">Schedule</div>
+                      <div class="msp-field-grid">
+                        <div class="msp-field-row"><span class="msp-field-label">Max circles/wk</span><input type="number" class="msp-field-input" id="newMax" value="7" min="1" max="49" style="width:100%;box-sizing:border-box"></div>
+                        <div class="msp-field-row"><span class="msp-field-label">Daily max</span><input type="number" class="msp-field-input" id="newDailyMax" value="1" min="1" max="7" style="width:100%;box-sizing:border-box"></div>
+                        <div class="msp-field-row"><span class="msp-field-label">Cycle</span>
+                          <select class="msp-field-input" id="newCycleType" style="width:100%;box-sizing:border-box">
+                            <option value="none" selected>None</option>
+                            <option value="weeks">Every N wks</option>
+                            <option value="monthly">Monthly</option>
+                            <option value="quarterly">Quarterly</option>
+                            <option value="yearly">Yearly</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="msp-section">
+                      <div class="msp-section-title">Streak Payouts</div>
+                      <div class="msp-streak-grid">
+                        <div class="msp-field-row"><span class="msp-field-label">🔥 Bonus $/wk</span><input type="number" class="msp-field-input" id="newStreakBonusPer" step="0.05" placeholder="—" style="width:100%;box-sizing:border-box"></div>
+                        <div class="msp-field-row"><span class="msp-field-label">🌧️ Penalty $/wk</span><input type="number" class="msp-field-input" id="newStreakPenaltyPer" step="0.05" placeholder="—" style="width:100%;box-sizing:border-box"></div>
+                        <div class="msp-field-row"><span class="msp-field-label">Cap $</span><input type="number" class="msp-field-input" id="newStreakCap" step="0.25" placeholder="none" style="width:100%;box-sizing:border-box"></div>
+                      </div>
+                    </div>
+                    <div class="msp-section">
+                      <div class="msp-section-title">Flags</div>
+                      <label style="display:flex;align-items:center;gap:10px;font-size:13px;color:#ccc8e0;cursor:pointer">
+                        <input type="checkbox" id="newPeriodSensitive" style="width:16px;height:16px;accent-color:var(--header-pink)">
+                        <span>🩸 Period sensitive<br><span style="font-size:11px;color:#7a7390">No penalties during period</span></span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+                <!-- Definition -->
+                <div class="msp-section" style="margin-top:14px">
+                  <div class="msp-section-title">Definition / Rules</div>
+                  <textarea id="newNote" placeholder="Describe what counts as completion…" style="width:100%;padding:9px 10px;border:1px solid rgba(255,255,255,0.14);border-radius:8px;background:#362f52;color:#e8e3f5;font-family:Montserrat,sans-serif;font-size:13px;resize:vertical;min-height:80px;box-sizing:border-box;line-height:1.6;"></textarea>
+                </div>
+                <button onclick="window.addTask()" style="margin-top:16px;padding:10px 24px;background:var(--header-pink);color:white;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px;">Create Habit</button>
               </div>
 
               <!-- Events -->

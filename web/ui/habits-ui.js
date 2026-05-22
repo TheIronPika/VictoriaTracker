@@ -17,20 +17,66 @@ import { showCloverPopup, showLuckyDrawToast } from './lucky-draw.js';
 // ── CRUD ──────────────────────────────────────────────────────────────
 
 window.addTask = async () => {
-    const name = document.getElementById('newName').value;
-    const cat  = document.getElementById('newCat').value;
-    const icon = document.getElementById('newIcon').value || '✨';
+    const name = document.getElementById('newName').value.trim();
+    const cat  = document.getElementById('newCat').value.trim();
+    const icon = document.getElementById('newIcon').value.trim() || '✨';
     if (!name || !cat) return alert('Please enter name and category');
-    const note  = document.getElementById('newNote')?.value.trim() || '';
-    const newH  = {
-        id: Date.now().toString(), name, icon, cat, note,
-        dailyMax: 1, punish: 1, low: 3, goal: 5, bonus: 7, max: 7,
-        valPunish: -1.50, valLow: 1.00, valGoal: 2.00, valBonus: 3.00,
+
+    const numVal = (id, def) => { const v = parseFloat(document.getElementById(id)?.value); return isNaN(v) ? def : v; };
+    const intVal = (id, def) => { const v = parseInt(document.getElementById(id)?.value);   return isNaN(v) ? def : v; };
+    const optNum = (id)      => { const v = parseFloat(document.getElementById(id)?.value); return isNaN(v) ? undefined : v; };
+
+    const newH = {
+        id: Date.now().toString(), name, icon, cat,
+        note: document.getElementById('newNote')?.value.trim() || '',
+        punish:   intVal('newPunish',   1),
+        low:      intVal('newLow',      3),
+        goal:     intVal('newGoal',     5),
+        bonus:    intVal('newBonus',    7),
+        max:      intVal('newMax',      7),
+        dailyMax: intVal('newDailyMax', 1),
+        valPunish: numVal('newValPunish', -1.50),
+        valLow:    numVal('newValLow',    1.00),
+        valGoal:   numVal('newValGoal',   2.00),
+        valBonus:  numVal('newValBonus',  3.00),
+        cycleType: document.getElementById('newCycleType')?.value || 'none',
+        periodSensitive: document.getElementById('newPeriodSensitive')?.checked || false,
         history: [0, 0, 0, 0, 0, 0, 0]
     };
+
+    const starGoal         = optNum('newStarGoal');
+    const starBonus        = optNum('newStarBonus');
+    const starStreak       = optNum('newStarStreak');
+    const streakBonusPer   = optNum('newStreakBonusPer');
+    const streakPenaltyPer = optNum('newStreakPenaltyPer');
+    const streakCap        = optNum('newStreakCap');
+    if (starGoal         !== undefined) newH.starGoal         = starGoal;
+    if (starBonus        !== undefined) newH.starBonus        = starBonus;
+    if (starStreak       !== undefined) newH.starStreak       = starStreak;
+    if (streakBonusPer   !== undefined) newH.streakBonusPer   = streakBonusPer;
+    if (streakPenaltyPer !== undefined) newH.streakPenaltyPer = streakPenaltyPer;
+    if (streakCap        !== undefined) newH.streakCap        = streakCap;
+
     uiState.habits.push(newH);
     await syncHabits();
-    document.getElementById('newName').value = '';
+
+    ['newName','newCat','newNote','newStarGoal','newStarBonus','newStarStreak',
+     'newStreakBonusPer','newStreakPenaltyPer','newStreakCap'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.value = '';
+    });
+    document.getElementById('newIcon').value              = '';
+    document.getElementById('newPeriodSensitive').checked = false;
+    document.getElementById('newCycleType').value         = 'none';
+    document.getElementById('newPunish').value            = '1';
+    document.getElementById('newLow').value               = '3';
+    document.getElementById('newGoal').value              = '5';
+    document.getElementById('newBonus').value             = '7';
+    document.getElementById('newMax').value               = '7';
+    document.getElementById('newDailyMax').value          = '1';
+    document.getElementById('newValPunish').value         = '-1.50';
+    document.getElementById('newValLow').value            = '1.00';
+    document.getElementById('newValGoal').value           = '2.00';
+    document.getElementById('newValBonus').value          = '3.00';
 };
 
 window.deleteTask = async (id) => {
