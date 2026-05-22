@@ -207,6 +207,7 @@ export function render() {
                             ${streaks.streak >= 1 ? `<span class="streak-badge">🔥 ${streaks.streak}</span>` : ''}
                             ${streaks.badStreak >= 1 ? `<span class="bad-streak-badge">🌧️ ${streaks.badStreak}</span>` : ''}
                             ${cycleLabel(h) ? `<span class="cycle-badge">🔄 ${cycleLabel(h)}</span>` : ''}
+                            ${h.bountyActive ? `<span class="bounty-badge">🏆 Bounty</span>` : ''}
                             ${forecastBadgeSpan}
                             <button class="excuse-btn ${h.excused ? 'excuse-on' : ''}" onclick="event.stopPropagation();window.toggleExcused('${h.id}')">${h.excused ? 'Unexcuse' : 'Excuse'}</button>
                         </div>
