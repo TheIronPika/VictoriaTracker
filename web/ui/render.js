@@ -426,7 +426,7 @@ window.toggleManageSection = (id) => {
 window.switchTab = (idx) => {
     document.querySelectorAll('.tab').forEach((t, i)  => t.classList.toggle('active', i === idx));
     document.querySelectorAll('.view').forEach((v, i) => v.classList.toggle('active', i === idx));
-    if (idx === 3) render(); else renderHistory();
+    if (idx === 3) renderHistory(); else render();
 };
 
 window.handleManageClick = () => {
