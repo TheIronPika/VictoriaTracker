@@ -174,9 +174,10 @@ window.showManageDetail = (id) => {
     const bountyHtml = h.bountyActive
         ? '<div class="msp-section" style="margin-top:14px;border:1px solid rgba(240,192,64,0.25);background:rgba(240,192,64,0.05);border-radius:10px;padding:16px">'
         +   '<div class="msp-section-title" style="color:#f0c040;margin-bottom:12px">🏆 Active Bounty</div>'
-        +   '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">'
+        +   '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px">'
         +     '<div class="msp-field-row"><span class="msp-field-label">Bonus $</span><input type="number" class="msp-field-input" step="0.25" min="0" value="' + sv(h.bountyDollars) + '" placeholder="—" style="width:100%;box-sizing:border-box" onchange="window.updateField(\'' + h.id + '\',\'bountyDollars\',this.value)"></div>'
         +     '<div class="msp-field-row"><span class="msp-field-label">Bonus ✨ Stars</span><input type="number" class="msp-field-input" min="0" value="' + sv(h.bountyStars) + '" placeholder="—" style="width:100%;box-sizing:border-box" onchange="window.updateField(\'' + h.id + '\',\'bountyStars\',this.value)"></div>'
+        +     '<div class="msp-field-row"><span class="msp-field-label">Bonus 🎫 Excuses</span><input type="number" class="msp-field-input" min="0" value="' + sv(h.bountyExcuseTokens) + '" placeholder="—" style="width:100%;box-sizing:border-box" onchange="window.updateField(\'' + h.id + '\',\'bountyExcuseTokens\',this.value)"></div>'
         +   '</div>'
         +   '<div class="msp-field-row" style="margin-bottom:12px"><span class="msp-field-label">Note for Victoria</span><input type="text" class="msp-field-input" value="' + sv(h.bountyNote) + '" placeholder="e.g. Clean your room this week!" style="width:100%;box-sizing:border-box;font-family:Montserrat,sans-serif" onchange="window.updateField(\'' + h.id + '\',\'bountyNote\',this.value)"></div>'
         +   '<button onclick="window.clearBounty(\'' + h.id + '\')" style="padding:6px 14px;background:none;border:1px solid rgba(217,83,79,0.4);border-radius:7px;color:#d9534f;font-size:11px;font-weight:700;cursor:pointer">Remove Bounty</button>'
@@ -280,7 +281,7 @@ function buildVictoriaReportHtml(habitsArr, totalBalance, weekEndingOverride) {
     // Goal or Bonus only · sort: tier desc → payout desc → streak desc · top 4
     const wins = habitsArr
         .filter(h => !h.excused)
-        .map(h => { const c = cur(h), t = getTier(h, c), s = computeStreaksFromHistory(state.weeklyHistory, h.id); return { icon: h.icon, name: h.name, t, payout: pay(h, t), streak: s.streak, bountyDollars: h.bountyDollars || 0, bountyStars: h.bountyStars || 0, bountyNote: h.bountyNote || '' }; })
+        .map(h => { const c = cur(h), t = getTier(h, c), s = computeStreaksFromHistory(state.weeklyHistory, h.id); return { icon: h.icon, name: h.name, t, payout: pay(h, t), streak: s.streak, bountyDollars: h.bountyDollars || 0, bountyStars: h.bountyStars || 0, bountyExcuseTokens: h.bountyExcuseTokens || 0, bountyNote: h.bountyNote || '' }; })
         .filter(a => a.t === 'goal' || a.t === 'bonus')
         .sort((a, b) => tierOrder[b.t] !== tierOrder[a.t] ? tierOrder[b.t] - tierOrder[a.t] : b.payout !== a.payout ? b.payout - a.payout : b.streak - a.streak)
         .slice(0, 4);
@@ -305,7 +306,7 @@ function buildVictoriaReportHtml(habitsArr, totalBalance, weekEndingOverride) {
                 <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                     <span style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;padding:2px 6px;border-radius:4px;background:${PIL[w.t]};color:${TC[w.t]};">${w.t.toUpperCase()}</span>
                     ${w.streak >= 2 ? `<span style="font-size:10px;font-weight:600;color:#e6a02a;">🔥 ${w.streak}-week streak</span>` : ''}
-                    ${w.bountyDollars > 0 || w.bountyStars > 0 ? `<span style="font-size:9px;font-weight:700;color:#f0c040;background:rgba(240,192,64,0.12);border:1px solid rgba(240,192,64,0.3);padding:1px 6px;border-radius:8px;">🏆 Bounty${w.bountyDollars > 0 ? ' +$'+w.bountyDollars.toFixed(2) : ''}${w.bountyStars > 0 ? ' ✨'+w.bountyStars : ''}</span>` : ''}
+                    ${w.bountyDollars > 0 || w.bountyStars > 0 || w.bountyExcuseTokens > 0 ? `<span style="font-size:9px;font-weight:700;color:#f0c040;background:rgba(240,192,64,0.12);border:1px solid rgba(240,192,64,0.3);padding:1px 6px;border-radius:8px;">🏆 Bounty${w.bountyDollars > 0 ? ' +$'+w.bountyDollars.toFixed(2) : ''}${w.bountyStars > 0 ? ' ✨'+w.bountyStars : ''}${w.bountyExcuseTokens > 0 ? ' 🎫'+w.bountyExcuseTokens : ''}</span>` : ''}
                 </div>
             </div>
             <div style="font-family:'Great Vibes',cursive;font-size:22px;color:${TC[w.t]};flex-shrink:0;">+$${w.payout.toFixed(2)}</div>

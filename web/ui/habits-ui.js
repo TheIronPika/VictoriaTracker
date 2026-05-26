@@ -97,6 +97,7 @@ window.updateField = async (id, field, value) => {
                                                               h[field] = parseFloat(value) || 0;
     else if (field === 'bountyDollars' || field === 'bountyStars')
                                                               h[field] = parseFloat(value) || 0;
+    else if (field === 'bountyExcuseTokens')                  h[field] = parseInt(value)   || 0;
     else                                                      h[field] = parseInt(value)   || 1;
     await syncHabits();
 };
@@ -104,10 +105,11 @@ window.updateField = async (id, field, value) => {
 window.setBounty = async (id) => {
     const h = uiState.habits.find(x => x.id === id);
     if (!h) return;
-    h.bountyActive  = true;
-    h.bountyDollars = 0;
-    h.bountyStars   = 0;
-    h.bountyNote    = '';
+    h.bountyActive       = true;
+    h.bountyDollars      = 0;
+    h.bountyStars        = 0;
+    h.bountyExcuseTokens = 0;
+    h.bountyNote         = '';
     await syncHabits();
     window.showManageDetail(id);
 };
@@ -118,6 +120,7 @@ window.clearBounty = async (id) => {
     delete h.bountyActive;
     delete h.bountyDollars;
     delete h.bountyStars;
+    delete h.bountyExcuseTokens;
     delete h.bountyNote;
     await syncHabits();
     window.showManageDetail(id);
@@ -277,8 +280,9 @@ window.showDefinition = (id) => {
     const bountyDetailsEl = document.getElementById('defBountyDetails');
     if (h.bountyActive && bountyEl) {
         const parts = [];
-        if ((h.bountyDollars || 0) > 0) parts.push(`+$${parseFloat(h.bountyDollars).toFixed(2)} bonus`);
-        if ((h.bountyStars   || 0) > 0) parts.push(`✨ ${h.bountyStars} stars`);
+        if ((h.bountyDollars      || 0) > 0) parts.push(`+$${parseFloat(h.bountyDollars).toFixed(2)} bonus`);
+        if ((h.bountyStars        || 0) > 0) parts.push(`✨ ${h.bountyStars} stars`);
+        if ((h.bountyExcuseTokens || 0) > 0) parts.push(`🎫 ${h.bountyExcuseTokens} excuse token${h.bountyExcuseTokens !== 1 ? 's' : ''}`);
         if (h.bountyNote && h.bountyNote.trim()) parts.push(h.bountyNote.trim());
         bountyDetailsEl.innerText = parts.join(' · ') || 'Bounty active';
         bountyEl.style.display = '';

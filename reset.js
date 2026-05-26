@@ -154,8 +154,10 @@ async function runReset() {
         totalMoney += payout;
         const tierLabel = { punish:'DEBT', low:'LOW', goal:'GOAL', bonus:'BONUS' }[tier];
         const sign = payout < 0 ? '-$' : '+$';
-        const bountyNote = bountyTriggered && (h.bountyDollars || 0) > 0
-            ? ` 🏆 +$${h.bountyDollars.toFixed(2)} bounty` : '';
+        const bountyParts = [];
+        if (bountyTriggered && (h.bountyDollars || 0) > 0) bountyParts.push(`+$${h.bountyDollars.toFixed(2)}`);
+        if (bountyTriggered && (h.bountyExcuseTokens || 0) > 0) bountyParts.push(`🎫×${h.bountyExcuseTokens}`);
+        const bountyNote = bountyParts.length ? ` 🏆 ${bountyParts.join(' ')} bounty` : '';
         reportLines.push(`${h.icon} ${h.name}: ${tierLabel} (${sign}${Math.abs(payout).toFixed(2)})${bountyNote}`);
     });
 
@@ -192,13 +194,14 @@ async function runReset() {
 
     // ── Award stars ──────────────────────────────────────────────────────────
     console.log('⭐ Calculating star awards...');
-    let starDoc     = { balance:0, spent:0, items:[], log:[] };
+    let starDoc     = { balance:0, spent:0, items:[], log:[], excuseTokens:0 };
     try {
         const sd    = await firestoreGet('system/star_data');
         starDoc     = fromDoc(sd);
     } catch(e) { /* first run */ }
 
-    let totalStarsEarned = 0;
+    let totalStarsEarned   = 0;
+    let totalExcuseAwarded = 0;
     habits.forEach(h => {
         if (h.excused) return;
         const hist  = (h.history || []).slice(0, 7);
@@ -217,10 +220,24 @@ async function runReset() {
             starDoc.log = [{ ts: Date.now(), type:'earn', amount:earned, reason:reasons.join(' + ') },
                            ...(starDoc.log||[])].slice(0,200);
         }
+        // Excuse token bounty
+        if (h.bountyActive && (tier==='goal'||tier==='bonus') && (h.bountyExcuseTokens||0)>0) {
+            const tokens = h.bountyExcuseTokens;
+            totalExcuseAwarded += tokens;
+            starDoc.excuseTokens = (starDoc.excuseTokens||0) + tokens;
+            starDoc.log = [{ ts: Date.now(), type:'excuseToken', amount:tokens, reason:h.name+' Bounty 🏆' },
+                           ...(starDoc.log||[])].slice(0,200);
+        }
     });
+    const starDocChanged = totalStarsEarned > 0 || totalExcuseAwarded > 0;
     if (totalStarsEarned > 0) {
         starDoc.balance = (starDoc.balance||0) + totalStarsEarned;
         console.log(`   ✅ Awarded ${totalStarsEarned} stars`);
+    }
+    if (totalExcuseAwarded > 0) {
+        console.log(`   ✅ Awarded ${totalExcuseAwarded} excuse token(s)`);
+    }
+    if (starDocChanged) {
         await firestoreSet('system/star_data', starDoc);
     }
 
@@ -282,6 +299,7 @@ async function runReset() {
             delete updated.bountyActive;
             delete updated.bountyDollars;
             delete updated.bountyStars;
+            delete updated.bountyExcuseTokens;
             delete updated.bountyNote;
         }
 
