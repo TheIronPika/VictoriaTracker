@@ -18,11 +18,12 @@ export const state = {
     eventsLoaded: false,
 
     // Star system
-    starBalance: 0,
-    starsSpent:  0,
-    shopItems:   [],
-    starLog:     [],
-    shopLoaded:  false,
+    starBalance:   0,
+    starsSpent:    0,
+    shopItems:     [],
+    starLog:       [],
+    excuseTokens:  0,
+    shopLoaded:    false,
 
     // Bookkeeping
     initialLoadDone: false,
@@ -48,3 +49,4 @@ export function setStarBalance(n)      { state.starBalance = n; }
 export function setStarsSpent(n)       { state.starsSpent = n; }
 export function setShopItems(list)     { state.shopItems = list; }
 export function setStarLog(list)       { state.starLog = list; }
+export function setExcuseTokens(n)     { state.excuseTokens = n; }

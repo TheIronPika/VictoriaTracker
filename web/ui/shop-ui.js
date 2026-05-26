@@ -10,7 +10,9 @@ import {
     awardStars      as coreAwardStars,
     spendStars,
     addShopItem     as coreAddShopItem,
-    deleteShopItem  as coreDeleteShopItem
+    deleteShopItem  as coreDeleteShopItem,
+    addExcuseToken,
+    useExcuseToken
 } from '../../Core/stars.js';
 
 // ── Display helpers ───────────────────────────────────────────────────
@@ -66,6 +68,8 @@ export function renderShopSheet() {
 export function renderShopManage() {
     const root = document.getElementById('shopManageRoot');
     if (!root) return;
+    const countEl = document.getElementById('excuseTokenCount');
+    if (countEl) countEl.innerText = state.excuseTokens || 0;
     if (!state.shopItems.length) {
         root.innerHTML = '<div style="font-size:12px;color:#aaa;padding:4px 0;">No items yet.</div>';
         return;
@@ -74,6 +78,9 @@ export function renderShopManage() {
         '<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.1)">'
         + '<span style="font-size:18px;">' + it.icon + '</span>'
         + '<span style="flex:1;font-size:12px;font-weight:600;color:#e8e3f5;">' + it.name + '</span>'
+        + '<label style="display:flex;align-items:center;gap:4px;font-size:10px;color:#c8942a;cursor:pointer;white-space:nowrap;" title="Grants an excuse token when redeemed">'
+        + '<input type="checkbox" ' + (it.isExcuseToken ? 'checked' : '') + ' style="accent-color:#c8942a;" onchange="window.toggleShopItemExcuseToken(\'' + it.id + '\',this.checked)"> excuse token'
+        + '</label>'
         + '<span style="font-size:11px;color:#c8942a;font-weight:700;">✨ ' + it.cost + '</span>'
         + '<button class="btn-delete" style="padding:3px 8px;font-size:9px;" onclick="window.deleteShopItem(\'' + it.id + '\')">DEL</button>'
         + '</div>'
@@ -113,7 +120,9 @@ window.cancelConfirm = () => {
 
 window.doRedeem = async () => {
     if (!uiState.pendingRedeem) return;
-    await spendStars(uiState.pendingRedeem.cost, 'Redeemed: ' + uiState.pendingRedeem.name);
+    const item = uiState.pendingRedeem;
+    await spendStars(item.cost, 'Redeemed: ' + item.name);
+    if (item.isExcuseToken) await addExcuseToken();
     uiState.pendingRedeem = null;
     updateStarDisplay();
     document.getElementById('shopConfirmView').style.display = 'none';
@@ -133,14 +142,16 @@ window.awardStars = async () => {
 };
 
 window.addShopItem = async () => {
-    const icon = document.getElementById('shopItemIcon')?.value.trim() || '✨';
-    const name = document.getElementById('shopItemName')?.value.trim();
-    const cost = parseInt(document.getElementById('shopItemCost')?.value) || 0;
+    const icon          = document.getElementById('shopItemIcon')?.value.trim() || '✨';
+    const name          = document.getElementById('shopItemName')?.value.trim();
+    const cost          = parseInt(document.getElementById('shopItemCost')?.value) || 0;
+    const isExcuseToken = document.getElementById('shopItemIsExcuse')?.checked || false;
     if (!name || cost <= 0) { alert('Please enter a name and star cost.'); return; }
-    await coreAddShopItem({ icon, name, cost });
-    document.getElementById('shopItemIcon').value = '';
-    document.getElementById('shopItemName').value = '';
-    document.getElementById('shopItemCost').value = '';
+    await coreAddShopItem({ icon, name, cost, isExcuseToken });
+    document.getElementById('shopItemIcon').value     = '';
+    document.getElementById('shopItemName').value     = '';
+    document.getElementById('shopItemCost').value     = '';
+    document.getElementById('shopItemIsExcuse').checked = false;
     renderShopManage();
 };
 
@@ -148,3 +159,32 @@ window.deleteShopItem = async (id) => {
     await coreDeleteShopItem(id);
     renderShopManage();
 };
+
+window.toggleShopItemExcuseToken = async (id, checked) => {
+    const item = state.shopItems.find(it => it.id === id);
+    if (!item) return;
+    if (checked) item.isExcuseToken = true;
+    else delete item.isExcuseToken;
+    await syncStarData();
+    renderShopManage();
+};
+
+window.grantExcuseToken = async () => {
+    const amt = parseInt(document.getElementById('grantExcuseAmt')?.value) || 1;
+    if (amt <= 0) return;
+    for (let i = 0; i < amt; i++) await addExcuseToken();
+    document.getElementById('grantExcuseAmt').value = '';
+    renderExcuseTokenCount();
+    alert('✦ ' + amt + ' excuse token' + (amt !== 1 ? 's' : '') + ' granted!');
+};
+
+window.revokeExcuseToken = async () => {
+    if (state.excuseTokens <= 0) { alert('No tokens to revoke.'); return; }
+    await useExcuseToken();
+    renderExcuseTokenCount();
+};
+
+function renderExcuseTokenCount() {
+    const el = document.getElementById('excuseTokenCount');
+    if (el) el.innerText = state.excuseTokens;
+}

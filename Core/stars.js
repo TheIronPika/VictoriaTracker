@@ -4,7 +4,7 @@
 // All Firebase persistence for stars lives here.
 // ─────────────────────────────────────────────────────────────────────
 
-import { state, setStarBalance, setStarsSpent, setShopItems, setStarLog } from './state.js';
+import { state, setStarBalance, setStarsSpent, setShopItems, setStarLog, setExcuseTokens } from './state.js';
 import { readDoc, writeDoc } from './firebase.js';
 import { FIRESTORE_DOCS, STAR_LOG_MAX } from './config.js';
 
@@ -15,10 +15,11 @@ export async function loadStarData() {
     try {
         const data = await readDoc(FIRESTORE_DOCS.STARS);
         if (data) {
-            setStarBalance(data.balance || 0);
-            setStarsSpent (data.spent   || 0);
-            setShopItems  (data.items   || []);
-            setStarLog    (data.log     || []);
+            setStarBalance  (data.balance       || 0);
+            setStarsSpent   (data.spent         || 0);
+            setShopItems    (data.items         || []);
+            setStarLog      (data.log           || []);
+            setExcuseTokens (data.excuseTokens  || 0);
         }
         state.shopLoaded = true;
     } catch (e) { console.error('loadStarData:', e); }
@@ -33,10 +34,11 @@ export async function syncStarData() {
         setStarLog(state.starLog.slice(0, STAR_LOG_MAX));
     }
     await writeDoc(FIRESTORE_DOCS.STARS, {
-        balance: state.starBalance,
-        spent:   state.starsSpent,
-        items:   state.shopItems,
-        log:     state.starLog
+        balance:       state.starBalance,
+        spent:         state.starsSpent,
+        items:         state.shopItems,
+        log:           state.starLog,
+        excuseTokens:  state.excuseTokens
     });
 }
 
@@ -72,13 +74,34 @@ export async function spendStars(amount, reason) {
 /**
  * Add a new shop item.
  */
-export async function addShopItem({ icon = '✨', name, cost }) {
+export async function addShopItem({ icon = '✨', name, cost, isExcuseToken = false }) {
     if (!name || !cost || cost <= 0) throw new Error('Shop item requires name and positive cost');
     state.shopItems.push({
         id: Date.now().toString(),
-        icon, name, cost
+        icon, name, cost,
+        ...(isExcuseToken && { isExcuseToken: true })
     });
     await syncStarData();
+}
+
+/**
+ * Grant one excuse token (called after redeeming an excuse-token shop item).
+ */
+export async function addExcuseToken() {
+    setExcuseTokens(state.excuseTokens + 1);
+    addStarLog('excuseToken', 1, 'Excuse token added');
+    await syncStarData();
+}
+
+/**
+ * Consume one excuse token. Returns false if balance is 0.
+ */
+export async function useExcuseToken() {
+    if (state.excuseTokens <= 0) return false;
+    setExcuseTokens(state.excuseTokens - 1);
+    addStarLog('excuseToken', -1, 'Excuse token used');
+    await syncStarData();
+    return true;
 }
 
 /**

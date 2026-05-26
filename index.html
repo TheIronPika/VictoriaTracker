@@ -1456,6 +1456,15 @@
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;">
                   <div style="display:flex;flex-direction:column;gap:14px;">
                     <div class="msp-section">
+                      <div class="msp-section-title">Excuse Tokens</div>
+                      <div style="font-size:12px;color:#ccc8e0;margin-bottom:10px;">Current balance: <strong id="excuseTokenCount" style="color:#c8942a;">0</strong> tokens</div>
+                      <div style="display:flex;gap:10px;align-items:flex-end;">
+                        <div class="msp-field-row" style="width:80px"><span class="msp-field-label">Amount</span><input type="number" id="grantExcuseAmt" placeholder="1" min="1" value="1" style="width:100%;padding:9px 10px;border:1px solid rgba(255,255,255,0.14);border-radius:8px;background:#362f52;color:#e8e3f5;font-size:16px;font-weight:700;text-align:center;box-sizing:border-box;"></div>
+                        <button onclick="window.grantExcuseToken()" style="padding:10px 18px;background:var(--header-pink);color:white;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px;white-space:nowrap;">✦ Grant</button>
+                        <button onclick="window.revokeExcuseToken()" style="padding:10px 18px;background:none;border:1px solid rgba(217,83,79,0.4);color:#d9534f;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px;white-space:nowrap;">Revoke</button>
+                      </div>
+                    </div>
+                    <div class="msp-section">
                       <div class="msp-section-title">Award Stars to Victoria</div>
                       <div style="display:flex;gap:10px;align-items:flex-end;">
                         <div class="msp-field-row" style="width:90px"><span class="msp-field-label">Amount</span><input type="number" id="awardAmt" placeholder="10" min="1" style="width:100%;padding:9px 10px;border:1px solid rgba(255,255,255,0.14);border-radius:8px;background:#362f52;color:#e8e3f5;font-size:16px;font-weight:700;text-align:center;box-sizing:border-box;"></div>
@@ -1470,6 +1479,10 @@
                         <div class="msp-field-row" style="flex:1"><span class="msp-field-label">Item name</span><input type="text" id="shopItemName" placeholder="e.g. Movie night" style="width:100%;padding:8px;border:1px solid rgba(255,255,255,0.14);border-radius:8px;background:#362f52;color:#e8e3f5;box-sizing:border-box;font-family:Montserrat,sans-serif;"></div>
                       </div>
                       <div class="msp-field-row" style="margin-bottom:14px"><span class="msp-field-label">Star cost</span><input type="number" id="shopItemCost" placeholder="50" min="1" style="width:120px;padding:8px;border:1px solid rgba(255,255,255,0.14);border-radius:8px;background:#362f52;color:#e8e3f5;"></div>
+                      <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#ccc8e0;cursor:pointer;margin-bottom:14px;">
+                        <input type="checkbox" id="shopItemIsExcuse" style="width:15px;height:15px;accent-color:var(--header-pink);">
+                        <span>Grants an excuse token when redeemed</span>
+                      </label>
                       <button onclick="window.addShopItem()" style="padding:10px 24px;background:var(--header-pink);color:white;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px;">Add Item</button>
                     </div>
                   </div>
