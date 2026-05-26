@@ -4,14 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#6a1fa0">
+    <meta name="theme-color" content="#c084fc">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Victoria">
     <link rel="apple-touch-icon" href="icons/icon-192.png">
-    <meta name="theme-color" content="#d4a3a3">
-    <link rel="manifest" href="manifest.json">
     <title>The Victoria Tracker</title>
     
     <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@300;400;600&display=swap" rel="stylesheet">
@@ -1511,15 +1509,6 @@
 
 
     <footer>Victoria Tracker</footer>
-
-<script>
-if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/VictoriaTracker/sw.js')
-            .catch(err => console.warn('SW registration failed:', err));
-    });
-}
-</script>
 
 <!-- Star Shop Overlay -->
 <div id="shopOverlay" onclick="if(event.target===this)window.closeShop()">

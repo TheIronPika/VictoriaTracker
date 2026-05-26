@@ -1,13 +1,13 @@
 {
   "name": "Victoria Tracker",
   "short_name": "Victoria",
-  "description": "Daily habit tracker with rewards",
+  "description": "Daily habit tracker with rewards for Victoria",
   "start_url": "/VictoriaTracker/",
   "scope": "/VictoriaTracker/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#1a0a2e",
-  "theme_color": "#6a1fa0",
+  "theme_color": "#c084fc",
   "icons": [
     {
       "src": "icons/icon-192.png",
