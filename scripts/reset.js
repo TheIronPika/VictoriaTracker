@@ -279,6 +279,27 @@ async function runReset() {
     // ── Mark reset as done in Firebase ───────────────────────────────────────
     await firestoreSet('system/reset_state', { lastWeeklyReset: now.toDateString() });
 
+    // ── Clear period week flags (only if period already ended) ───────────────
+    console.log('🩸 Checking period state...');
+    try {
+        const periodDoc  = await firestoreGet('system/period_data');
+        const periodData = fromDoc(periodDoc);
+        if (!periodData.active) {
+            await firestoreSet('system/period_data', {
+                active:            false,
+                startTs:           null,
+                startDayIdx:       null,
+                periodWasThisWeek: false,
+                history:           periodData.history || []
+            });
+            console.log('   ✅ Period ended — week flags cleared');
+        } else {
+            console.log('   ℹ️  Period still active — leaving protection in place');
+        }
+    } catch (e) {
+        console.warn('   ⚠️  Could not check period flags:', e.message);
+    }
+
     console.log('');
     console.log('✅ Reset complete!');
     console.log(`   Balance: ${totalStr}`);
