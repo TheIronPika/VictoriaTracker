@@ -254,6 +254,54 @@ window.sendVictoriaTestReport = async () => {
     setTimeout(() => URL.revokeObjectURL(url), 60000);
 };
 
+// ── Weekly report popup ─────────────────────────────────────────────────
+// Auto-shows last week's report once after each weekly reset. There is no
+// per-user identity, so "seen" is tracked per device via localStorage, with a
+// per-device mute. Reuses the same report HTML as the "View Report" button.
+
+function buildLastWeekReportHtml() {
+    if (!state.weeklyHistory || !state.weeklyHistory.length) return null;
+    const lastWeek = state.weeklyHistory[0];
+    const reportHabits = lastWeek.habits.map(sh => {
+        const live = (uiState.habits || []).find(h => h.id === sh.id);
+        return live ? { ...live, history: sh.history } : null;
+    }).filter(Boolean);
+    return buildVictoriaReportHtml(reportHabits, lastWeek.totalBalance, lastWeek.weekEnding);
+}
+
+window.openWeeklyReportPopup = () => {
+    const html    = buildLastWeekReportHtml();
+    const frame   = document.getElementById('weeklyReportFrame');
+    const overlay = document.getElementById('weeklyReportOverlay');
+    if (!html || !frame || !overlay) return;
+    frame.srcdoc = html;
+    overlay.classList.add('wr-open');
+};
+
+window.closeWeeklyReportPopup = () => {
+    document.getElementById('weeklyReportOverlay')?.classList.remove('wr-open');
+};
+
+window.muteWeeklyReportPopup = () => {
+    localStorage.setItem('vt_muteWeeklyReportPopup', '1');
+    window.closeWeeklyReportPopup();
+};
+
+// Called on startup (from index.html) after habits + history load. Shows the
+// popup only when a newer weekly snapshot exists than this device last saw.
+let _weeklyPopupChecked = false;
+window.maybeShowWeeklyReportAfterReset = () => {
+    if (_weeklyPopupChecked) return;
+    if (!uiState.habits || !uiState.habits.length) return;            // wait for habits
+    if (!state.historyLoaded || !state.weeklyHistory.length) return;  // wait for history
+    _weeklyPopupChecked = true;
+    if (localStorage.getItem('vt_muteWeeklyReportPopup') === '1') return;        // muted on this device
+    const latestId = String(state.weeklyHistory[0].id);
+    if (localStorage.getItem('vt_lastSeenWeeklyReportId') === latestId) return;  // already seen
+    localStorage.setItem('vt_lastSeenWeeklyReportId', latestId);
+    window.openWeeklyReportPopup();
+};
+
 function buildVictoriaReportHtml(habitsArr, totalBalance, weekEndingOverride) {
     const now      = new Date();
     const months   = ['January','February','March','April','May','June','July','August','September','October','November','December'];

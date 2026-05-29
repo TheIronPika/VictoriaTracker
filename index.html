@@ -65,6 +65,7 @@
         watchHabits((newHabits) => {
             uiState.habits = newHabits;
             window.render?.();
+            window.maybeShowWeeklyReportAfterReset?.();
         });
 
         // ── Startup ──────────────────────────────────────────────────────────
@@ -80,7 +81,7 @@
             loadPeriodData().then(() => window.render?.()).catch(() => {});
             loadRoomsDataUI();
             // Pre-load history so streak badges render immediately
-            loadWeeklyHistory().then(() => window.render?.()).catch(() => {});
+            loadWeeklyHistory().then(() => { window.render?.(); window.maybeShowWeeklyReportAfterReset?.(); }).catch(() => {});
         });
 
     </script>
@@ -935,6 +936,41 @@
             padding: 20px; margin: 0 2px;
         }
 
+        /* ── WEEKLY REPORT POPUP (auto-shows once after each reset, per device) ── */
+        #weeklyReportOverlay {
+            position: fixed; inset: 0;
+            background: rgba(74,58,58,0.55);
+            z-index: 10000;
+            display: flex; align-items: center; justify-content: center;
+            padding: 16px;
+            opacity: 0; pointer-events: none;
+            transition: opacity 0.25s ease;
+        }
+        #weeklyReportOverlay.wr-open { opacity: 1; pointer-events: all; }
+        #weeklyReportCard {
+            width: 100%; max-width: 460px; height: 88vh;
+            background: #ede9f4;
+            border-radius: 20px;
+            overflow: hidden;
+            display: flex; flex-direction: column;
+            box-shadow: 0 12px 48px rgba(0,0,0,0.3);
+            transform: translateY(16px) scale(0.98);
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        #weeklyReportOverlay.wr-open #weeklyReportCard { transform: translateY(0) scale(1); }
+        #weeklyReportFrame { flex: 1; width: 100%; border: none; background: #ede9f4; }
+        .wr-actions {
+            display: flex; gap: 10px; padding: 12px 14px;
+            background: #fdf8ff; border-top: 1px solid rgba(196,144,196,0.18);
+            flex-shrink: 0;
+        }
+        .wr-btn {
+            padding: 12px 14px; border-radius: 10px; border: none;
+            font-family: 'Montserrat', sans-serif; font-size: 12px; font-weight: 700; cursor: pointer;
+        }
+        .wr-btn-close { flex: 1; background: var(--header-pink); color: white; }
+        .wr-btn-mute  { flex: 0 0 auto; background: none; border: 1px solid rgba(74,58,58,0.18); color: #999; }
+
         /* ── MANAGE COLLAPSIBLE SECTIONS ─────────────────────────────── */
         .manage-section-header {
             display: flex; justify-content: space-between; align-items: center;
@@ -1487,6 +1523,17 @@
             <div id="defBountyDetails" style="font-family:'Montserrat',sans-serif;font-size:13px;color:#8a6a10;line-height:1.6;"></div>
         </div>
         <div id="defBody" style="font-family:'Montserrat',sans-serif;font-size:14px;line-height:1.7;color:#666;white-space:pre-wrap;"></div>
+    </div>
+</div>
+
+<!-- Weekly report popup — auto-shows once after each weekly reset (per device) -->
+<div id="weeklyReportOverlay" onclick="if(event.target===this)window.closeWeeklyReportPopup()">
+    <div id="weeklyReportCard">
+        <iframe id="weeklyReportFrame" title="Victoria's Weekly Report"></iframe>
+        <div class="wr-actions">
+            <button class="wr-btn wr-btn-close" onclick="window.closeWeeklyReportPopup()">Close</button>
+            <button class="wr-btn wr-btn-mute" onclick="window.muteWeeklyReportPopup()" title="Stop showing this on this device">Don't show on this device</button>
+        </div>
     </div>
 </div>
 
