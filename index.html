@@ -173,6 +173,7 @@
         #moneyDisplay { transition: color 0.35s ease !important; }
         .bubble, .habit-card { transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important; }
 
+        html, body { overflow-x: hidden; }
         body {
             font-family: 'Montserrat', sans-serif;
             background-color: var(--bg-color);
@@ -200,8 +201,8 @@
         .greeting-line { font-family: 'Montserrat'; font-size: 24px; margin-bottom: 20px; text-shadow: 0 1px 2px white; }
         .beloved { font-family: 'Great Vibes', cursive; font-size: 38px; color: var(--header-pink); margin-left: 5px; }
 
-        .date-strip { display: flex; justify-content: space-between; margin-bottom: 25px; }
-        .date-item { text-align: center; cursor: pointer; padding: 10px 5px; min-width: 45px; transition: all 0.3s ease; color: #666; }
+        .date-strip { display: flex; justify-content: space-between; gap: 4px; margin-bottom: 25px; }
+        .date-item { flex: 1 1 0; min-width: 0; text-align: center; cursor: pointer; padding: 10px 4px; transition: all 0.3s ease; color: #666; }
         .date-item.active { background: white; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); color: var(--header-pink); }
         .day-label { font-size: 10px; font-weight: 600; margin-bottom: 5px; }
         .day-num { font-size: 16px; font-weight: 700; }
