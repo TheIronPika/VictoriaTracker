@@ -958,7 +958,20 @@
             transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
         #weeklyReportOverlay.wr-open #weeklyReportCard { transform: translateY(0) scale(1); }
-        #weeklyReportFrame { flex: 1; width: 100%; border: none; background: #ede9f4; }
+        .wr-weeknav {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 10px 12px; background: #f9ecec;
+            border-bottom: 1px solid rgba(196,144,196,0.18); flex-shrink: 0;
+        }
+        .wr-nav-btn {
+            width: 36px; height: 36px; border-radius: 50%; border: none;
+            background: #fff; color: #c490c4; font-size: 22px; line-height: 1; font-weight: 700;
+            cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+        }
+        .wr-nav-btn:disabled { opacity: 0.3; cursor: default; box-shadow: none; }
+        .wr-week-label { font-family: 'Playfair Display', serif; font-size: 13px; font-weight: 700; color: #a87fa8; }
+        #weeklyReportBody { flex: 1; overflow-y: auto; background: #ede9f4; -webkit-overflow-scrolling: touch; }
+        .wr-scroll4 { max-height: 264px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
         .wr-actions {
             display: flex; gap: 10px; padding: 12px 14px;
             background: #fdf8ff; border-top: 1px solid rgba(196,144,196,0.18);
@@ -1529,7 +1542,12 @@
 <!-- Weekly report popup — auto-shows once after each weekly reset (per device) -->
 <div id="weeklyReportOverlay" onclick="if(event.target===this)window.closeWeeklyReportPopup()">
     <div id="weeklyReportCard">
-        <iframe id="weeklyReportFrame" title="Victoria's Weekly Report"></iframe>
+        <div class="wr-weeknav">
+            <button id="wrPrev" class="wr-nav-btn" onclick="window.wrFlipWeek(1)" aria-label="Older week">&#8249;</button>
+            <div id="wrWeekLabel" class="wr-week-label">&mdash;</div>
+            <button id="wrNext" class="wr-nav-btn" onclick="window.wrFlipWeek(-1)" aria-label="Newer week">&#8250;</button>
+        </div>
+        <div id="weeklyReportBody"></div>
         <div class="wr-actions">
             <button class="wr-btn wr-btn-close" onclick="window.closeWeeklyReportPopup()">Close</button>
             <button class="wr-btn wr-btn-mute" onclick="window.muteWeeklyReportPopup()" title="Stop showing this on this device">Don't show on this device</button>

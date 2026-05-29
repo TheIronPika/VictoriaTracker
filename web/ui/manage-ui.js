@@ -259,35 +259,141 @@ window.sendVictoriaTestReport = async () => {
 // per-user identity, so "seen" is tracked per device via localStorage, with a
 // per-device mute. Reuses the same report HTML as the "View Report" button.
 
-// Stars gained during the reported week: everything logged between the prior
-// reset and this one (the weekly award + any lucky draws / manual awards that
-// week). Falls back to a 7-day window when only one snapshot exists.
-function starsEarnedForReportedWeek() {
+// Stars gained during a given week (index in state.weeklyHistory): everything
+// logged between the prior reset and that one (the weekly award + any lucky
+// draws / manual awards that week). Falls back to a 7-day window if no older
+// snapshot exists.
+function starsEarnedForWeekIndex(idx) {
     const wh = state.weeklyHistory || [];
-    if (!wh.length) return null;
-    const upper = wh[0].timestamp || Date.now();
-    const lower = (wh[1] && wh[1].timestamp) ? wh[1].timestamp : (upper - 7 * 86400000);
+    if (!wh[idx]) return null;
+    const upper = wh[idx].timestamp || Date.now();
+    const lower = (wh[idx + 1] && wh[idx + 1].timestamp) ? wh[idx + 1].timestamp : (upper - 7 * 86400000);
     return (state.starLog || [])
         .filter(e => e.ts > lower && e.ts <= upper && (e.type === 'earn' || e.type === 'luckyDraw'))
         .reduce((sum, e) => sum + (e.amount || 0), 0);
 }
+function starsEarnedForReportedWeek() { return starsEarnedForWeekIndex(0); }
 
-function buildLastWeekReportHtml() {
-    if (!state.weeklyHistory || !state.weeklyHistory.length) return null;
-    const lastWeek = state.weeklyHistory[0];
-    const reportHabits = lastWeek.habits.map(sh => {
+// ── Interactive in-app report (native DOM, used by the popup) ────────────
+// Same visual design as the shareable report (buildVictoriaReportHtml, still
+// used by the "View Report" share page), but rendered into the page so it can
+// flip between weeks and scroll each section instead of capping at 4.
+let _wrIndex = 0;
+
+function _wrComputeModel(wk) {
+    const tierOrder = { bonus: 3, goal: 2, low: 1, punish: 0 };
+    const cur = h => (h.history?.[6] !== undefined) ? h.history[6] : (h.history?.[h.history.length - 1] ?? 0);
+    const pay = (h, t) => ({ punish: h.valPunish||0, low: h.valLow||0, goal: h.valGoal||0, bonus: h.valBonus||0 }[t]);
+    const habitsArr = (wk.habits || []).map(sh => {
         const live = (uiState.habits || []).find(h => h.id === sh.id);
         return live ? { ...live, history: sh.history } : null;
     }).filter(Boolean);
-    return buildVictoriaReportHtml(reportHabits, lastWeek.totalBalance, lastWeek.weekEnding, starsEarnedForReportedWeek());
+    const wins = habitsArr.filter(h => !h.excused)
+        .map(h => { const c = cur(h), t = getTier(h, c), s = computeStreaksFromHistory(state.weeklyHistory, h.id); return { icon: h.icon, name: h.name, t, payout: pay(h, t), streak: s.streak, bountyDollars: h.bountyDollars||0, bountyStars: h.bountyStars||0, bountyExcuseTokens: h.bountyExcuseTokens||0 }; })
+        .filter(a => a.t === 'goal' || a.t === 'bonus')
+        .sort((a, b) => tierOrder[b.t] !== tierOrder[a.t] ? tierOrder[b.t] - tierOrder[a.t] : b.payout !== a.payout ? b.payout - a.payout : b.streak - a.streak);
+    const soClose = habitsArr.filter(h => !h.excused)
+        .map(h => { const c = cur(h), t = getTier(h, c); if (t === 'bonus') return null; const nt = t === 'punish' ? 'low' : t === 'low' ? 'goal' : 'bonus'; const gap = Math.abs(pay(h, nt) - pay(h, t)); return gap > 0 ? { icon: h.icon, name: h.name, gap } : null; })
+        .filter(Boolean)
+        .sort((a, b) => b.gap - a.gap);
+    return { wins, soClose };
 }
 
+function _wrWinRow(w) {
+    const TC  = { punish:'#d9534f', low:'#e67e22', goal:'#27ae60', bonus:'#8e44ad' };
+    const TB  = { punish:'rgba(217,83,79,0.07)', low:'rgba(230,126,34,0.07)', goal:'rgba(39,174,96,0.07)', bonus:'rgba(142,68,173,0.07)' };
+    const PIL = { punish:'rgba(217,83,79,0.12)', low:'rgba(230,126,34,0.12)', goal:'rgba(39,174,96,0.12)', bonus:'rgba(142,68,173,0.12)' };
+    return `
+        <div style="display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:10px;margin-bottom:8px;background:${TB[w.t]};">
+            <div style="font-size:22px;flex-shrink:0;">${w.icon}</div>
+            <div style="flex:1;">
+                <div style="font-weight:700;color:#4a3a3a;font-size:12px;margin-bottom:3px;">${w.name}</div>
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                    <span style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;padding:2px 6px;border-radius:4px;background:${PIL[w.t]};color:${TC[w.t]};">${w.t.toUpperCase()}</span>
+                    ${w.streak >= 2 ? `<span style="font-size:10px;font-weight:600;color:#e6a02a;">🔥 ${w.streak}-week streak</span>` : ''}
+                    ${w.bountyDollars > 0 || w.bountyStars > 0 || w.bountyExcuseTokens > 0 ? `<span style="font-size:9px;font-weight:700;color:#f0c040;background:rgba(240,192,64,0.12);border:1px solid rgba(240,192,64,0.3);padding:1px 6px;border-radius:8px;">🏆 Bounty${w.bountyDollars > 0 ? ' +$'+w.bountyDollars.toFixed(2) : ''}${w.bountyStars > 0 ? ' ✨'+w.bountyStars : ''}${w.bountyExcuseTokens > 0 ? ' 🎫'+w.bountyExcuseTokens : ''}</span>` : ''}
+                </div>
+            </div>
+            <div style="font-family:'Great Vibes',cursive;font-size:22px;color:${TC[w.t]};flex-shrink:0;">+$${w.payout.toFixed(2)}</div>
+        </div>`;
+}
+
+function _wrCloseRow(s) {
+    return `
+        <div style="display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:10px;margin-bottom:8px;background:rgba(212,163,163,0.05);border-left:3px solid rgba(196,144,196,0.3);">
+            <div style="font-size:20px;flex-shrink:0;">${s.icon}</div>
+            <div style="flex:1;">
+                <div style="font-weight:700;color:#4a3a3a;font-size:12px;margin-bottom:3px;">${s.name}</div>
+                <div style="font-size:10px;color:#aaa;">Next tier would have earned +$${s.gap.toFixed(2)} more</div>
+            </div>
+            <div style="font-family:'Great Vibes',cursive;font-size:20px;color:#c490c4;flex-shrink:0;">+$${s.gap.toFixed(2)}</div>
+        </div>`;
+}
+
+function renderInteractiveReport(idx) {
+    const wh = state.weeklyHistory || [];
+    const body = document.getElementById('weeklyReportBody');
+    if (!body || !wh.length) return;
+    _wrIndex = Math.min(Math.max(idx, 0), wh.length - 1);
+    const wk = wh[_wrIndex];
+    const { wins, soClose } = _wrComputeModel(wk);
+    const stars = starsEarnedForWeekIndex(_wrIndex) || 0;
+    const totalBalance = wk.totalBalance || 0;
+    const totalStr = `${totalBalance >= 0 ? '+' : ''}$${Math.abs(totalBalance).toFixed(2)}`;
+    const balColor = totalBalance >= 0 ? '#27ae60' : '#d9534f';
+    const weekEnding = wk.weekEnding || '';
+    const title = (label, n) =>
+        `<div style="font-family:'Playfair Display',serif;font-size:15px;color:#c490c4;font-style:italic;margin-bottom:12px;padding-bottom:10px;border-bottom:1.5px solid rgba(196,144,196,0.2);display:flex;justify-content:space-between;align-items:baseline;"><span>${label}</span>${n > 4 ? `<span style="font-size:9px;color:#c9a8c9;font-style:normal;font-weight:600;">${n} total · scroll ↓</span>` : ''}</div>`;
+    const winsHtml  = wins.length    ? wins.map(_wrWinRow).join('')      : '<div style="color:#aaa;font-size:11px;padding:8px 0;">Keep pushing — you\'ve got this next week!</div>';
+    const closeHtml = soClose.length ? soClose.map(_wrCloseRow).join('') : '<div style="color:#aaa;font-size:11px;padding:8px 0;">Great job hitting your goals!</div>';
+
+    body.innerHTML = `
+      <div style="padding:16px 14px 26px;">
+        <div style="border-radius:20px;overflow:hidden;box-shadow:0 4px 24px rgba(196,144,196,0.18);">
+          <div style="background:linear-gradient(160deg,#f9ecec 0%,#f5eaf5 50%,#ede8f8 100%);padding:26px 24px 18px;text-align:center;">
+            <div style="font-size:10px;color:#c9a8c9;text-transform:uppercase;letter-spacing:2px;font-weight:700;margin-bottom:8px;">Week Ending ${weekEnding}</div>
+            <div style="font-family:'Great Vibes',cursive;font-size:52px;color:#c490c4;line-height:1;margin-bottom:6px;">Victoria</div>
+            <div style="font-family:'Playfair Display',serif;font-size:12px;color:#b8a8c8;font-style:italic;">Weekly Report</div>
+          </div>
+          <div style="background:linear-gradient(180deg,#fdf8ff 0%,#f8f4fc 100%);padding:22px 24px;text-align:center;border-top:1px solid rgba(196,144,196,0.12);">
+            <div style="font-family:'Great Vibes',cursive;font-size:64px;color:${balColor};line-height:1;margin-bottom:6px;">${totalStr}</div>
+            <div style="font-size:9px;text-transform:uppercase;letter-spacing:2px;font-weight:700;color:#ccc;${stars>0?'margin-bottom:12px;':''}">This Week's Earnings</div>
+            ${stars>0?`<div style="display:inline-block;background:rgba(240,192,64,0.12);border:1px solid rgba(240,192,64,0.3);border-radius:20px;padding:5px 14px;font-size:11px;font-weight:600;color:#c8961a;">✨ ${stars} star${stars!==1?'s':''} earned this week</div>`:''}
+          </div>
+          <div style="background:linear-gradient(180deg,#fdf8ff 0%,#f9f4fd 100%);padding:18px 20px 16px;border-top:1px solid rgba(196,144,196,0.12);">
+            ${title('🌟 You Crushed It', wins.length)}
+            <div class="wr-scroll4">${winsHtml}</div>
+          </div>
+          <div style="background:linear-gradient(180deg,#fdf8ff 0%,#f9f4fd 100%);padding:18px 20px 16px;border-top:1px solid rgba(196,144,196,0.12);">
+            ${title('💪 So Close', soClose.length)}
+            <div class="wr-scroll4">${closeHtml}</div>
+          </div>
+          <div style="background:linear-gradient(160deg,#f9ecec 0%,#f5eaf5 50%,#ede8f8 100%);padding:22px;text-align:center;border-top:1px solid rgba(196,144,196,0.12);">
+            <div style="font-size:12px;color:#b0a0b8;line-height:1.7;margin-bottom:10px;">You're doing amazing!<br>Keep up the momentum next week. 💕</div>
+            <div style="font-family:'Great Vibes',cursive;font-size:30px;color:#c490c4;">— Drew</div>
+          </div>
+        </div>
+      </div>`;
+
+    const lbl = document.getElementById('wrWeekLabel');
+    const prevBtn = document.getElementById('wrPrev');
+    const nextBtn = document.getElementById('wrNext');
+    if (lbl) lbl.textContent = weekEnding ? ('Week of ' + weekEnding) : 'Weekly Report';
+    if (prevBtn) prevBtn.disabled = (_wrIndex >= wh.length - 1);  // no older week
+    if (nextBtn) nextBtn.disabled = (_wrIndex <= 0);              // no newer week
+    body.scrollTop = 0;
+}
+
+window.wrFlipWeek = (dir) => {
+    const len = (state.weeklyHistory || []).length;
+    const ni  = Math.min(Math.max(_wrIndex + dir, 0), len - 1);
+    if (ni !== _wrIndex) renderInteractiveReport(ni);
+};
+
 window.openWeeklyReportPopup = () => {
-    const html    = buildLastWeekReportHtml();
-    const frame   = document.getElementById('weeklyReportFrame');
     const overlay = document.getElementById('weeklyReportOverlay');
-    if (!html || !frame || !overlay) return;
-    frame.srcdoc = html;
+    if (!overlay || !(state.weeklyHistory || []).length) return;
+    renderInteractiveReport(0);
     overlay.classList.add('wr-open');
 };
 
