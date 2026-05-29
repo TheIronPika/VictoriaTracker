@@ -24,33 +24,23 @@
         // Victoria Tracker — modular shell
         // Everything in /core is framework-agnostic (no DOM).
         // Everything in /web/ui is web-only (renders to DOM, registers handlers).
-        // This file only does: imports → emailjs init → runWeeklyReport orchestrator
+        // This file only does: imports → emailjs init
         // → watchHabits subscription → startup loaders.
         // ─────────────────────────────────────────────────────────────────────
 
         // ── CORE (data + pure logic) ─────────────────────────────────────────
         import { state } from './Core/state.js';
         import { EMAIL_CONFIG } from './Core/config.js';
-        import { watchHabits, syncHabits } from './Core/habits-data.js';
+        import { watchHabits } from './Core/habits-data.js';
         import { loadStarData } from './Core/stars.js';
-        import { loadWeeklyHistory, saveWeekSnapshot } from './Core/history.js';
-        import { loadPeriodData, syncPeriodData } from './Core/period.js';
-        import { loadRoomsData, syncRoomsData } from './Core/rooms.js';
-        import {
-            buildWeeklyReport,
-            awardWeeklyStars,
-            applyStreakPayouts,
-            updateHabitStreaks,
-            advanceHabitCycles
-        } from './Core/reports.js';
+        import { loadWeeklyHistory } from './Core/history.js';
+        import { loadPeriodData } from './Core/period.js';
 
         // ── UI (DOM rendering + window.* handler registration) ───────────────
         import { uiState } from './web/ui/ui-state.js';
         import { render } from './web/ui/render.js';
         import { loadSeasonalEventsUI } from './web/ui/events-ui.js';
-        import { updateStarDisplay } from './web/ui/shop-ui.js';
-        import { loadRoomsDataUI, renderRoomsSection } from './web/ui/rooms-ui.js';
-        import { buildVictoriaReportHtml } from './web/ui/manage-ui.js';
+        import { loadRoomsDataUI } from './web/ui/rooms-ui.js';
         import {
             applyTimeColor, initParticles,
             updateGreeting, fetchWeatherAndUV,
@@ -68,61 +58,6 @@
 
         // ── EmailJS init ─────────────────────────────────────────────────────
         emailjs.init(EMAIL_CONFIG.publicKey);
-
-        // ── Weekly report orchestrator ───────────────────────────────────────
-        // Phases (in order, all guarded by single try/catch around email send):
-        //   1. Build text + HTML report
-        //   2. Send email (must succeed before anything writes)
-        //   3. Award stars
-        //   4. Add streak bonuses/penalties to total
-        //   5. Update streak counters
-        //   6. Save week snapshot
-        //   7. Reset habit histories + advance cyclic habits
-        //   8. Advance room streaks + clear period flag
-        window.runWeeklyReport = async (isManual = true) => {
-            const { totalMoney: baseMoney, dateStr } = buildWeeklyReport(uiState.habits);
-            const reportHtml = buildVictoriaReportHtml(uiState.habits, baseMoney);
-
-            try {
-                // EmailJS template body MUST use {{{summary_text}}} (triple braces) to inject raw HTML
-                await emailjs.send(EMAIL_CONFIG.serviceId, EMAIL_CONFIG.templateId, { summary_text: reportHtml });
-
-                // Phase 3: star awards
-                await awardWeeklyStars(uiState.habits);
-                updateStarDisplay();
-
-                // Phase 4: streak bonus/penalty payouts
-                const totalMoney = applyStreakPayouts(uiState.habits, baseMoney);
-
-                // Phase 5: update streak counters
-                uiState.habits = updateHabitStreaks(uiState.habits);
-                await saveWeekSnapshot(uiState.habits, totalMoney, dateStr);
-
-                // Phase 6: reset histories + advance cycles
-                uiState.habits = advanceHabitCycles(uiState.habits);
-                await syncHabits();
-
-                // Phase 7: advance room streaks
-                state.roomsData = state.roomsData.map(r => ({
-                    ...r,
-                    streak: r.checked ? Math.min(r.streak + 1, r.maxStreak) : 0,
-                    checked: false
-                }));
-                await syncRoomsData();
-                if (state.roomsLoaded) renderRoomsSection();
-
-                // Phase 8: clear period flag so streak protection resumes normal rules
-                state.periodData.periodWasThisWeek = false;
-                await syncPeriodData();
-
-                state.historyLoaded = false;
-                if (isManual) alert('Weekly report sent and habits reset!');
-            } catch (error) {
-                const msg = error?.text || error?.message || JSON.stringify(error);
-                console.error('Weekly report failed:', error);
-                if (isManual) alert('Email failed to send.\n\nError: ' + msg);
-            }
-        };
 
         // ── Data watcher ─────────────────────────────────────────────────────
         // onSnapshot keeps uiState.habits in sync with Firestore and re-renders.
@@ -1317,8 +1252,7 @@
                 <button class="msp-nav-btn" id="msp-nav-stars"  onclick="window.switchManageSection('stars')">&#10024; Stars</button>
                 <button class="msp-nav-btn" id="msp-nav-period" onclick="window.switchManageSection('period')">&#129656; Period</button>
                 <div style="flex:1"></div>
-                <button onclick="window.sendVictoriaTestReport()" style="padding:8px;background:#8e44ad;color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;margin-bottom:6px;">&#128203; View Report</button>
-                <button onclick="window.runWeeklyReport(true)" style="padding:8px;background:#4a3a3a;color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">&#10003; Submit &amp; Reset</button>
+                <button onclick="window.sendVictoriaTestReport()" style="padding:8px;background:#8e44ad;color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">&#128203; View Report</button>
               </nav>
               <div class="msp-habit-list-wrap">
                 <div id="manageListRoot"></div>
