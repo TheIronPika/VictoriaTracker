@@ -2,6 +2,8 @@
 // Runs via GitHub Actions every Monday at 4am Central
 // Reads habits from Firebase, calculates tiers/payouts/streaks,
 // saves history snapshot, sends email report, wipes history.
+// Also pays out + resets the room-check tracker (advance streaks, clear marks),
+// mirroring the in-app runWeeklyReport (index.html) so both reset paths match.
 
 import { initializeApp, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
@@ -116,6 +118,14 @@ async function runReset() {
     let habits      = fromDoc(habitsDoc).data || [];
     console.log(`   Found ${habits.length} habits`);
 
+    // ── Load rooms (room-check housekeeping tracker) ─────────────────────────
+    let rooms = [];
+    try {
+        const roomsDoc = await firestoreGet('system/rooms_data');
+        rooms = fromDoc(roomsDoc).rooms || [];
+        console.log(`   Found ${rooms.length} rooms`);
+    } catch (e) { console.warn('   ⚠️  Could not load rooms:', e.message); }
+
     // ── Calculate payouts & report lines ────────────────────────────────────
     let totalMoney = 0;
     let reportLines = [];
@@ -151,6 +161,14 @@ async function runReset() {
         const tierLabel = { punish:'DEBT', low:'LOW', goal:'GOAL', bonus:'BONUS' }[tier];
         const sign = payout < 0 ? '-$' : '+$';
         reportLines.push(`${h.icon} ${h.name}: ${tierLabel} (${sign}${Math.abs(payout).toFixed(2)})`);
+    });
+
+    // ── Room payouts (each cleaned room earns min(streak+1, maxStreak)) ──────
+    rooms.forEach(r => {
+        if (!r.checked) return;
+        const payout = Math.min((r.streak || 0) + 1, r.maxStreak || 0);
+        totalMoney += payout;
+        reportLines.push(`${r.icon} ${r.name}: CLEAN (+$${payout.toFixed(2)})`);
     });
 
     const totalStr = (totalMoney < 0 ? '-$' : '+$') + Math.abs(totalMoney).toFixed(2);
@@ -275,6 +293,17 @@ async function runReset() {
     });
 
     await firestoreSet('system/habits_list', { data: habits });
+
+    // ── Reset rooms: advance streaks for cleaned rooms, clear all marks ──────
+    if (rooms.length) {
+        const resetRooms = rooms.map(r => ({
+            ...r,
+            streak:  r.checked ? Math.min((r.streak || 0) + 1, r.maxStreak || 0) : 0,
+            checked: false
+        }));
+        await firestoreSet('system/rooms_data', { rooms: resetRooms });
+        console.log('   ✅ Rooms reset (streaks advanced, marks cleared)');
+    }
 
     // ── Mark reset as done in Firebase ───────────────────────────────────────
     await firestoreSet('system/reset_state', { lastWeeklyReset: now.toDateString() });
