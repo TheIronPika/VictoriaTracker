@@ -280,7 +280,8 @@ function starsEarnedForReportedWeek() { return starsEarnedForWeekIndex(0); }
 // flip between weeks and scroll each section instead of capping at 4.
 let _wrIndex = 0;
 
-function _wrComputeModel(wk) {
+function _wrComputeModel(wk, histForStreaks) {
+    const hist = histForStreaks || state.weeklyHistory;
     const tierOrder = { bonus: 3, goal: 2, low: 1, punish: 0 };
     const cur = h => (h.history?.[6] !== undefined) ? h.history[6] : (h.history?.[h.history.length - 1] ?? 0);
     const pay = (h, t) => ({ punish: h.valPunish||0, low: h.valLow||0, goal: h.valGoal||0, bonus: h.valBonus||0 }[t]);
@@ -289,14 +290,29 @@ function _wrComputeModel(wk) {
         return live ? { ...live, history: sh.history } : null;
     }).filter(Boolean);
     const wins = habitsArr.filter(h => !h.excused)
-        .map(h => { const c = cur(h), t = getTier(h, c), s = computeStreaksFromHistory(state.weeklyHistory, h.id); return { icon: h.icon, name: h.name, t, payout: pay(h, t), streak: s.streak, bountyDollars: h.bountyDollars||0, bountyStars: h.bountyStars||0, bountyExcuseTokens: h.bountyExcuseTokens||0 }; })
+        .map(h => { const c = cur(h), t = getTier(h, c), s = computeStreaksFromHistory(hist, h.id); return { icon: h.icon, name: h.name, t, payout: pay(h, t), streak: s.streak, bountyDollars: h.bountyDollars||0, bountyStars: h.bountyStars||0, bountyExcuseTokens: h.bountyExcuseTokens||0 }; })
         .filter(a => a.t === 'goal' || a.t === 'bonus')
         .sort((a, b) => tierOrder[b.t] !== tierOrder[a.t] ? tierOrder[b.t] - tierOrder[a.t] : b.payout !== a.payout ? b.payout - a.payout : b.streak - a.streak);
     const soClose = habitsArr.filter(h => !h.excused)
         .map(h => { const c = cur(h), t = getTier(h, c); if (t === 'bonus') return null; const nt = t === 'punish' ? 'low' : t === 'low' ? 'goal' : 'bonus'; const gap = Math.abs(pay(h, nt) - pay(h, t)); return gap > 0 ? { icon: h.icon, name: h.name, gap } : null; })
         .filter(Boolean)
         .sort((a, b) => b.gap - a.gap);
-    return { wins, soClose };
+
+    // Streaks: largest active good streak, largest bad streak, and the rolling
+    // $ each is worth this week — min(weeks × per, cap), the same formula the
+    // payout engine uses. Streak length is computed "as of" the reported week.
+    let topStreak = null, topSlump = null, totalBonus = 0, totalPenalty = 0;
+    habitsArr.filter(h => !h.excused).forEach(h => {
+        const { streak, badStreak } = computeStreaksFromHistory(hist, h.id);
+        const cap     = h.streakCap ? parseFloat(h.streakCap) : Infinity;
+        const bonus   = (streak    >= 2 && (h.streakBonusPer   || 0) > 0) ? Math.min(streak    * h.streakBonusPer,   cap) : 0;
+        const penalty = (badStreak >= 2 && (h.streakPenaltyPer || 0) > 0) ? Math.min(badStreak * h.streakPenaltyPer, cap) : 0;
+        totalBonus += bonus; totalPenalty += penalty;
+        if (streak    >= 2 && (!topStreak || streak    > topStreak.streak))   topStreak = { icon: h.icon, name: h.name, streak, bonus };
+        if (badStreak >= 2 && (!topSlump  || badStreak > topSlump.badStreak)) topSlump  = { icon: h.icon, name: h.name, badStreak, penalty };
+    });
+
+    return { wins, soClose, streaks: { topStreak, topSlump, totalBonus, totalPenalty } };
 }
 
 function _wrWinRow(w) {
@@ -330,13 +346,58 @@ function _wrCloseRow(s) {
         </div>`;
 }
 
+function _wrStreakRow(o) {
+    return `
+        <div style="display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:10px;margin-bottom:8px;background:${o.bg};border-left:3px solid ${o.border};">
+            <div style="font-size:20px;flex-shrink:0;">${o.emoji}</div>
+            <div style="flex:1;">
+                <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;color:${o.labelColor};margin-bottom:2px;">${o.label}</div>
+                <div style="font-weight:700;color:#4a3a3a;font-size:12px;">${o.icon} ${o.name}</div>
+                <div style="font-size:10px;color:#aaa;">${o.weeksText}</div>
+            </div>
+            <div style="font-family:'Great Vibes',cursive;font-size:20px;color:${o.amountColor};flex-shrink:0;">${o.amount}</div>
+        </div>`;
+}
+
+function _wrStreakSectionHtml(s) {
+    if (!s.topStreak && !s.topSlump) {
+        return '<div style="color:#aaa;font-size:11px;padding:8px 0;">No multi-week streaks yet — string a few good weeks together to start rolling up bonuses!</div>';
+    }
+    let rows = '';
+    if (s.topStreak) {
+        rows += _wrStreakRow({
+            emoji: '🔥', label: 'Longest streak', labelColor: '#c8961a',
+            bg: 'rgba(240,192,64,0.08)', border: 'rgba(240,192,64,0.4)',
+            icon: s.topStreak.icon, name: s.topStreak.name,
+            weeksText: `${s.topStreak.streak} weeks rolling`,
+            amount: s.topStreak.bonus > 0 ? `+$${s.topStreak.bonus.toFixed(2)}` : '—',
+            amountColor: '#27ae60'
+        });
+    }
+    if (s.topSlump) {
+        rows += _wrStreakRow({
+            emoji: '🌧️', label: 'Longest slump', labelColor: '#d9534f',
+            bg: 'rgba(217,83,79,0.05)', border: 'rgba(217,83,79,0.35)',
+            icon: s.topSlump.icon, name: s.topSlump.name,
+            weeksText: `${s.topSlump.badStreak} weeks down`,
+            amount: s.topSlump.penalty > 0 ? `-$${s.topSlump.penalty.toFixed(2)}` : '—',
+            amountColor: '#d9534f'
+        });
+    }
+    const summary = (s.totalBonus > 0 || s.totalPenalty > 0)
+        ? `<div style="text-align:center;font-size:10px;color:#b0a0b8;margin-top:4px;">Rolling streak $ this week: ${s.totalBonus > 0 ? `<b style="color:#27ae60;">+$${s.totalBonus.toFixed(2)}</b> earned` : ''}${s.totalBonus > 0 && s.totalPenalty > 0 ? ' · ' : ''}${s.totalPenalty > 0 ? `<b style="color:#d9534f;">-$${s.totalPenalty.toFixed(2)}</b> lost` : ''}</div>`
+        : '';
+    return rows + summary;
+}
+
 function renderInteractiveReport(idx) {
     const wh = state.weeklyHistory || [];
     const body = document.getElementById('weeklyReportBody');
     if (!body || !wh.length) return;
     _wrIndex = Math.min(Math.max(idx, 0), wh.length - 1);
     const wk = wh[_wrIndex];
-    const { wins, soClose } = _wrComputeModel(wk);
+    const histAsOf = wh.slice(_wrIndex);   // reported week + older → streaks "as of" then
+    const { wins, soClose, streaks } = _wrComputeModel(wk, histAsOf);
     const stars = starsEarnedForWeekIndex(_wrIndex) || 0;
     const totalBalance = wk.totalBalance || 0;
     const totalStr = `${totalBalance >= 0 ? '+' : ''}$${Math.abs(totalBalance).toFixed(2)}`;
@@ -346,6 +407,7 @@ function renderInteractiveReport(idx) {
         `<div style="font-family:'Playfair Display',serif;font-size:15px;color:#c490c4;font-style:italic;margin-bottom:12px;padding-bottom:10px;border-bottom:1.5px solid rgba(196,144,196,0.2);display:flex;justify-content:space-between;align-items:baseline;"><span>${label}</span>${n > 4 ? `<span style="font-size:9px;color:#c9a8c9;font-style:normal;font-weight:600;">${n} total · scroll ↓</span>` : ''}</div>`;
     const winsHtml  = wins.length    ? wins.map(_wrWinRow).join('')      : '<div style="color:#aaa;font-size:11px;padding:8px 0;">Keep pushing — you\'ve got this next week!</div>';
     const closeHtml = soClose.length ? soClose.map(_wrCloseRow).join('') : '<div style="color:#aaa;font-size:11px;padding:8px 0;">Great job hitting your goals!</div>';
+    const streakHtml = _wrStreakSectionHtml(streaks);
 
     body.innerHTML = `
       <div style="padding:16px 14px 26px;">
@@ -367,6 +429,10 @@ function renderInteractiveReport(idx) {
           <div style="background:linear-gradient(180deg,#fdf8ff 0%,#f9f4fd 100%);padding:18px 20px 16px;border-top:1px solid rgba(196,144,196,0.12);">
             ${title('💪 So Close', soClose.length)}
             <div class="wr-scroll4">${closeHtml}</div>
+          </div>
+          <div style="background:linear-gradient(180deg,#fdf8ff 0%,#f9f4fd 100%);padding:18px 20px 16px;border-top:1px solid rgba(196,144,196,0.12);">
+            <div style="font-family:'Playfair Display',serif;font-size:15px;color:#c490c4;font-style:italic;margin-bottom:12px;padding-bottom:10px;border-bottom:1.5px solid rgba(196,144,196,0.2);">🔥 Streaks</div>
+            ${streakHtml}
           </div>
           <div style="background:linear-gradient(160deg,#f9ecec 0%,#f5eaf5 50%,#ede8f8 100%);padding:22px;text-align:center;border-top:1px solid rgba(196,144,196,0.12);">
             <div style="font-size:12px;color:#b0a0b8;line-height:1.7;margin-bottom:10px;">You're doing amazing!<br>Keep up the momentum next week. 💕</div>
