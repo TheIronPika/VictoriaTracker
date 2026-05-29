@@ -279,6 +279,8 @@ function starsEarnedForReportedWeek() { return starsEarnedForWeekIndex(0); }
 // used by the "View Report" share page), but rendered into the page so it can
 // flip between weeks and scroll each section instead of capping at 4.
 let _wrIndex = 0;
+let _wrStreakMode = 'weeks';   // 'weeks' | 'dollars' — Streaks section toggle
+let _wrLastStreaks = null;      // last computed streak model, for in-place toggle
 
 function _wrComputeModel(wk, histForStreaks) {
     const hist = histForStreaks || state.weeklyHistory;
@@ -301,18 +303,22 @@ function _wrComputeModel(wk, histForStreaks) {
     // Streaks: largest active good streak, largest bad streak, and the rolling
     // $ each is worth this week — min(weeks × per, cap), the same formula the
     // payout engine uses. Streak length is computed "as of" the reported week.
-    let topStreak = null, topSlump = null, totalBonus = 0, totalPenalty = 0;
+    let topStreak = null, topSlump = null, topBonus = null, topPenalty = null, totalBonus = 0, totalPenalty = 0;
     habitsArr.filter(h => !h.excused).forEach(h => {
         const { streak, badStreak } = computeStreaksFromHistory(hist, h.id);
         const cap     = h.streakCap ? parseFloat(h.streakCap) : Infinity;
         const bonus   = (streak    >= 2 && (h.streakBonusPer   || 0) > 0) ? Math.min(streak    * h.streakBonusPer,   cap) : 0;
         const penalty = (badStreak >= 2 && (h.streakPenaltyPer || 0) > 0) ? Math.min(badStreak * h.streakPenaltyPer, cap) : 0;
         totalBonus += bonus; totalPenalty += penalty;
+        // by weeks
         if (streak    >= 2 && (!topStreak || streak    > topStreak.streak))   topStreak = { icon: h.icon, name: h.name, streak, bonus };
         if (badStreak >= 2 && (!topSlump  || badStreak > topSlump.badStreak)) topSlump  = { icon: h.icon, name: h.name, badStreak, penalty };
+        // by rolling $
+        if (bonus   > 0 && (!topBonus   || bonus   > topBonus.bonus))     topBonus   = { icon: h.icon, name: h.name, streak, bonus };
+        if (penalty > 0 && (!topPenalty || penalty > topPenalty.penalty)) topPenalty = { icon: h.icon, name: h.name, badStreak, penalty };
     });
 
-    return { wins, soClose, streaks: { topStreak, topSlump, totalBonus, totalPenalty } };
+    return { wins, soClose, streaks: { topStreak, topSlump, topBonus, topPenalty, totalBonus, totalPenalty } };
 }
 
 function _wrWinRow(w) {
@@ -359,35 +365,52 @@ function _wrStreakRow(o) {
         </div>`;
 }
 
-function _wrStreakSectionHtml(s) {
-    if (!s.topStreak && !s.topSlump) {
-        return '<div style="color:#aaa;font-size:11px;padding:8px 0;">No multi-week streaks yet — string a few good weeks together to start rolling up bonuses!</div>';
-    }
-    let rows = '';
-    if (s.topStreak) {
-        rows += _wrStreakRow({
+// Inner content of the Streaks section: a By weeks / By $ toggle, two rows
+// (good + bad) for the selected mode, and the weekly rolling-$ total.
+function _wrStreakSectionInner(s, mode) {
+    const tog = (m, label) =>
+        `<button onclick="window.wrStreakMode('${m}')" style="flex:1;padding:7px 4px;border-radius:8px;border:none;font-family:'Montserrat',sans-serif;font-size:10px;font-weight:700;cursor:pointer;background:${mode === m ? '#c490c4' : 'rgba(196,144,196,0.12)'};color:${mode === m ? '#fff' : '#a87fa8'};">${label}</button>`;
+    const toggleBar = `<div style="display:flex;gap:6px;margin-bottom:12px;">${tog('weeks', 'By weeks')}${tog('dollars', 'By $')}</div>`;
+
+    let hot = '', cold = '';
+    if (mode === 'dollars') {
+        if (s.topBonus) hot = _wrStreakRow({
+            emoji: '🔥', label: 'Highest rolling $', labelColor: '#c8961a',
+            bg: 'rgba(240,192,64,0.08)', border: 'rgba(240,192,64,0.4)',
+            icon: s.topBonus.icon, name: s.topBonus.name,
+            weeksText: `${s.topBonus.streak} weeks rolling`,
+            amount: `+$${s.topBonus.bonus.toFixed(2)}`, amountColor: '#27ae60'
+        });
+        if (s.topPenalty) cold = _wrStreakRow({
+            emoji: '🌧️', label: 'Lowest rolling $', labelColor: '#d9534f',
+            bg: 'rgba(217,83,79,0.05)', border: 'rgba(217,83,79,0.35)',
+            icon: s.topPenalty.icon, name: s.topPenalty.name,
+            weeksText: `${s.topPenalty.badStreak} weeks down`,
+            amount: `-$${s.topPenalty.penalty.toFixed(2)}`, amountColor: '#d9534f'
+        });
+        if (!hot && !cold) return toggleBar + '<div style="color:#aaa;font-size:11px;padding:8px 0;">No streak bonuses or penalties this week.</div>';
+    } else {
+        if (s.topStreak) hot = _wrStreakRow({
             emoji: '🔥', label: 'Longest streak', labelColor: '#c8961a',
             bg: 'rgba(240,192,64,0.08)', border: 'rgba(240,192,64,0.4)',
             icon: s.topStreak.icon, name: s.topStreak.name,
             weeksText: `${s.topStreak.streak} weeks rolling`,
-            amount: s.topStreak.bonus > 0 ? `+$${s.topStreak.bonus.toFixed(2)}` : '—',
-            amountColor: '#27ae60'
+            amount: s.topStreak.bonus > 0 ? `+$${s.topStreak.bonus.toFixed(2)}` : '—', amountColor: '#27ae60'
         });
-    }
-    if (s.topSlump) {
-        rows += _wrStreakRow({
+        if (s.topSlump) cold = _wrStreakRow({
             emoji: '🌧️', label: 'Longest slump', labelColor: '#d9534f',
             bg: 'rgba(217,83,79,0.05)', border: 'rgba(217,83,79,0.35)',
             icon: s.topSlump.icon, name: s.topSlump.name,
             weeksText: `${s.topSlump.badStreak} weeks down`,
-            amount: s.topSlump.penalty > 0 ? `-$${s.topSlump.penalty.toFixed(2)}` : '—',
-            amountColor: '#d9534f'
+            amount: s.topSlump.penalty > 0 ? `-$${s.topSlump.penalty.toFixed(2)}` : '—', amountColor: '#d9534f'
         });
+        if (!hot && !cold) return toggleBar + '<div style="color:#aaa;font-size:11px;padding:8px 0;">No multi-week streaks yet — string a few good weeks together to start rolling up bonuses!</div>';
     }
+
     const summary = (s.totalBonus > 0 || s.totalPenalty > 0)
         ? `<div style="text-align:center;font-size:10px;color:#b0a0b8;margin-top:4px;">Rolling streak $ this week: ${s.totalBonus > 0 ? `<b style="color:#27ae60;">+$${s.totalBonus.toFixed(2)}</b> earned` : ''}${s.totalBonus > 0 && s.totalPenalty > 0 ? ' · ' : ''}${s.totalPenalty > 0 ? `<b style="color:#d9534f;">-$${s.totalPenalty.toFixed(2)}</b> lost` : ''}</div>`
         : '';
-    return rows + summary;
+    return toggleBar + hot + cold + summary;
 }
 
 function renderInteractiveReport(idx) {
@@ -407,7 +430,8 @@ function renderInteractiveReport(idx) {
         `<div style="font-family:'Playfair Display',serif;font-size:15px;color:#c490c4;font-style:italic;margin-bottom:12px;padding-bottom:10px;border-bottom:1.5px solid rgba(196,144,196,0.2);display:flex;justify-content:space-between;align-items:baseline;"><span>${label}</span>${n > 4 ? `<span style="font-size:9px;color:#c9a8c9;font-style:normal;font-weight:600;">${n} total · scroll ↓</span>` : ''}</div>`;
     const winsHtml  = wins.length    ? wins.map(_wrWinRow).join('')      : '<div style="color:#aaa;font-size:11px;padding:8px 0;">Keep pushing — you\'ve got this next week!</div>';
     const closeHtml = soClose.length ? soClose.map(_wrCloseRow).join('') : '<div style="color:#aaa;font-size:11px;padding:8px 0;">Great job hitting your goals!</div>';
-    const streakHtml = _wrStreakSectionHtml(streaks);
+    _wrLastStreaks = streaks;
+    const streakHtml = _wrStreakSectionInner(streaks, _wrStreakMode);
 
     body.innerHTML = `
       <div style="padding:16px 14px 26px;">
@@ -432,7 +456,7 @@ function renderInteractiveReport(idx) {
           </div>
           <div style="background:linear-gradient(180deg,#fdf8ff 0%,#f9f4fd 100%);padding:18px 20px 16px;border-top:1px solid rgba(196,144,196,0.12);">
             <div style="font-family:'Playfair Display',serif;font-size:15px;color:#c490c4;font-style:italic;margin-bottom:12px;padding-bottom:10px;border-bottom:1.5px solid rgba(196,144,196,0.2);">🔥 Streaks</div>
-            ${streakHtml}
+            <div id="wrStreakSection">${streakHtml}</div>
           </div>
           <div style="background:linear-gradient(160deg,#f9ecec 0%,#f5eaf5 50%,#ede8f8 100%);padding:22px;text-align:center;border-top:1px solid rgba(196,144,196,0.12);">
             <div style="font-size:12px;color:#b0a0b8;line-height:1.7;margin-bottom:10px;">You're doing amazing!<br>Keep up the momentum next week. 💕</div>
@@ -454,6 +478,15 @@ window.wrFlipWeek = (dir) => {
     const len = (state.weeklyHistory || []).length;
     const ni  = Math.min(Math.max(_wrIndex + dir, 0), len - 1);
     if (ni !== _wrIndex) renderInteractiveReport(ni);
+};
+
+// Toggle the Streaks section between "By weeks" and "By $" without re-rendering
+// the whole report (keeps the user's scroll position).
+window.wrStreakMode = (m) => {
+    if ((m !== 'weeks' && m !== 'dollars') || m === _wrStreakMode) return;
+    _wrStreakMode = m;
+    const el = document.getElementById('wrStreakSection');
+    if (el && _wrLastStreaks) el.innerHTML = _wrStreakSectionInner(_wrLastStreaks, _wrStreakMode);
 };
 
 window.openWeeklyReportPopup = () => {
