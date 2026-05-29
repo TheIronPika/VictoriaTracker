@@ -246,7 +246,7 @@ window.sendVictoriaTestReport = async () => {
         (state.roomsData || []).forEach(r => { if (r.checked) reportTotal += Math.min(r.streak + 1, r.maxStreak); });
     }
 
-    const html = buildVictoriaReportHtml(reportHabits, reportTotal, reportWeekEnding);
+    const html = buildVictoriaReportHtml(reportHabits, reportTotal, reportWeekEnding, starsEarnedForReportedWeek());
     const blob  = new Blob([html], { type: 'text/html' });
     const url   = URL.createObjectURL(blob);
     const tab   = window.open(url, '_blank');
@@ -259,6 +259,19 @@ window.sendVictoriaTestReport = async () => {
 // per-user identity, so "seen" is tracked per device via localStorage, with a
 // per-device mute. Reuses the same report HTML as the "View Report" button.
 
+// Stars gained during the reported week: everything logged between the prior
+// reset and this one (the weekly award + any lucky draws / manual awards that
+// week). Falls back to a 7-day window when only one snapshot exists.
+function starsEarnedForReportedWeek() {
+    const wh = state.weeklyHistory || [];
+    if (!wh.length) return null;
+    const upper = wh[0].timestamp || Date.now();
+    const lower = (wh[1] && wh[1].timestamp) ? wh[1].timestamp : (upper - 7 * 86400000);
+    return (state.starLog || [])
+        .filter(e => e.ts > lower && e.ts <= upper && (e.type === 'earn' || e.type === 'luckyDraw'))
+        .reduce((sum, e) => sum + (e.amount || 0), 0);
+}
+
 function buildLastWeekReportHtml() {
     if (!state.weeklyHistory || !state.weeklyHistory.length) return null;
     const lastWeek = state.weeklyHistory[0];
@@ -266,7 +279,7 @@ function buildLastWeekReportHtml() {
         const live = (uiState.habits || []).find(h => h.id === sh.id);
         return live ? { ...live, history: sh.history } : null;
     }).filter(Boolean);
-    return buildVictoriaReportHtml(reportHabits, lastWeek.totalBalance, lastWeek.weekEnding);
+    return buildVictoriaReportHtml(reportHabits, lastWeek.totalBalance, lastWeek.weekEnding, starsEarnedForReportedWeek());
 }
 
 window.openWeeklyReportPopup = () => {
@@ -302,7 +315,7 @@ window.maybeShowWeeklyReportAfterReset = () => {
     window.openWeeklyReportPopup();
 };
 
-function buildVictoriaReportHtml(habitsArr, totalBalance, weekEndingOverride) {
+function buildVictoriaReportHtml(habitsArr, totalBalance, weekEndingOverride, starsEarnedOverride) {
     const now      = new Date();
     const months   = ['January','February','March','April','May','June','July','August','September','October','November','December'];
     const weekEnding = weekEndingOverride || (months[now.getMonth()] + ' ' + now.getDate() + ', ' + now.getFullYear());
@@ -314,16 +327,23 @@ function buildVictoriaReportHtml(habitsArr, totalBalance, weekEndingOverride) {
     const cur  = h => (h.history?.[6] !== undefined) ? h.history[6] : (h.history?.[h.history.length - 1] ?? 0);
     const pay  = (h, t) => ({ punish: h.valPunish||0, low: h.valLow||0, goal: h.valGoal||0, bonus: h.valBonus||0 }[t]);
 
-    // Stars earned this week from log (since last Monday midnight)
-    const nowD = new Date();
-    const dow  = nowD.getDay();
-    const mon  = new Date(nowD);
-    mon.setDate(nowD.getDate() - dow + (dow === 0 ? -6 : 1));
-    mon.setHours(0, 0, 0, 0);
-    const weekStart = mon.getTime();
-    const starsThisWeek = (state.starLog || [])
-        .filter(e => e.ts >= weekStart && (e.type === 'earn' || e.type === 'luckyDraw'))
-        .reduce((sum, e) => sum + (e.amount || 0), 0);
+    // Stars gained during the reported week. Prefer the explicit override
+    // (the snapshot-window total passed by the report callers); otherwise fall
+    // back to "this week so far" since last Monday midnight.
+    let starsThisWeek;
+    if (typeof starsEarnedOverride === 'number') {
+        starsThisWeek = starsEarnedOverride;
+    } else {
+        const nowD = new Date();
+        const dow  = nowD.getDay();
+        const mon  = new Date(nowD);
+        mon.setDate(nowD.getDate() - dow + (dow === 0 ? -6 : 1));
+        mon.setHours(0, 0, 0, 0);
+        const weekStart = mon.getTime();
+        starsThisWeek = (state.starLog || [])
+            .filter(e => e.ts >= weekStart && (e.type === 'earn' || e.type === 'luckyDraw'))
+            .reduce((sum, e) => sum + (e.amount || 0), 0);
+    }
 
     // ── YOU CRUSHED IT ───────────────────────────────────────────────
     // Goal or Bonus only · sort: tier desc → payout desc → streak desc · top 4
