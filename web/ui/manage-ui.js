@@ -300,25 +300,7 @@ function _wrComputeModel(wk, histForStreaks) {
         .filter(Boolean)
         .sort((a, b) => b.gap - a.gap);
 
-    // Streaks: largest active good streak, largest bad streak, and the rolling
-    // $ each is worth this week — min(weeks × per, cap), the same formula the
-    // payout engine uses. Streak length is computed "as of" the reported week.
-    let topStreak = null, topSlump = null, topBonus = null, topPenalty = null, totalBonus = 0, totalPenalty = 0;
-    habitsArr.filter(h => !h.excused).forEach(h => {
-        const { streak, badStreak } = computeStreaksFromHistory(hist, h.id);
-        const cap     = h.streakCap ? parseFloat(h.streakCap) : Infinity;
-        const bonus   = (streak    >= 2 && (h.streakBonusPer   || 0) > 0) ? Math.min(streak    * h.streakBonusPer,   cap) : 0;
-        const penalty = (badStreak >= 2 && (h.streakPenaltyPer || 0) > 0) ? Math.min(badStreak * h.streakPenaltyPer, cap) : 0;
-        totalBonus += bonus; totalPenalty += penalty;
-        // by weeks
-        if (streak    >= 2 && (!topStreak || streak    > topStreak.streak))   topStreak = { icon: h.icon, name: h.name, streak, bonus };
-        if (badStreak >= 2 && (!topSlump  || badStreak > topSlump.badStreak)) topSlump  = { icon: h.icon, name: h.name, badStreak, penalty };
-        // by rolling $
-        if (bonus   > 0 && (!topBonus   || bonus   > topBonus.bonus))     topBonus   = { icon: h.icon, name: h.name, streak, bonus };
-        if (penalty > 0 && (!topPenalty || penalty > topPenalty.penalty)) topPenalty = { icon: h.icon, name: h.name, badStreak, penalty };
-    });
-
-    return { wins, soClose, streaks: { topStreak, topSlump, topBonus, topPenalty, totalBonus, totalPenalty } };
+    return { wins, soClose, streaks: _streakModel(habitsArr, hist) };
 }
 
 function _wrWinRow(w) {
@@ -520,6 +502,51 @@ window.maybeShowWeeklyReportAfterReset = () => {
     window.openWeeklyReportPopup();
 };
 
+// Shared streak model — used by both the interactive report and the static
+// "View Report" page. For each non-excused habit: its current good/bad streak
+// (as of the given history) and the rolling $ it's worth this week
+// (min(weeks × per, cap), the payout engine's formula). Tracks the leaders by
+// weeks and by $, plus weekly totals.
+function _streakModel(habitsArr, hist) {
+    let topStreak = null, topSlump = null, topBonus = null, topPenalty = null, totalBonus = 0, totalPenalty = 0;
+    habitsArr.filter(h => !h.excused).forEach(h => {
+        const { streak, badStreak } = computeStreaksFromHistory(hist, h.id);
+        const cap     = h.streakCap ? parseFloat(h.streakCap) : Infinity;
+        const bonus   = (streak    >= 2 && (h.streakBonusPer   || 0) > 0) ? Math.min(streak    * h.streakBonusPer,   cap) : 0;
+        const penalty = (badStreak >= 2 && (h.streakPenaltyPer || 0) > 0) ? Math.min(badStreak * h.streakPenaltyPer, cap) : 0;
+        totalBonus += bonus; totalPenalty += penalty;
+        if (streak    >= 2 && (!topStreak || streak    > topStreak.streak))   topStreak  = { icon: h.icon, name: h.name, streak, bonus };
+        if (badStreak >= 2 && (!topSlump  || badStreak > topSlump.badStreak)) topSlump   = { icon: h.icon, name: h.name, badStreak, penalty };
+        if (bonus   > 0 && (!topBonus   || bonus   > topBonus.bonus))     topBonus   = { icon: h.icon, name: h.name, streak, bonus };
+        if (penalty > 0 && (!topPenalty || penalty > topPenalty.penalty)) topPenalty = { icon: h.icon, name: h.name, badStreak, penalty };
+    });
+    return { topStreak, topSlump, topBonus, topPenalty, totalBonus, totalPenalty };
+}
+
+// Static streaks block for the shareable page: shows both "By weeks" and
+// "By rolling $" groups (no toggle on a static page), then the weekly total.
+function _streakSectionStatic(s) {
+    if (!s.topStreak && !s.topSlump && !s.topBonus && !s.topPenalty) {
+        return '<div style="color:#aaa;font-size:11px;padding:8px 0;">No multi-week streaks yet.</div>';
+    }
+    const sub = t => `<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#c9a8c9;margin:2px 0 8px;">${t}</div>`;
+    let html = '';
+    if (s.topStreak || s.topSlump) {
+        html += sub('By weeks');
+        if (s.topStreak) html += _wrStreakRow({ emoji:'🔥', label:'Longest streak', labelColor:'#c8961a', bg:'rgba(240,192,64,0.08)', border:'rgba(240,192,64,0.4)', icon:s.topStreak.icon, name:s.topStreak.name, weeksText:`${s.topStreak.streak} weeks rolling`, amount: s.topStreak.bonus > 0 ? `+$${s.topStreak.bonus.toFixed(2)}` : '—', amountColor:'#27ae60' });
+        if (s.topSlump)  html += _wrStreakRow({ emoji:'🌧️', label:'Longest slump', labelColor:'#d9534f', bg:'rgba(217,83,79,0.05)', border:'rgba(217,83,79,0.35)', icon:s.topSlump.icon, name:s.topSlump.name, weeksText:`${s.topSlump.badStreak} weeks down`, amount: s.topSlump.penalty > 0 ? `-$${s.topSlump.penalty.toFixed(2)}` : '—', amountColor:'#d9534f' });
+    }
+    if (s.topBonus || s.topPenalty) {
+        html += sub('By rolling $');
+        if (s.topBonus)   html += _wrStreakRow({ emoji:'🔥', label:'Highest rolling $', labelColor:'#c8961a', bg:'rgba(240,192,64,0.08)', border:'rgba(240,192,64,0.4)', icon:s.topBonus.icon, name:s.topBonus.name, weeksText:`${s.topBonus.streak} weeks rolling`, amount:`+$${s.topBonus.bonus.toFixed(2)}`, amountColor:'#27ae60' });
+        if (s.topPenalty) html += _wrStreakRow({ emoji:'🌧️', label:'Lowest rolling $', labelColor:'#d9534f', bg:'rgba(217,83,79,0.05)', border:'rgba(217,83,79,0.35)', icon:s.topPenalty.icon, name:s.topPenalty.name, weeksText:`${s.topPenalty.badStreak} weeks down`, amount:`-$${s.topPenalty.penalty.toFixed(2)}`, amountColor:'#d9534f' });
+    }
+    const summary = (s.totalBonus > 0 || s.totalPenalty > 0)
+        ? `<div style="text-align:center;font-size:10px;color:#b0a0b8;margin-top:6px;">Rolling streak $ this week: ${s.totalBonus > 0 ? `<b style="color:#27ae60;">+$${s.totalBonus.toFixed(2)}</b> earned` : ''}${s.totalBonus > 0 && s.totalPenalty > 0 ? ' · ' : ''}${s.totalPenalty > 0 ? `<b style="color:#d9534f;">-$${s.totalPenalty.toFixed(2)}</b> lost` : ''}</div>`
+        : '';
+    return html + summary;
+}
+
 function buildVictoriaReportHtml(habitsArr, totalBalance, weekEndingOverride, starsEarnedOverride) {
     const now      = new Date();
     const months   = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -551,22 +578,20 @@ function buildVictoriaReportHtml(habitsArr, totalBalance, weekEndingOverride, st
     }
 
     // ── YOU CRUSHED IT ───────────────────────────────────────────────
-    // Goal or Bonus only · sort: tier desc → payout desc → streak desc · top 4
+    // Goal or Bonus only · sort: tier desc → payout desc → streak desc (all of them)
     const wins = habitsArr
         .filter(h => !h.excused)
         .map(h => { const c = cur(h), t = getTier(h, c), s = computeStreaksFromHistory(state.weeklyHistory, h.id); return { icon: h.icon, name: h.name, t, payout: pay(h, t), streak: s.streak, bountyDollars: h.bountyDollars || 0, bountyStars: h.bountyStars || 0, bountyExcuseTokens: h.bountyExcuseTokens || 0, bountyNote: h.bountyNote || '' }; })
         .filter(a => a.t === 'goal' || a.t === 'bonus')
-        .sort((a, b) => tierOrder[b.t] !== tierOrder[a.t] ? tierOrder[b.t] - tierOrder[a.t] : b.payout !== a.payout ? b.payout - a.payout : b.streak - a.streak)
-        .slice(0, 4);
+        .sort((a, b) => tierOrder[b.t] !== tierOrder[a.t] ? tierOrder[b.t] - tierOrder[a.t] : b.payout !== a.payout ? b.payout - a.payout : b.streak - a.streak);
 
     // ── SO CLOSE ────────────────────────────────────────────────────
-    // Not at Bonus · sort by biggest dollar gap to next tier · top 4
+    // Not at Bonus · sort by biggest dollar gap to next tier (all of them)
     const soClose = habitsArr
         .filter(h => !h.excused)
         .map(h => { const c = cur(h), t = getTier(h, c); if (t === 'bonus') return null; const nt = t === 'punish' ? 'low' : t === 'low' ? 'goal' : 'bonus'; const gap = Math.abs(pay(h, nt) - pay(h, t)); return gap > 0 ? { icon: h.icon, name: h.name, nt, gap } : null; })
         .filter(x => x)
-        .sort((a, b) => b.gap - a.gap)
-        .slice(0, 4);
+        .sort((a, b) => b.gap - a.gap);
 
     const totalStr = `${totalBalance >= 0 ? '+' : ''}$${Math.abs(totalBalance).toFixed(2)}`;
     const balColor = totalBalance >= 0 ? '#27ae60' : '#d9534f';
@@ -597,7 +622,9 @@ function buildVictoriaReportHtml(habitsArr, totalBalance, weekEndingOverride, st
         </div>`).join('')
         : '<div style="color:#aaa;font-size:11px;padding:8px 0;">Great job hitting your goals!</div>';
 
-    return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0"><title>Victoria's Weekly Report</title><link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@300;400;600;700&display=swap" rel="stylesheet"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:#ede9f4;font-family:'Montserrat',sans-serif;min-height:100vh;padding:20px 16px 40px;}.wrap{max-width:420px;margin:0 auto;}.hint{background:#d4a3a3;color:white;text-align:center;padding:10px 16px;border-radius:8px;font-size:12px;font-weight:600;margin-bottom:16px;}@media print{.hint{display:none}body{background:white;padding:0}}</style></head><body><div class="wrap"><div class="hint">📋 Victoria's Weekly Report · ${weekEnding}</div><div style="border-radius:20px;overflow:hidden;box-shadow:0 4px 24px rgba(196,144,196,0.18);"><div style="background:linear-gradient(160deg,#f9ecec 0%,#f5eaf5 50%,#ede8f8 100%);padding:32px 24px 24px;text-align:center;"><div style="font-size:10px;color:#c9a8c9;text-transform:uppercase;letter-spacing:2px;font-weight:700;margin-bottom:8px;">Week Ending ${weekEnding}</div><div style="font-family:'Great Vibes',cursive;font-size:58px;color:#c490c4;line-height:1;margin-bottom:6px;">Victoria</div><div style="font-family:'Playfair Display',serif;font-size:12px;color:#b8a8c8;font-style:italic;">Weekly Report</div></div><div style="background:linear-gradient(180deg,#fdf8ff 0%,#f8f4fc 100%);padding:28px 24px;text-align:center;border-top:1px solid rgba(196,144,196,0.12);"><div style="font-family:'Great Vibes',cursive;font-size:72px;color:${balColor};line-height:1;margin-bottom:6px;">${totalStr}</div><div style="font-size:9px;text-transform:uppercase;letter-spacing:2px;font-weight:700;color:#ccc;${starsThisWeek>0?'margin-bottom:12px;':''}">This Week's Earnings</div>${starsThisWeek>0?`<div style="display:inline-block;background:rgba(240,192,64,0.12);border:1px solid rgba(240,192,64,0.3);border-radius:20px;padding:5px 14px;font-size:11px;font-weight:600;color:#c8961a;">✨ ${starsThisWeek} star${starsThisWeek!==1?'s':''} earned this week</div>`:''}</div><div style="background:linear-gradient(180deg,#fdf8ff 0%,#f9f4fd 100%);padding:20px 20px 16px;border-top:1px solid rgba(196,144,196,0.12);"><div style="font-family:'Playfair Display',serif;font-size:15px;color:#c490c4;font-style:italic;margin-bottom:14px;padding-bottom:10px;border-bottom:1.5px solid rgba(196,144,196,0.2);">🌟 You Crushed It</div>${winsHtml}</div><div style="background:linear-gradient(180deg,#fdf8ff 0%,#f9f4fd 100%);padding:20px 20px 16px;border-top:1px solid rgba(196,144,196,0.12);"><div style="font-family:'Playfair Display',serif;font-size:15px;color:#c490c4;font-style:italic;margin-bottom:14px;padding-bottom:10px;border-bottom:1.5px solid rgba(196,144,196,0.2);">💪 So Close</div>${soCloseHtml}</div><div style="background:linear-gradient(160deg,#f9ecec 0%,#f5eaf5 50%,#ede8f8 100%);padding:24px;text-align:center;border-top:1px solid rgba(196,144,196,0.12);"><div style="font-size:12px;color:#b0a0b8;line-height:1.7;margin-bottom:10px;">You're doing amazing!<br>Keep up the momentum next week. 💕</div><div style="font-family:'Great Vibes',cursive;font-size:30px;color:#c490c4;">— Drew</div></div></div></div></body></html>`;
+    const streaksHtml = _streakSectionStatic(_streakModel(habitsArr, state.weeklyHistory));
+
+    return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0"><title>Victoria's Weekly Report</title><link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@300;400;600;700&display=swap" rel="stylesheet"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:#ede9f4;font-family:'Montserrat',sans-serif;min-height:100vh;padding:20px 16px 40px;}.wrap{max-width:420px;margin:0 auto;}.hint{background:#d4a3a3;color:white;text-align:center;padding:10px 16px;border-radius:8px;font-size:12px;font-weight:600;margin-bottom:16px;}@media print{.hint{display:none}body{background:white;padding:0}}</style></head><body><div class="wrap"><div class="hint">📋 Victoria's Weekly Report · ${weekEnding}</div><div style="border-radius:20px;overflow:hidden;box-shadow:0 4px 24px rgba(196,144,196,0.18);"><div style="background:linear-gradient(160deg,#f9ecec 0%,#f5eaf5 50%,#ede8f8 100%);padding:32px 24px 24px;text-align:center;"><div style="font-size:10px;color:#c9a8c9;text-transform:uppercase;letter-spacing:2px;font-weight:700;margin-bottom:8px;">Week Ending ${weekEnding}</div><div style="font-family:'Great Vibes',cursive;font-size:58px;color:#c490c4;line-height:1;margin-bottom:6px;">Victoria</div><div style="font-family:'Playfair Display',serif;font-size:12px;color:#b8a8c8;font-style:italic;">Weekly Report</div></div><div style="background:linear-gradient(180deg,#fdf8ff 0%,#f8f4fc 100%);padding:28px 24px;text-align:center;border-top:1px solid rgba(196,144,196,0.12);"><div style="font-family:'Great Vibes',cursive;font-size:72px;color:${balColor};line-height:1;margin-bottom:6px;">${totalStr}</div><div style="font-size:9px;text-transform:uppercase;letter-spacing:2px;font-weight:700;color:#ccc;${starsThisWeek>0?'margin-bottom:12px;':''}">This Week's Earnings</div>${starsThisWeek>0?`<div style="display:inline-block;background:rgba(240,192,64,0.12);border:1px solid rgba(240,192,64,0.3);border-radius:20px;padding:5px 14px;font-size:11px;font-weight:600;color:#c8961a;">✨ ${starsThisWeek} star${starsThisWeek!==1?'s':''} earned this week</div>`:''}</div><div style="background:linear-gradient(180deg,#fdf8ff 0%,#f9f4fd 100%);padding:20px 20px 16px;border-top:1px solid rgba(196,144,196,0.12);"><div style="font-family:'Playfair Display',serif;font-size:15px;color:#c490c4;font-style:italic;margin-bottom:14px;padding-bottom:10px;border-bottom:1.5px solid rgba(196,144,196,0.2);">🌟 You Crushed It</div>${winsHtml}</div><div style="background:linear-gradient(180deg,#fdf8ff 0%,#f9f4fd 100%);padding:20px 20px 16px;border-top:1px solid rgba(196,144,196,0.12);"><div style="font-family:'Playfair Display',serif;font-size:15px;color:#c490c4;font-style:italic;margin-bottom:14px;padding-bottom:10px;border-bottom:1.5px solid rgba(196,144,196,0.2);">💪 So Close</div>${soCloseHtml}</div><div style="background:linear-gradient(180deg,#fdf8ff 0%,#f9f4fd 100%);padding:20px 20px 16px;border-top:1px solid rgba(196,144,196,0.12);"><div style="font-family:'Playfair Display',serif;font-size:15px;color:#c490c4;font-style:italic;margin-bottom:14px;padding-bottom:10px;border-bottom:1.5px solid rgba(196,144,196,0.2);">🔥 Streaks</div>${streaksHtml}</div><div style="background:linear-gradient(160deg,#f9ecec 0%,#f5eaf5 50%,#ede8f8 100%);padding:24px;text-align:center;border-top:1px solid rgba(196,144,196,0.12);"><div style="font-size:12px;color:#b0a0b8;line-height:1.7;margin-bottom:10px;">You're doing amazing!<br>Keep up the momentum next week. 💕</div><div style="font-family:'Great Vibes',cursive;font-size:30px;color:#c490c4;">— Drew</div></div></div></div></body></html>`;
 }
 
 // Re-export for runWeeklyReport in index.html
