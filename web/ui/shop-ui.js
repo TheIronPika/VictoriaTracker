@@ -52,11 +52,13 @@ export function renderShopSheet() {
             logWrap.innerHTML = state.starLog.slice(0, 40).map(e => {
                 const d    = new Date(e.ts);
                 const ds   = (d.getMonth() + 1) + '/' + d.getDate() + '/' + d.getFullYear();
-                const earn = e.type === 'earn';
+                // Deduction only when it's a spend or the amount is negative;
+                // earns and lucky draws (type 'luckyDraw', +1) are credits.
+                const negative = e.type === 'spend' || e.amount < 0;
                 return '<div class="shop-log-row">'
                     + '<span class="shop-log-date">' + ds + '</span>'
                     + '<span class="shop-log-reason">' + e.reason + '</span>'
-                    + '<span class="shop-log-amt ' + (earn ? 'earn' : 'spend') + '">' + (earn ? '+' : '-') + '✨' + e.amount + '</span>'
+                    + '<span class="shop-log-amt ' + (negative ? 'spend' : 'earn') + '">' + (negative ? '-' : '+') + '✨' + Math.abs(e.amount) + '</span>'
                     + '</div>';
             }).join('');
         }
