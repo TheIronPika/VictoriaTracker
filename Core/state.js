@@ -36,6 +36,14 @@ export const state = {
     roomsData: [],
     roomsLoaded: false,
     roomsCollapsed: localStorage ? (localStorage.getItem('roomsCollapsed') !== 'false') : true,
+
+    // Today-view section order (system/ui_config).
+    // Array of strings: each is either a category name or one of the
+    // SECTION_SEASONAL / SECTION_ROOMS reserved tokens. Sections present in
+    // the app but missing from this list are appended at the end in their
+    // natural order — so a fresh install / new category Just Works.
+    sectionOrder: [],
+    sectionOrderLoaded: false,
 };
 
 // ─── Mutators ────────────────────────────────────────────────────────
@@ -50,3 +58,4 @@ export function setStarsSpent(n)       { state.starsSpent = n; }
 export function setShopItems(list)     { state.shopItems = list; }
 export function setStarLog(list)       { state.starLog = list; }
 export function setExcuseTokens(n)     { state.excuseTokens = n; }
+export function setSectionOrder(list)  { state.sectionOrder = Array.isArray(list) ? list : []; }

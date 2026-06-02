@@ -31,8 +31,15 @@ export const FIRESTORE_DOCS = {
     EVENTS:  ['system', 'seasonal_events'],
     RESET:   ['system', 'reset_state'],
     PERIOD:  ['system', 'period_data'],
-    ROOMS:   ['system', 'rooms_data']
+    ROOMS:   ['system', 'rooms_data'],
+    UI:      ['system', 'ui_config']
 };
+
+// Special section IDs for the Today-view section ordering.
+// Habit categories use their literal name; these two are reserved tokens
+// for the non-habit cards so they can be interleaved with categories.
+export const SECTION_SEASONAL = '__seasonal__';
+export const SECTION_ROOMS    = '__rooms__';
 
 // Season metadata — months, accent colors, backgrounds, borders.
 // Used by both the seasonal events feature and the time-of-day color shift.

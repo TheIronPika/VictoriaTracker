@@ -1,24 +1,29 @@
-const CACHE = 'victoria-v1';
+const CACHE = 'victoria-v3';
 
-// App shell files to cache on install
+// App shell files to cache on install.
+// NOTE: Folder is `Core/` (capital C) on disk — GitHub Pages is case-sensitive,
+// so the paths here must match exactly or cache.addAll() rejects the whole batch
+// and offline install silently fails. Keep these aligned with the real layout.
 const SHELL = [
   '/VictoriaTracker/',
   '/VictoriaTracker/index.html',
   '/VictoriaTracker/manifest.json',
   '/VictoriaTracker/icons/icon-192.png',
   '/VictoriaTracker/icons/icon-512.png',
-  '/VictoriaTracker/core/config.js',
-  '/VictoriaTracker/core/state.js',
-  '/VictoriaTracker/core/utils.js',
-  '/VictoriaTracker/core/habits.js',
-  '/VictoriaTracker/core/habits-data.js',
-  '/VictoriaTracker/core/cycles.js',
-  '/VictoriaTracker/core/streaks.js',
-  '/VictoriaTracker/core/stars.js',
-  '/VictoriaTracker/core/events.js',
-  '/VictoriaTracker/core/history.js',
-  '/VictoriaTracker/core/reports.js',
-  '/VictoriaTracker/core/firebase.js',
+  '/VictoriaTracker/Core/config.js',
+  '/VictoriaTracker/Core/state.js',
+  '/VictoriaTracker/Core/utils.js',
+  '/VictoriaTracker/Core/habits.js',
+  '/VictoriaTracker/Core/habits-data.js',
+  '/VictoriaTracker/Core/cycles.js',
+  '/VictoriaTracker/Core/streaks.js',
+  '/VictoriaTracker/Core/stars.js',
+  '/VictoriaTracker/Core/events.js',
+  '/VictoriaTracker/Core/history.js',
+  '/VictoriaTracker/Core/period.js',
+  '/VictoriaTracker/Core/rooms.js',
+  '/VictoriaTracker/Core/section-order.js',
+  '/VictoriaTracker/Core/firebase.js',
   '/VictoriaTracker/web/ui/render.js',
   '/VictoriaTracker/web/ui/ui-state.js',
   '/VictoriaTracker/web/ui/habits-ui.js',
@@ -26,6 +31,9 @@ const SHELL = [
   '/VictoriaTracker/web/ui/shop-ui.js',
   '/VictoriaTracker/web/ui/manage-ui.js',
   '/VictoriaTracker/web/ui/history-ui.js',
+  '/VictoriaTracker/web/ui/period-ui.js',
+  '/VictoriaTracker/web/ui/rooms-ui.js',
+  '/VictoriaTracker/web/ui/lucky-draw.js',
   '/VictoriaTracker/web/ui/animations.js',
 ];
 

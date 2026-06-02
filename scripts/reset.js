@@ -2,8 +2,9 @@
 // Runs via GitHub Actions every Monday at 4am Central
 // Reads habits from Firebase, calculates tiers/payouts/streaks,
 // saves history snapshot, sends email report, wipes history.
-// Also pays out + resets the room-check tracker (advance streaks, clear marks),
-// mirroring the in-app runWeeklyReport (index.html) so both reset paths match.
+// Also pays out + resets the room-check tracker and processes bounties,
+// mirroring the live UI's cycle gating and period protection so the
+// reset and on-screen balance agree.
 
 import { initializeApp, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
@@ -90,7 +91,7 @@ function getTier(h, val) {
     return 'punish';
 }
 
-// ── Cycle interval helper ────────────────────────────────────────────────────
+// ── Cycle interval + due check (mirrors Core/cycles.js) ──────────────────────
 function cycleIntervalMs(h) {
     const DAY = 86400000;
     switch (h.cycleType) {
@@ -100,6 +101,13 @@ function cycleIntervalMs(h) {
         case 'yearly':    return 365 * DAY;
         default:          return 0;
     }
+}
+
+function isCycleDue(h) {
+    if (!h.cycleType || h.cycleType === 'none') return true;
+    const interval = cycleIntervalMs(h);
+    if (!interval) return true;
+    return Date.now() >= (h.cycleNextDue || 0);
 }
 
 // ── Main reset ───────────────────────────────────────────────────────────────
@@ -126,19 +134,45 @@ async function runReset() {
         console.log(`   Found ${rooms.length} rooms`);
     } catch (e) { console.warn('   ⚠️  Could not load rooms:', e.message); }
 
+    // ── Load period state (drives period-protection gating) ──────────────────
+    // Mirrors the live UI: when active, periodSensitive habits get zero punish
+    // and skip bad-streak penalties. When active OR periodWasThisWeek, their
+    // streak/badStreak are frozen.
+    let periodActive       = false;
+    let periodWasThisWeek  = false;
+    let periodData         = null;
+    try {
+        const periodDoc = await firestoreGet('system/period_data');
+        periodData      = fromDoc(periodDoc);
+        periodActive       = !!periodData.active;
+        periodWasThisWeek  = !!periodData.periodWasThisWeek;
+        console.log(`   Period state: active=${periodActive}, wasThisWeek=${periodWasThisWeek}`);
+    } catch (e) { console.warn('   ⚠️  Could not load period state:', e.message); }
+
+    // Helpers for per-habit gating
+    const isDormant         = h => !isCycleDue(h);
+    const periodProtectedH  = h => periodActive && !!h.periodSensitive;
+    const streakFrozenH     = h => (periodActive || periodWasThisWeek) && !!h.periodSensitive;
+
     // ── Calculate payouts & report lines ────────────────────────────────────
     let totalMoney = 0;
     let reportLines = [];
 
     habits.forEach(h => {
+        if (isDormant(h)) {
+            // Cyclic habit not yet due — hidden from live UI, so ignore here too.
+            reportLines.push(`${h.icon} ${h.name}: DORMANT (cyclic, not due)`);
+            return;
+        }
         if (h.excused) { reportLines.push(`${h.icon} ${h.name}: EXCUSED`); return; }
 
         const hist  = (h.history || []).slice(0, 7);
         const cur   = hist[6] !== undefined ? hist[6] : (hist[hist.length - 1] || 0);
         const tier  = getTier(h, cur);
+        const protectedNow = periodProtectedH(h);
         let payout  = 0;
 
-        if (tier === 'punish') payout = h.valPunish || 0;
+        if (tier === 'punish')    payout = protectedNow ? 0 : (h.valPunish || 0);
         else if (tier === 'low')   payout = h.valLow   || 0;
         else if (tier === 'goal')  payout = h.valGoal  || 0;
         else if (tier === 'bonus') payout = h.valBonus || 0;
@@ -151,16 +185,25 @@ async function runReset() {
             const cap = h.streakCap ? parseFloat(h.streakCap) : Infinity;
             payout += Math.min(raw, cap);
         }
-        if ((tier==='punish'||tier==='low') && curBadStreak>=2 && (h.streakPenaltyPer||0)>0) {
+        if (!protectedNow && (tier==='punish'||tier==='low') && curBadStreak>=2 && (h.streakPenaltyPer||0)>0) {
             const raw = curBadStreak * h.streakPenaltyPer;
             const cap = h.streakCap ? parseFloat(h.streakCap) : Infinity;
             payout -= Math.min(raw, cap);
         }
 
+        // Bounty payout (one-time, clears on reset)
+        const bountyTriggered = h.bountyActive && (tier === 'goal' || tier === 'bonus');
+        if (bountyTriggered && (h.bountyDollars || 0) > 0) payout += h.bountyDollars;
+
         totalMoney += payout;
         const tierLabel = { punish:'DEBT', low:'LOW', goal:'GOAL', bonus:'BONUS' }[tier];
         const sign = payout < 0 ? '-$' : '+$';
-        reportLines.push(`${h.icon} ${h.name}: ${tierLabel} (${sign}${Math.abs(payout).toFixed(2)})`);
+        const bountyParts = [];
+        if (bountyTriggered && (h.bountyDollars || 0) > 0) bountyParts.push(`+$${h.bountyDollars.toFixed(2)}`);
+        if (bountyTriggered && (h.bountyExcuseTokens || 0) > 0) bountyParts.push(`🎫×${h.bountyExcuseTokens}`);
+        const bountyNote = bountyParts.length ? ` 🏆 ${bountyParts.join(' ')} bounty` : '';
+        const protectedNote = protectedNow ? ' 🩸 period-protected' : '';
+        reportLines.push(`${h.icon} ${h.name}: ${tierLabel} (${sign}${Math.abs(payout).toFixed(2)})${bountyNote}${protectedNote}`);
     });
 
     // ── Room payouts (each cleaned room earns min(streak+1, maxStreak)) ──────
@@ -204,14 +247,16 @@ async function runReset() {
 
     // ── Award stars ──────────────────────────────────────────────────────────
     console.log('⭐ Calculating star awards...');
-    let starDoc     = { balance:0, spent:0, items:[], log:[] };
+    let starDoc     = { balance:0, spent:0, items:[], log:[], excuseTokens:0 };
     try {
         const sd    = await firestoreGet('system/star_data');
         starDoc     = fromDoc(sd);
     } catch(e) { /* first run */ }
 
-    let totalStarsEarned = 0;
+    let totalStarsEarned   = 0;
+    let totalExcuseAwarded = 0;
     habits.forEach(h => {
+        if (isDormant(h)) return;
         if (h.excused) return;
         const hist  = (h.history || []).slice(0, 7);
         const cur   = hist[6] !== undefined ? hist[6] : (hist[hist.length-1]||0);
@@ -221,22 +266,43 @@ async function runReset() {
         if (tier==='goal'  && (h.starGoal  ||0)>0) { earned+=h.starGoal;   reasons.push(h.name+' Goal'); }
         if (tier==='bonus' && (h.starBonus ||0)>0) { earned+=h.starBonus;  reasons.push(h.name+' Bonus'); }
         if (newStreak>=2   && (h.starStreak||0)>0) { earned+=h.starStreak; reasons.push(h.name+' Streak'); }
+        if (h.bountyActive && (tier==='goal'||tier==='bonus') && (h.bountyStars||0)>0) {
+            earned+=h.bountyStars; reasons.push(h.name+' Bounty 🏆');
+        }
         if (earned > 0) {
             totalStarsEarned += earned;
             starDoc.log = [{ ts: Date.now(), type:'earn', amount:earned, reason:reasons.join(' + ') },
                            ...(starDoc.log||[])].slice(0,200);
         }
+        // Excuse token bounty
+        if (h.bountyActive && (tier==='goal'||tier==='bonus') && (h.bountyExcuseTokens||0)>0) {
+            const tokens = h.bountyExcuseTokens;
+            totalExcuseAwarded += tokens;
+            starDoc.excuseTokens = (starDoc.excuseTokens||0) + tokens;
+            starDoc.log = [{ ts: Date.now(), type:'excuseToken', amount:tokens, reason:h.name+' Bounty 🏆' },
+                           ...(starDoc.log||[])].slice(0,200);
+        }
     });
+    const starDocChanged = totalStarsEarned > 0 || totalExcuseAwarded > 0;
     if (totalStarsEarned > 0) {
         starDoc.balance = (starDoc.balance||0) + totalStarsEarned;
         console.log(`   ✅ Awarded ${totalStarsEarned} stars`);
+    }
+    if (totalExcuseAwarded > 0) {
+        console.log(`   ✅ Awarded ${totalExcuseAwarded} excuse token(s)`);
+    }
+    if (starDocChanged) {
         await firestoreSet('system/star_data', starDoc);
     }
 
     // ── Update streaks ───────────────────────────────────────────────────────
+    // Dormant cyclic habits and period-sensitive habits (during/after period
+    // this week) have their streak frozen — neither incremented nor reset.
     console.log('🔥 Updating streaks...');
     habits = habits.map(h => {
-        if (h.excused) return { ...h };
+        if (isDormant(h))   return { ...h };
+        if (h.excused)      return { ...h };
+        if (streakFrozenH(h)) return { ...h };
         const hist    = (h.history || []).slice(0, 7);
         const cur     = hist[6] !== undefined ? hist[6] : (hist[hist.length-1]||0);
         const tier    = getTier(h, cur);
@@ -260,12 +326,13 @@ async function runReset() {
         weekEnding:   dateStr,
         timestamp:    Date.now(),
         totalBalance: totalMoney,
-        habits: habits.map(h => {
+        habits: habits.filter(h => !isDormant(h)).map(h => {
             const hist  = (h.history || []).slice(0, 7);
             const cur   = hist[6] !== undefined ? hist[6] : (hist[hist.length-1]||0);
             const tier  = getTier(h, cur);
+            const protectedNow = periodProtectedH(h);
             let payout  = 0;
-            if (tier==='punish') payout = h.valPunish||0;
+            if (tier==='punish')    payout = protectedNow ? 0 : (h.valPunish||0);
             else if (tier==='low')  payout = h.valLow||0;
             else if (tier==='goal') payout = h.valGoal||0;
             else if (tier==='bonus')payout = h.valBonus||0;
@@ -277,19 +344,35 @@ async function runReset() {
     await firestoreSet('system/weekly_history', { weeks });
     console.log('   ✅ History saved');
 
-    // ── Wipe history & advance cycles ────────────────────────────────────────
+    // ── Wipe history, clear bounties, advance cycles ─────────────────────────
     console.log('🔄 Resetting habits...');
     habits = habits.map(h => {
-        if (h.cycleType && h.cycleType !== 'none') {
-            const hist3 = (h.history||[]).slice(0,7);
-            const cur3  = hist3[6] !== undefined ? hist3[6] : (hist3[hist3.length-1]||0);
-            const tier3 = getTier(h, cur3);
-            if (tier3 === 'goal' || tier3 === 'bonus') {
-                return { ...h, history:[0,0,0,0,0,0,0], excused:false,
-                               cycleNextDue: Date.now() + cycleIntervalMs(h) };
-            }
+        // Dormant cyclic habits: keep their stored zeros and cycleNextDue,
+        // just make sure excused doesn't carry over.
+        if (isDormant(h)) {
+            return { ...h, history:[0,0,0,0,0,0,0], excused:false };
         }
-        return { ...h, history:[0,0,0,0,0,0,0], excused:false };
+
+        const hist3 = (h.history||[]).slice(0,7);
+        const cur3  = hist3[6] !== undefined ? hist3[6] : (hist3[hist3.length-1]||0);
+        const tier3 = getTier(h, cur3);
+        const bountyTriggered3 = h.bountyActive && (tier3 === 'goal' || tier3 === 'bonus');
+
+        let updated = { ...h, history:[0,0,0,0,0,0,0], excused:false };
+
+        if (bountyTriggered3) {
+            delete updated.bountyActive;
+            delete updated.bountyDollars;
+            delete updated.bountyStars;
+            delete updated.bountyExcuseTokens;
+            delete updated.bountyNote;
+        }
+
+        if (h.cycleType && h.cycleType !== 'none' && (tier3 === 'goal' || tier3 === 'bonus')) {
+            updated.cycleNextDue = Date.now() + cycleIntervalMs(h);
+        }
+
+        return updated;
     });
 
     await firestoreSet('system/habits_list', { data: habits });
@@ -309,11 +392,11 @@ async function runReset() {
     await firestoreSet('system/reset_state', { lastWeeklyReset: now.toDateString() });
 
     // ── Clear period week flags (only if period already ended) ───────────────
-    console.log('🩸 Checking period state...');
-    try {
-        const periodDoc  = await firestoreGet('system/period_data');
-        const periodData = fromDoc(periodDoc);
-        if (!periodData.active) {
+    // If the period is still active, leave it alone — protection should continue
+    // into the new week. Only clear periodWasThisWeek when she already ended it.
+    console.log('🩸 Updating period flags...');
+    if (periodData) {
+        if (!periodActive) {
             await firestoreSet('system/period_data', {
                 active:            false,
                 startTs:           null,
@@ -325,8 +408,6 @@ async function runReset() {
         } else {
             console.log('   ℹ️  Period still active — leaving protection in place');
         }
-    } catch (e) {
-        console.warn('   ⚠️  Could not check period flags:', e.message);
     }
 
     console.log('');

@@ -14,6 +14,7 @@ import { loadWeeklyHistory } from '../../Core/history.js';
 import { renderPeriodHistory } from './period-ui.js';
 import { renderEventsManage } from './events-ui.js';
 import { renderShopManage } from './shop-ui.js';
+import { resolveOrderedSections, moveSection, SECTION_SEASONAL, SECTION_ROOMS } from '../../Core/section-order.js';
 
 // ── Manage section state ──────────────────────────────────────────────
 let currentManageSection  = 'habits';
@@ -23,7 +24,7 @@ let currentManageHabitId  = null;
 
 window.switchManageSection = (section) => {
     currentManageSection = section;
-    ['habits', 'add', 'events', 'stars', 'period'].forEach(s => {
+    ['habits', 'add', 'events', 'stars', 'period', 'layout'].forEach(s => {
         const btn   = document.getElementById('msp-nav-' + s);
         const panel = document.getElementById('msp-right-' + s);
         if (btn)   btn.classList.toggle('msp-nav-active', s === section);
@@ -33,6 +34,63 @@ window.switchManageSection = (section) => {
     if (section === 'stars')  renderShopManage();
     if (section === 'events') renderEventsManage();
     if (section === 'period') renderPeriodHistory();
+    if (section === 'layout') renderSectionOrderManage();
+};
+
+// ── Today section ordering (Manage > Layout) ─────────────────────────
+// Lists every section that currently exists on the Today view (each habit
+// category + Seasonal Events + Room Check) with ▲/▼ controls. Reorders
+// persist immediately to system/ui_config and the live render re-shuffles
+// sectionsRoot accordingly.
+
+function sectionLabel(id) {
+    if (id === SECTION_SEASONAL) return '📅 Seasonal Events';
+    if (id === SECTION_ROOMS)    return '🏠 Room Check';
+    return '📂 ' + id;
+}
+
+export function renderSectionOrderManage() {
+    const root = document.getElementById('sectionOrderRoot');
+    if (!root) return;
+    const cats = [...new Set((state.habits || []).map(h => h.cat))];
+    // Default order (Seasonal → categories → Rooms) matches the Today view's
+    // fallback so the panel reflects what the user actually sees.
+    const available = [SECTION_SEASONAL, ...cats, SECTION_ROOMS];
+    const ordered = resolveOrderedSections(available);
+
+    root.innerHTML = ordered.map((id, i) => {
+        const isFirst = i === 0;
+        const isLast  = i === ordered.length - 1;
+        return `
+            <div class="msp-habit-row" style="cursor:default;">
+                <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                    ${sectionLabel(id)}
+                </span>
+                <button onclick="window.moveSectionUp('${id.replace(/'/g, "\\'")}')"
+                        ${isFirst ? 'disabled' : ''}
+                        style="background:none;border:none;color:${isFirst ? '#555' : '#e8e3f5'};cursor:${isFirst ? 'default' : 'pointer'};font-size:16px;padding:2px 8px;">▲</button>
+                <button onclick="window.moveSectionDown('${id.replace(/'/g, "\\'")}')"
+                        ${isLast ? 'disabled' : ''}
+                        style="background:none;border:none;color:${isLast ? '#555' : '#e8e3f5'};cursor:${isLast ? 'default' : 'pointer'};font-size:16px;padding:2px 8px;">▼</button>
+            </div>`;
+    }).join('');
+}
+
+// Exposed so render.js can refresh the panel when a new category appears.
+window.renderSectionOrderManage = renderSectionOrderManage;
+
+function currentAvailableSections() {
+    const cats = [...new Set((state.habits || []).map(h => h.cat))];
+    return [SECTION_SEASONAL, ...cats, SECTION_ROOMS];
+}
+
+window.moveSectionUp = async (id) => {
+    await moveSection(id, -1, currentAvailableSections());
+    renderSectionOrderManage();
+};
+window.moveSectionDown = async (id) => {
+    await moveSection(id, +1, currentAvailableSections());
+    renderSectionOrderManage();
 };
 
 // ── Category toggle (left panel) ─────────────────────────────────────
@@ -627,5 +685,5 @@ function buildVictoriaReportHtml(habitsArr, totalBalance, weekEndingOverride, st
     return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0"><title>Victoria's Weekly Report</title><link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@300;400;600;700&display=swap" rel="stylesheet"><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:#ede9f4;font-family:'Montserrat',sans-serif;min-height:100vh;padding:20px 16px 40px;}.wrap{max-width:420px;margin:0 auto;}.hint{background:#d4a3a3;color:white;text-align:center;padding:10px 16px;border-radius:8px;font-size:12px;font-weight:600;margin-bottom:16px;}@media print{.hint{display:none}body{background:white;padding:0}}</style></head><body><div class="wrap"><div class="hint">📋 Victoria's Weekly Report · ${weekEnding}</div><div style="border-radius:20px;overflow:hidden;box-shadow:0 4px 24px rgba(196,144,196,0.18);"><div style="background:linear-gradient(160deg,#f9ecec 0%,#f5eaf5 50%,#ede8f8 100%);padding:32px 24px 24px;text-align:center;"><div style="font-size:10px;color:#c9a8c9;text-transform:uppercase;letter-spacing:2px;font-weight:700;margin-bottom:8px;">Week Ending ${weekEnding}</div><div style="font-family:'Great Vibes',cursive;font-size:58px;color:#c490c4;line-height:1;margin-bottom:6px;">Victoria</div><div style="font-family:'Playfair Display',serif;font-size:12px;color:#b8a8c8;font-style:italic;">Weekly Report</div></div><div style="background:linear-gradient(180deg,#fdf8ff 0%,#f8f4fc 100%);padding:28px 24px;text-align:center;border-top:1px solid rgba(196,144,196,0.12);"><div style="font-family:'Great Vibes',cursive;font-size:72px;color:${balColor};line-height:1;margin-bottom:6px;">${totalStr}</div><div style="font-size:9px;text-transform:uppercase;letter-spacing:2px;font-weight:700;color:#ccc;${starsThisWeek>0?'margin-bottom:12px;':''}">This Week's Earnings</div>${starsThisWeek>0?`<div style="display:inline-block;background:rgba(240,192,64,0.12);border:1px solid rgba(240,192,64,0.3);border-radius:20px;padding:5px 14px;font-size:11px;font-weight:600;color:#c8961a;">✨ ${starsThisWeek} star${starsThisWeek!==1?'s':''} earned this week</div>`:''}</div><div style="background:linear-gradient(180deg,#fdf8ff 0%,#f9f4fd 100%);padding:20px 20px 16px;border-top:1px solid rgba(196,144,196,0.12);"><div style="font-family:'Playfair Display',serif;font-size:15px;color:#c490c4;font-style:italic;margin-bottom:14px;padding-bottom:10px;border-bottom:1.5px solid rgba(196,144,196,0.2);">🌟 You Crushed It</div>${winsHtml}</div><div style="background:linear-gradient(180deg,#fdf8ff 0%,#f9f4fd 100%);padding:20px 20px 16px;border-top:1px solid rgba(196,144,196,0.12);"><div style="font-family:'Playfair Display',serif;font-size:15px;color:#c490c4;font-style:italic;margin-bottom:14px;padding-bottom:10px;border-bottom:1.5px solid rgba(196,144,196,0.2);">💪 So Close</div>${soCloseHtml}</div><div style="background:linear-gradient(180deg,#fdf8ff 0%,#f9f4fd 100%);padding:20px 20px 16px;border-top:1px solid rgba(196,144,196,0.12);"><div style="font-family:'Playfair Display',serif;font-size:15px;color:#c490c4;font-style:italic;margin-bottom:14px;padding-bottom:10px;border-bottom:1.5px solid rgba(196,144,196,0.2);">🔥 Streaks</div>${streaksHtml}</div><div style="background:linear-gradient(160deg,#f9ecec 0%,#f5eaf5 50%,#ede8f8 100%);padding:24px;text-align:center;border-top:1px solid rgba(196,144,196,0.12);"><div style="font-size:12px;color:#b0a0b8;line-height:1.7;margin-bottom:10px;">You're doing amazing!<br>Keep up the momentum next week. 💕</div><div style="font-family:'Great Vibes',cursive;font-size:30px;color:#c490c4;">— Drew</div></div></div></div></body></html>`;
 }
 
-// Re-export for runWeeklyReport in index.html
+// Exported for use by other modules (e.g. share/preview flows).
 export { buildVictoriaReportHtml };

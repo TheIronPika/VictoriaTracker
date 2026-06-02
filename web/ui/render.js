@@ -23,6 +23,8 @@ import { renderPeriodHistory } from './period-ui.js';
 import { renderRoomsSection } from './rooms-ui.js';
 import { computeForecast } from './manage-ui.js';
 import { syncHabits } from '../../Core/habits-data.js';
+import { setHabits } from '../../Core/state.js';
+import { resolveOrderedSections, SECTION_SEASONAL, SECTION_ROOMS } from '../../Core/section-order.js';
 
 // ── Main render ───────────────────────────────────────────────────────
 
@@ -42,7 +44,7 @@ export function render() {
         }
     }
 
-    const todayRoot    = document.getElementById('todayRoot');
+    const sectionsRoot = document.getElementById('sectionsRoot');
     const priorityRoot = document.getElementById('priorityRoot');
     const weeklyRoot   = document.getElementById('weeklyRoot');
     const manageRoot   = document.getElementById('manageRoot');
@@ -57,8 +59,11 @@ export function render() {
 
     const dIdx = getDayIdx(uiState.viewingDate);
 
-    // Build HTML strings instead of using += in loops (much faster)
-    let todayHtml = '';
+    // Build HTML strings instead of using += in loops (much faster).
+    // categoryHtmlById is per-category Today markup so each can be inserted as
+    // its own <div data-section-id="..."> child of sectionsRoot (lets Manage >
+    // Layout interleave categories with the Seasonal and Room Check cards).
+    const categoryHtmlById = new Map();
     let priorityHtml = '';
     let weeklyHtml = '';
     let manageHtml = '';
@@ -74,6 +79,10 @@ export function render() {
         let items   = uiState.habits.filter(h => h.cat === cat && isCycleDue(h));
         // For manage panel: include ALL habits in this category, not just cycle-due
         let allItemsForManage = uiState.habits.filter(h => h.cat === cat);
+
+        // Per-category Today markup — built into a local string, attached to
+        // categoryHtmlById at the end of the loop.
+        let todayHtml = '';
 
         if (!uiState.sortLocked) {
             items.sort((a, b) => {
@@ -304,6 +313,7 @@ export function render() {
 
         weekSectionHtml += `</div></div>`;
         weeklyHtml += weekSectionHtml;
+        categoryHtmlById.set(cat, todayHtml);
     });
 
     uiState.lastActedId = null;
@@ -323,7 +333,7 @@ export function render() {
     document.getElementById('countBonus').innerText  = counts.bonus;
 
     // Assign all HTML at once (instead of repeated += operations)
-    todayRoot.innerHTML = todayHtml;
+    renderTodaySections(sectionsRoot, categoryHtmlById);
     priorityRoot.innerHTML = priorityHtml;
     weeklyRoot.innerHTML = weeklyHtml;
     if (manageVisible) {
@@ -333,6 +343,57 @@ export function render() {
             initManageSortable();
         }
     }
+    // Refresh the Layout panel if it's open (a new category may have appeared).
+    window.renderSectionOrderManage?.();
+}
+
+// ── Today section ordering ────────────────────────────────────────────
+//
+// sectionsRoot owns three kinds of children:
+//   • seasonalRoot  (data-section-id="__seasonal__") — written by events-ui
+//   • roomsRoot     (data-section-id="__rooms__")    — written by rooms-ui
+//   • per-category divs (data-section-id="<cat name>") — rebuilt here every render
+//
+// We wipe just the per-category divs, recreate them from categoryHtmlById,
+// then walk the resolved order and appendChild so all three kinds end up in
+// the user's chosen sequence. The special cards keep their own innerHTML
+// across renders (they have their own render functions and listeners).
+function renderTodaySections(sectionsRoot, categoryHtmlById) {
+    if (!sectionsRoot) return;
+
+    // Remove stale category divs (leave the special cards alone).
+    sectionsRoot.querySelectorAll('[data-section-type="category"]').forEach(n => n.remove());
+
+    // Append new category divs (order here is the natural habits-array order;
+    // resolveOrderedSections below will sort everything into the final order).
+    for (const [cat, html] of categoryHtmlById) {
+        const div = document.createElement('div');
+        div.dataset.sectionType = 'category';
+        div.dataset.sectionId   = cat;
+        div.innerHTML = html;
+        sectionsRoot.appendChild(div);
+    }
+
+    // Apply the user's chosen order.
+    // availableIds is in the *default* layout (Seasonal → categories → Rooms)
+    // so a fresh install with no stored order matches the pre-feature look.
+    const availableIds = [
+        SECTION_SEASONAL,
+        ...categoryHtmlById.keys(),
+        SECTION_ROOMS,
+    ];
+    const ordered = resolveOrderedSections(availableIds);
+    for (const id of ordered) {
+        const node = sectionsRoot.querySelector(`[data-section-id="${cssEscape(id)}"]`);
+        if (node) sectionsRoot.appendChild(node); // appendChild on an existing child moves it
+    }
+}
+
+// CSS.escape polyfill — category names can contain spaces or punctuation
+// that break attribute selectors otherwise.
+function cssEscape(s) {
+    if (typeof CSS !== 'undefined' && CSS.escape) return CSS.escape(s);
+    return String(s).replace(/["\\]/g, '\\$&');
 }
 
 function initManageSortable() {
@@ -352,6 +413,10 @@ function initManageSortable() {
                         if (h) newOrder.push(h);
                     });
                 });
+                // Update state.habits too — syncHabits() serializes state,
+                // not uiState. Reassigning only uiState would let the reorder
+                // snap back on the next Firestore snapshot.
+                setHabits(newOrder);
                 uiState.habits = newOrder;
                 syncHabits();
             }

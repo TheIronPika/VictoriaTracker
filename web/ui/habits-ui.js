@@ -9,7 +9,7 @@ import { uiState, saveCollapsedState } from './ui-state.js';
 import { state } from '../../Core/state.js';
 import { getDayIdx } from '../../Core/utils.js';
 import { getTier } from '../../Core/habits.js';
-import { syncHabits, toggleExcused as coreToggleExcused } from '../../Core/habits-data.js';
+import { syncHabits, toggleExcused as coreToggleExcused, deleteHabit as coreDeleteHabit } from '../../Core/habits-data.js';
 import { syncStarData, addStarLog, useExcuseToken } from '../../Core/stars.js';
 import { playBubblePop, triggerFanfare, checkPerfectWeek, checkStreakMilestones } from './animations.js';
 import { showCloverPopup, showLuckyDrawToast } from './lucky-draw.js';
@@ -81,8 +81,12 @@ window.addTask = async () => {
 
 window.deleteTask = async (id) => {
     if (!confirm('Are you sure you want to delete this habit?')) return;
-    uiState.habits = uiState.habits.filter(h => h.id !== id);
-    await syncHabits();
+    // Route through Core/habits-data.deleteHabit so state.habits is updated
+    // (and synced). Updating only uiState.habits leaves state.habits stale and
+    // syncHabits() writes the old array — the deleted habit reappears on the
+    // next Firestore snapshot.
+    await coreDeleteHabit(id);
+    uiState.habits = state.habits;
 };
 
 window.updateField = async (id, field, value) => {

@@ -35,6 +35,7 @@
         import { loadStarData } from './Core/stars.js';
         import { loadWeeklyHistory } from './Core/history.js';
         import { loadPeriodData } from './Core/period.js';
+        import { loadSectionOrder, watchSectionOrder } from './Core/section-order.js';
 
         // ── UI (DOM rendering + window.* handler registration) ───────────────
         import { uiState } from './web/ui/ui-state.js';
@@ -80,6 +81,9 @@
             loadStarData();
             loadPeriodData().then(() => window.render?.()).catch(() => {});
             loadRoomsDataUI();
+            // Section order: load once, then subscribe so other tabs/devices
+            // see reorders live without a refresh.
+            loadSectionOrder().then(() => { window.render?.(); watchSectionOrder(); }).catch(() => {});
             // Pre-load history so streak badges render immediately
             loadWeeklyHistory().then(() => { window.render?.(); window.maybeShowWeeklyReportAfterReset?.(); }).catch(() => {});
         });
@@ -1270,9 +1274,14 @@
         <div style="display:flex;justify-content:flex-end;padding:8px 2px 4px;">
             <button id="sortLockBtn" class="sort-lock-btn" onclick="window.toggleSortLock()" title="Completed tasks move to bottom">⇅ Sort</button>
         </div>
-        <div id="seasonalRoot"></div>
-        <div id="todayRoot"></div>
-        <div id="roomsRoot"></div>
+        <!-- sectionsRoot owns the order. Category divs are inserted by render.js
+             as direct children with data-section-id="<category name>". The two
+             special cards (seasonal/rooms) live here as well so they can be
+             interleaved with categories. Manage > Layout reorders these. -->
+        <div id="sectionsRoot">
+            <div id="seasonalRoot" data-section-type="special" data-section-id="__seasonal__"></div>
+            <div id="roomsRoot"    data-section-type="special" data-section-id="__rooms__"></div>
+        </div>
     </div>
 
     <div id="view-priority" class="view">
@@ -1300,6 +1309,7 @@
                 <button class="msp-nav-btn" id="msp-nav-events" onclick="window.switchManageSection('events')">&#128197; Events</button>
                 <button class="msp-nav-btn" id="msp-nav-stars"  onclick="window.switchManageSection('stars')">&#10024; Stars</button>
                 <button class="msp-nav-btn" id="msp-nav-period" onclick="window.switchManageSection('period')">&#129656; Period</button>
+                <button class="msp-nav-btn" id="msp-nav-layout" onclick="window.switchManageSection('layout')">&#128306; Layout</button>
                 <div style="flex:1"></div>
                 <button onclick="window.sendVictoriaTestReport()" style="padding:8px;background:#8e44ad;color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">&#128203; View Report</button>
               </nav>
@@ -1472,6 +1482,17 @@
                     <div class="msp-section-title">Shop Items</div>
                     <div id="shopManageRoot"></div>
                   </div>
+                </div>
+              </div>
+
+              <!-- Today-view section order -->
+              <div id="msp-right-layout" style="display:none">
+                <div class="msp-section">
+                  <div class="msp-section-title">&#128306; Today View Order</div>
+                  <div style="font-size:11px;color:#aaa;margin-bottom:12px;line-height:1.5;">
+                    Reorder how the Today view stacks habit categories, Seasonal Events, and Room Check.
+                  </div>
+                  <div id="sectionOrderRoot"></div>
                 </div>
               </div>
 
