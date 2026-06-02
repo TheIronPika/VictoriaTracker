@@ -15,6 +15,7 @@ import { renderPeriodHistory } from './period-ui.js';
 import { renderEventsManage } from './events-ui.js';
 import { renderShopManage } from './shop-ui.js';
 import { resolveOrderedSections, moveSection, SECTION_SEASONAL, SECTION_ROOMS } from '../../Core/section-order.js';
+import { isPeriodActive } from '../../Core/period.js';
 
 // ── Manage section state ──────────────────────────────────────────────
 let currentManageSection  = 'habits';
@@ -24,17 +25,18 @@ let currentManageHabitId  = null;
 
 window.switchManageSection = (section) => {
     currentManageSection = section;
-    ['habits', 'add', 'events', 'stars', 'period', 'layout'].forEach(s => {
+    ['habits', 'add', 'events', 'stars', 'period', 'layout', 'streakdollars'].forEach(s => {
         const btn   = document.getElementById('msp-nav-' + s);
         const panel = document.getElementById('msp-right-' + s);
         if (btn)   btn.classList.toggle('msp-nav-active', s === section);
         if (panel) panel.style.display = s === section ? '' : 'none';
     });
     if (section === 'habits' && currentManageHabitId) window.showManageDetail(currentManageHabitId);
-    if (section === 'stars')  renderShopManage();
-    if (section === 'events') renderEventsManage();
-    if (section === 'period') renderPeriodHistory();
-    if (section === 'layout') renderSectionOrderManage();
+    if (section === 'stars')         renderShopManage();
+    if (section === 'events')        renderEventsManage();
+    if (section === 'period')        renderPeriodHistory();
+    if (section === 'layout')        renderSectionOrderManage();
+    if (section === 'streakdollars') renderStreakDollarsManage();
 };
 
 // ── Today section ordering (Manage > Layout) ─────────────────────────
@@ -687,3 +689,214 @@ function buildVictoriaReportHtml(habitsArr, totalBalance, weekEndingOverride, st
 
 // Exported for use by other modules (e.g. share/preview flows).
 export { buildVictoriaReportHtml };
+
+// ─────────────────────────────────────────────────────────────────────
+// Streak $ Breakdown (Manage > 💰 Streak $)
+//
+// Two views in one panel:
+//   • This Week — live, pre-reset per-habit breakdown (base · streak · bounty).
+//     Mirrors render.js / scripts/reset.js so the numbers match what Monday
+//     will pay. Sorted most-negative-first so the source of a red total is
+//     at the top.
+//   • Rolling — replays state.weeklyHistory using each habit's CURRENT
+//     streak $ rates to reconstruct what streak bonuses/penalties were
+//     applied per week. Limitation: if you changed streakBonusPer or
+//     streakPenaltyPer historically, the rolling tally uses today's rates,
+//     not the rates active at that time. Called out in the UI.
+// ─────────────────────────────────────────────────────────────────────
+
+function _streakCap(h) {
+    return h.streakCap ? parseFloat(h.streakCap) : Infinity;
+}
+
+// Per-habit this-week numbers, mirroring scripts/reset.js + render.js.
+function _thisWeekBreakdown(h, periodActive) {
+    const hist = (h.history || []).slice(0, 7);
+    const cur  = hist[6] !== undefined ? hist[6] : (hist[hist.length - 1] || 0);
+    const tier = getTier(h, cur);
+    const periodProtected = periodActive && !!h.periodSensitive;
+
+    let base = 0, goodStreak = 0, badStreak = 0, bounty = 0;
+    if (!h.excused) {
+        if (tier === 'punish')     base = periodProtected ? 0 : (h.valPunish || 0);
+        else if (tier === 'low')   base = h.valLow  || 0;
+        else if (tier === 'goal')  base = h.valGoal || 0;
+        else if (tier === 'bonus') base = h.valBonus|| 0;
+
+        if ((tier === 'goal' || tier === 'bonus') && (h.streak || 0) >= 2 && (h.streakBonusPer || 0) > 0) {
+            goodStreak = Math.min((h.streak || 0) * h.streakBonusPer, _streakCap(h));
+        }
+        if (!periodProtected && (tier === 'punish' || tier === 'low') && (h.badStreak || 0) >= 2 && (h.streakPenaltyPer || 0) > 0) {
+            badStreak = -Math.min((h.badStreak || 0) * h.streakPenaltyPer, _streakCap(h));
+        }
+        if (h.bountyActive && (tier === 'goal' || tier === 'bonus') && (h.bountyDollars || 0) > 0) {
+            bounty = h.bountyDollars;
+        }
+    }
+    const total = base + goodStreak + badStreak + bounty;
+    return { tier, base, goodStreak, badStreak, bounty, total,
+             excused: !!h.excused, periodProtected,
+             streakCount: h.streak || 0, badStreakCount: h.badStreak || 0 };
+}
+
+// Replay history with the habit's current rates to estimate cumulative
+// streak $ contribution across all recorded weeks.
+function _rollingStreakDollars(habit, weeklyHistory) {
+    const sorted = weeklyHistory.slice().sort((a, b) => a.timestamp - b.timestamp);
+    let goodRun = 0, badRun = 0;
+    let totalGood = 0, totalBad = 0;
+    let weeksWithHabit = 0;
+
+    for (const wk of sorted) {
+        const h = (wk.habits || []).find(x => x.id === habit.id);
+        if (!h) { goodRun = 0; badRun = 0; continue; }
+        weeksWithHabit++;
+        const isGood = h.tier === 'goal' || h.tier === 'bonus';
+
+        // At reset time, payouts use the streak counter BEFORE this week's
+        // increment — same convention as scripts/reset.js.
+        if (isGood && goodRun >= 2 && (habit.streakBonusPer || 0) > 0) {
+            totalGood += Math.min(goodRun * habit.streakBonusPer, _streakCap(habit));
+        }
+        if (!isGood && badRun >= 2 && (habit.streakPenaltyPer || 0) > 0) {
+            totalBad += Math.min(badRun * habit.streakPenaltyPer, _streakCap(habit));
+        }
+        goodRun = isGood ? goodRun + 1 : 0;
+        badRun  = !isGood ? badRun + 1 : 0;
+    }
+    return { totalGood, totalBad, net: totalGood - totalBad, weeksWithHabit };
+}
+
+function _money(n) {
+    const sign = n < 0 ? '-$' : '+$';
+    return sign + Math.abs(n).toFixed(2);
+}
+function _moneyColor(n) {
+    if (n > 0)  return 'var(--color-goal)';
+    if (n < 0)  return 'var(--color-punish)';
+    return '#888';
+}
+
+export function renderStreakDollarsManage() {
+    const root = document.getElementById('streakDollarsRoot');
+    if (!root) return;
+
+    const habits = state.habits || [];
+    const periodActive = isPeriodActive();
+
+    // ── This week ─────────────────────────────────────────────────────
+    const breakdowns = habits.map(h => ({ h, br: _thisWeekBreakdown(h, periodActive) }));
+    // Sort: most-negative total first, then by absolute magnitude.
+    breakdowns.sort((a, b) => a.br.total - b.br.total);
+
+    const grandBase   = breakdowns.reduce((s, x) => s + x.br.base, 0);
+    const grandGood   = breakdowns.reduce((s, x) => s + x.br.goodStreak, 0);
+    const grandBad    = breakdowns.reduce((s, x) => s + x.br.badStreak, 0); // already negative
+    const grandBounty = breakdowns.reduce((s, x) => s + x.br.bounty, 0);
+    const grandTotal  = grandBase + grandGood + grandBad + grandBounty;
+
+    const thisWeekRows = breakdowns.map(({ h, br }) => {
+        const streakBadge = br.streakCount >= 2 && br.goodStreak > 0
+            ? `<span style="font-size:10px;color:#888;">🔥${br.streakCount}</span>` : '';
+        const badBadge    = br.badStreakCount >= 2 && br.badStreak < 0
+            ? `<span style="font-size:10px;color:#888;">🌧️${br.badStreakCount}</span>` : '';
+        const protectedNote = br.periodProtected ? ' <span title="Period protected" style="font-size:9px;color:#d4a3a3;">🩸</span>' : '';
+        const excusedNote   = br.excused ? ' <span style="font-size:9px;color:#aaa;">excused</span>' : '';
+        return `
+            <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+                <td style="padding:6px 4px;font-size:12px;">${h.icon} ${h.name}${protectedNote}${excusedNote}</td>
+                <td style="padding:6px 4px;text-align:right;font-size:11px;color:#aaa;">${br.tier.toUpperCase()}</td>
+                <td style="padding:6px 4px;text-align:right;font-size:11px;color:${_moneyColor(br.base)};">${_money(br.base)}</td>
+                <td style="padding:6px 4px;text-align:right;font-size:11px;">
+                    ${br.goodStreak ? `<span style="color:${_moneyColor(br.goodStreak)};">${_money(br.goodStreak)}</span> ${streakBadge}` : ''}
+                    ${br.badStreak  ? `<span style="color:${_moneyColor(br.badStreak)};">${_money(br.badStreak)}</span> ${badBadge}` : ''}
+                    ${(!br.goodStreak && !br.badStreak) ? '<span style="color:#555;">—</span>' : ''}
+                </td>
+                <td style="padding:6px 4px;text-align:right;font-size:11px;color:${_moneyColor(br.bounty)};">
+                    ${br.bounty ? '🏆 ' + _money(br.bounty) : '<span style="color:#555;">—</span>'}
+                </td>
+                <td style="padding:6px 4px;text-align:right;font-size:12px;font-weight:700;color:${_moneyColor(br.total)};">${_money(br.total)}</td>
+            </tr>`;
+    }).join('');
+
+    // ── Rolling ───────────────────────────────────────────────────────
+    const rolling = habits.map(h => ({ h, r: _rollingStreakDollars(h, state.weeklyHistory || []) }));
+    rolling.sort((a, b) => a.r.net - b.r.net);
+    const rollingWeeks = (state.weeklyHistory || []).length;
+
+    const rollingRows = rolling.filter(x => x.r.weeksWithHabit > 0).map(({ h, r }) => `
+        <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+            <td style="padding:6px 4px;font-size:12px;">${h.icon} ${h.name}</td>
+            <td style="padding:6px 4px;text-align:right;font-size:11px;color:#888;">${r.weeksWithHabit}w</td>
+            <td style="padding:6px 4px;text-align:right;font-size:11px;color:${_moneyColor(r.totalGood)};">${r.totalGood ? '+$' + r.totalGood.toFixed(2) : '—'}</td>
+            <td style="padding:6px 4px;text-align:right;font-size:11px;color:${_moneyColor(-r.totalBad)};">${r.totalBad ? '-$' + r.totalBad.toFixed(2) : '—'}</td>
+            <td style="padding:6px 4px;text-align:right;font-size:12px;font-weight:700;color:${_moneyColor(r.net)};">${_money(r.net)}</td>
+        </tr>`).join('') || '<tr><td colspan="5" style="padding:12px;color:#888;font-size:11px;text-align:center;">No weekly history yet — rolling figures appear after the first reset.</td></tr>';
+
+    const rollingGrandGood = rolling.reduce((s, x) => s + x.r.totalGood, 0);
+    const rollingGrandBad  = rolling.reduce((s, x) => s + x.r.totalBad, 0);
+    const rollingGrandNet  = rollingGrandGood - rollingGrandBad;
+
+    // ── Render ────────────────────────────────────────────────────────
+    root.innerHTML = `
+        <!-- This week summary block -->
+        <div style="padding:14px 16px;background:rgba(255,255,255,0.04);border-radius:10px;margin-bottom:14px;">
+            <div style="font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#7a7390;font-weight:700;margin-bottom:6px;">This Week — live, before Monday reset</div>
+            <div style="font-size:32px;font-weight:700;color:${_moneyColor(grandTotal)};line-height:1;">${_money(grandTotal)}</div>
+            <div style="font-size:10px;color:#888;margin-top:8px;line-height:1.6;">
+                Base <span style="color:${_moneyColor(grandBase)};">${_money(grandBase)}</span>
+                · Good streak <span style="color:${_moneyColor(grandGood)};">${_money(grandGood)}</span>
+                · Bad streak <span style="color:${_moneyColor(grandBad)};">${_money(grandBad)}</span>
+                · Bounty <span style="color:${_moneyColor(grandBounty)};">${_money(grandBounty)}</span>
+            </div>
+            <div style="font-size:10px;color:#666;margin-top:4px;">Room payouts and seasonal events not included here — those land at reset time.</div>
+        </div>
+
+        <!-- This week per habit -->
+        <div style="font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#7a7390;font-weight:700;margin:18px 0 6px;">Per habit — sorted most negative first</div>
+        <table style="width:100%;border-collapse:collapse;">
+            <thead>
+                <tr style="border-bottom:1px solid rgba(255,255,255,0.12);">
+                    <th style="padding:6px 4px;text-align:left;font-size:9px;color:#7a7390;text-transform:uppercase;">Habit</th>
+                    <th style="padding:6px 4px;text-align:right;font-size:9px;color:#7a7390;text-transform:uppercase;">Tier</th>
+                    <th style="padding:6px 4px;text-align:right;font-size:9px;color:#7a7390;text-transform:uppercase;">Base</th>
+                    <th style="padding:6px 4px;text-align:right;font-size:9px;color:#7a7390;text-transform:uppercase;">Streak</th>
+                    <th style="padding:6px 4px;text-align:right;font-size:9px;color:#7a7390;text-transform:uppercase;">Bounty</th>
+                    <th style="padding:6px 4px;text-align:right;font-size:9px;color:#7a7390;text-transform:uppercase;">Total</th>
+                </tr>
+            </thead>
+            <tbody>${thisWeekRows || '<tr><td colspan="6" style="padding:12px;color:#888;font-size:11px;text-align:center;">No habits.</td></tr>'}</tbody>
+        </table>
+
+        <!-- Rolling -->
+        <div style="margin-top:28px;padding:14px 16px;background:rgba(255,255,255,0.04);border-radius:10px;margin-bottom:14px;">
+            <div style="font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#7a7390;font-weight:700;margin-bottom:6px;">Rolling — ${rollingWeeks} week${rollingWeeks === 1 ? '' : 's'} of history</div>
+            <div style="font-size:32px;font-weight:700;color:${_moneyColor(rollingGrandNet)};line-height:1;">${_money(rollingGrandNet)}</div>
+            <div style="font-size:10px;color:#888;margin-top:8px;line-height:1.6;">
+                Good streak total <span style="color:${_moneyColor(rollingGrandGood)};">${rollingGrandGood ? '+$' + rollingGrandGood.toFixed(2) : '$0.00'}</span>
+                · Bad streak total <span style="color:${_moneyColor(-rollingGrandBad)};">${rollingGrandBad ? '-$' + rollingGrandBad.toFixed(2) : '$0.00'}</span>
+            </div>
+            <div style="font-size:10px;color:#c9a8c9;margin-top:6px;font-style:italic;">
+                ⚠️ Replays history with each habit's <strong>current</strong> streak $ rates. If you changed
+                streakBonusPer / streakPenaltyPer / streakCap in the past, those rate changes aren't reflected.
+            </div>
+        </div>
+
+        <div style="font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#7a7390;font-weight:700;margin:18px 0 6px;">Per habit — sorted most negative first</div>
+        <table style="width:100%;border-collapse:collapse;">
+            <thead>
+                <tr style="border-bottom:1px solid rgba(255,255,255,0.12);">
+                    <th style="padding:6px 4px;text-align:left;font-size:9px;color:#7a7390;text-transform:uppercase;">Habit</th>
+                    <th style="padding:6px 4px;text-align:right;font-size:9px;color:#7a7390;text-transform:uppercase;">Weeks</th>
+                    <th style="padding:6px 4px;text-align:right;font-size:9px;color:#7a7390;text-transform:uppercase;">Good $</th>
+                    <th style="padding:6px 4px;text-align:right;font-size:9px;color:#7a7390;text-transform:uppercase;">Bad $</th>
+                    <th style="padding:6px 4px;text-align:right;font-size:9px;color:#7a7390;text-transform:uppercase;">Net</th>
+                </tr>
+            </thead>
+            <tbody>${rollingRows}</tbody>
+        </table>
+    `;
+}
+
+// Exposed so other modules can request a refresh.
+window.renderStreakDollarsManage = renderStreakDollarsManage;

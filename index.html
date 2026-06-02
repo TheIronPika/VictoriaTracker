@@ -1309,6 +1309,7 @@
                 <button class="msp-nav-btn" id="msp-nav-events" onclick="window.switchManageSection('events')">&#128197; Events</button>
                 <button class="msp-nav-btn" id="msp-nav-stars"  onclick="window.switchManageSection('stars')">&#10024; Stars</button>
                 <button class="msp-nav-btn" id="msp-nav-period" onclick="window.switchManageSection('period')">&#129656; Period</button>
+                <button class="msp-nav-btn" id="msp-nav-streakdollars" onclick="window.switchManageSection('streakdollars')">&#128176; Streak $</button>
                 <button class="msp-nav-btn" id="msp-nav-layout" onclick="window.switchManageSection('layout')">&#128306; Layout</button>
                 <div style="flex:1"></div>
                 <button onclick="window.sendVictoriaTestReport()" style="padding:8px;background:#8e44ad;color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">&#128203; View Report</button>
@@ -1482,6 +1483,14 @@
                     <div class="msp-section-title">Shop Items</div>
                     <div id="shopManageRoot"></div>
                   </div>
+                </div>
+              </div>
+
+              <!-- Streak $ Breakdown -->
+              <div id="msp-right-streakdollars" style="display:none">
+                <div class="msp-section">
+                  <div class="msp-section-title">&#128176; Streak $ Breakdown</div>
+                  <div id="streakDollarsRoot"></div>
                 </div>
               </div>
 
