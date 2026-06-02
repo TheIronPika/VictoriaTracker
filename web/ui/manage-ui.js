@@ -16,6 +16,7 @@ import { renderEventsManage } from './events-ui.js';
 import { renderShopManage } from './shop-ui.js';
 import { resolveOrderedSections, moveSection, SECTION_SEASONAL, SECTION_ROOMS } from '../../Core/section-order.js';
 import { isPeriodActive } from '../../Core/period.js';
+import { getRoomPayoutsTotal } from '../../Core/rooms.js';
 
 // ── Manage section state ──────────────────────────────────────────────
 let currentManageSection  = 'habits';
@@ -793,7 +794,8 @@ export function renderStreakDollarsManage() {
     const grandGood   = breakdowns.reduce((s, x) => s + x.br.goodStreak, 0);
     const grandBad    = breakdowns.reduce((s, x) => s + x.br.badStreak, 0); // already negative
     const grandBounty = breakdowns.reduce((s, x) => s + x.br.bounty, 0);
-    const grandTotal  = grandBase + grandGood + grandBad + grandBounty;
+    const grandRooms  = getRoomPayoutsTotal();
+    const grandTotal  = grandBase + grandGood + grandBad + grandBounty + grandRooms;
 
     const thisWeekRows = breakdowns.map(({ h, br }) => {
         const streakBadge = br.streakCount >= 2 && br.goodStreak > 0
@@ -848,8 +850,9 @@ export function renderStreakDollarsManage() {
                 · Good streak <span style="color:${_moneyColor(grandGood)};">${_money(grandGood)}</span>
                 · Bad streak <span style="color:${_moneyColor(grandBad)};">${_money(grandBad)}</span>
                 · Bounty <span style="color:${_moneyColor(grandBounty)};">${_money(grandBounty)}</span>
+                · Rooms <span style="color:${_moneyColor(grandRooms)};">${_money(grandRooms)}</span>
             </div>
-            <div style="font-size:10px;color:#666;margin-top:4px;">Room payouts and seasonal events not included here — those land at reset time.</div>
+            <div style="font-size:10px;color:#666;margin-top:4px;">Matches the Today-view headline. Seasonal events not included — those still don't pay out (review M2).</div>
         </div>
 
         <!-- This week per habit -->

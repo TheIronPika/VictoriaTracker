@@ -318,6 +318,10 @@ export function render() {
 
     uiState.lastActedId = null;
 
+    // Include room payouts in the headline — the reset pays them out at
+    // Monday, and the Streak $ panel + email report both count them, so the
+    // live header should match. (Was M1 in the overnight review.)
+    totalMoney += getRoomPayoutsTotal();
     animateMoneyDisplay(totalMoney);
     if (state.eventsLoaded) renderSeasonalSection();
 
