@@ -134,6 +134,14 @@ async function runReset() {
         console.log(`   Found ${rooms.length} rooms`);
     } catch (e) { console.warn('   ⚠️  Could not load rooms:', e.message); }
 
+    // ── Load events (seasonal event payouts) ─────────────────────────────────
+    let events = [];
+    try {
+        const evDoc = await firestoreGet('system/seasonal_events');
+        events = fromDoc(evDoc).events || [];
+        console.log(`   Found ${events.length} events`);
+    } catch (e) { console.warn('   ⚠️  Could not load events:', e.message); }
+
     // ── Load period state (drives period-protection gating) ──────────────────
     // Mirrors the live UI: when active, periodSensitive habits get zero punish
     // and skip bad-streak penalties. When active OR periodWasThisWeek, their
@@ -212,6 +220,18 @@ async function runReset() {
         const payout = Math.min((r.streak || 0) + 1, r.maxStreak || 0);
         totalMoney += payout;
         reportLines.push(`${r.icon} ${r.name}: CLEAN (+$${payout.toFixed(2)})`);
+    });
+
+    // ── Event payouts (pay unpaid completions, advance the watermark) ────────
+    // Each event tracks lastPaidCompletions so multi-week events accumulate
+    // visually (yearly auto-reset) while still paying every Monday.
+    events.forEach(ev => {
+        const unpaid = (ev.completions || 0) - (ev.lastPaidCompletions || 0);
+        if (unpaid <= 0) return;
+        const payout = unpaid * (ev.payout || 0);
+        if (!payout) return;
+        totalMoney += payout;
+        reportLines.push(`${ev.icon} ${ev.name}: ${unpaid}× event (+$${payout.toFixed(2)})`);
     });
 
     const totalStr = (totalMoney < 0 ? '-$' : '+$') + Math.abs(totalMoney).toFixed(2);
@@ -386,6 +406,19 @@ async function runReset() {
         }));
         await firestoreSet('system/rooms_data', { rooms: resetRooms });
         console.log('   ✅ Rooms reset (streaks advanced, marks cleared)');
+    }
+
+    // ── Advance event payout watermark ───────────────────────────────────────
+    // Don't clear completions — those stay visible until the yearly auto-reset
+    // baked into Core/events.js. Just record what we paid so future weeks
+    // only pay the new delta.
+    if (events.length) {
+        const paidEvents = events.map(ev => ({
+            ...ev,
+            lastPaidCompletions: ev.completions || 0
+        }));
+        await firestoreSet('system/seasonal_events', { events: paidEvents });
+        console.log('   ✅ Event payout watermark advanced');
     }
 
     // ── Mark reset as done in Firebase ───────────────────────────────────────

@@ -136,6 +136,7 @@ window.completeEvent = async (id) => {
     playBubblePop(true);
     renderSeasonalSection();
     renderEventsManage();
+    window.render?.(); // headline includes unpaid event dollars now
 };
 
 window.uncompleteEvent = async (id) => {
@@ -144,6 +145,7 @@ window.uncompleteEvent = async (id) => {
     playBubblePop(false);
     renderSeasonalSection();
     renderEventsManage();
+    window.render?.();
 };
 
 window.deleteEvent = async (id) => {

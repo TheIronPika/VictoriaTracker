@@ -75,6 +75,9 @@ export async function completeEvent(id) {
     const y = new Date().getFullYear();
     if ((ev.resetYear || 0) < y) {
         ev.completions = 0;
+        // Yearly auto-reset also clears the paid-out marker so next year's
+        // completions are payable from zero.
+        ev.lastPaidCompletions = 0;
         ev.resetYear = y;
     }
     if (ev.completions >= ev.maxCompletions) return null;
@@ -118,10 +121,25 @@ export async function addEvent({
         startMonth, startDay, endMonth, endDay,
         maxCompletions,
         completions: 0,
+        lastPaidCompletions: 0,
         payout,
         resetYear: new Date().getFullYear()
     };
     state.seasonalEvents.push(ev);
     await syncEvents();
     return ev;
+}
+
+/**
+ * Sum of *unpaid* event dollars right now — counts only completions that
+ * haven't been paid out yet at a weekly reset. Mirrors how room payouts
+ * work: shown live, paid (and cleared) on Monday.
+ */
+export function getEventPayoutsTotal() {
+    if (!state.eventsLoaded) return 0;
+    return (state.seasonalEvents || []).reduce((sum, ev) => {
+        const unpaid = (ev.completions || 0) - (ev.lastPaidCompletions || 0);
+        if (unpaid <= 0) return sum;
+        return sum + unpaid * (ev.payout || 0);
+    }, 0);
 }

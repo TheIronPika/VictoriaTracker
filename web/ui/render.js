@@ -15,6 +15,7 @@ import { computeStreaksFromHistory } from '../../Core/streaks.js';
 import { MANAGE_PASSCODE } from '../../Core/config.js';
 import { animateMoneyDisplay } from './animations.js';
 import { renderSeasonalSection, renderEventsManage } from './events-ui.js';
+import { getEventPayoutsTotal } from '../../Core/events.js';
 import { renderShopManage } from './shop-ui.js';
 import { renderHistory, destroyHistoryCharts } from './history-ui.js';
 import { isPeriodActive, periodDayCount, periodStartDayIdx } from '../../Core/period.js';
@@ -318,10 +319,11 @@ export function render() {
 
     uiState.lastActedId = null;
 
-    // Include room payouts in the headline — the reset pays them out at
-    // Monday, and the Streak $ panel + email report both count them, so the
-    // live header should match. (Was M1 in the overnight review.)
+    // Include room + event payouts in the headline — the reset pays them out
+    // Monday and the Streak $ panel + email report both count them, so the
+    // live header should match. (Review M1 + M2.)
     totalMoney += getRoomPayoutsTotal();
+    totalMoney += getEventPayoutsTotal();
     animateMoneyDisplay(totalMoney);
     if (state.eventsLoaded) renderSeasonalSection();
 
