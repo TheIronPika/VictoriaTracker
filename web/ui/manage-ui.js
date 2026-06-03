@@ -7,9 +7,9 @@
 import { uiState } from './ui-state.js';
 import { state } from '../../Core/state.js';
 import { cycleDueLabel } from '../../Core/cycles.js';
-import { computeStreaksFromHistory } from '../../Core/streaks.js';
+import { computeStreaksFromHistory, sortedNewestFirst, sortedOldestFirst } from '../../Core/streaks.js';
 import { getTier } from '../../Core/habits.js';
-import { getDayIdx } from '../../Core/utils.js';
+import { getDayIdx, escapeHtml } from '../../Core/utils.js';
 import { loadWeeklyHistory } from '../../Core/history.js';
 import { renderPeriodHistory } from './period-ui.js';
 import { renderEventsManage } from './events-ui.js';
@@ -151,7 +151,7 @@ window.showManageDetail = (id) => {
         '<div style="display:flex;align-items:center;gap:16px;margin-bottom:20px;padding-bottom:18px;border-bottom:1px solid rgba(255,255,255,0.08);">'
         + '<span style="font-size:40px;line-height:1;margin-left:4px;display:inline-block">' + h.icon + '</span>'
         + '<div style="flex:1">'
-        +   '<div style="font-family:\'Playfair Display\',serif;font-size:24px;font-weight:700;color:var(--header-pink);line-height:1.1">' + h.name + '</div>'
+        +   '<div style="font-family:\'Playfair Display\',serif;font-size:24px;font-weight:700;color:var(--header-pink);line-height:1.1">' + escapeHtml(h.name) + '</div>'
         +   '<div style="font-size:13px;color:#9d99b8;margin-top:4px">' + h.cat + '</div>'
         + '</div>'
         + '<div style="display:flex;gap:10px;align-items:flex-end">'
@@ -230,7 +230,7 @@ window.showManageDetail = (id) => {
     const definitionHtml =
         '<div class="msp-section" style="margin-top:14px">'
         +   '<div class="msp-section-title">Definition / Rules</div>'
-        +   '<textarea placeholder="Describe exactly what counts for this habit…" style="width:100%;padding:12px 14px;border:1px solid rgba(255,255,255,0.14);border-radius:8px;font-family:Montserrat,sans-serif;font-size:13px;resize:vertical;min-height:120px;box-sizing:border-box;line-height:1.7;color:#e8e3f5;background:#362f52;" onchange="window.updateField(\'' + h.id + '\',\'note\',this.value)">' + (h.note||'') + '</textarea>'
+        +   '<textarea placeholder="Describe exactly what counts for this habit…" style="width:100%;padding:12px 14px;border:1px solid rgba(255,255,255,0.14);border-radius:8px;font-family:Montserrat,sans-serif;font-size:13px;resize:vertical;min-height:120px;box-sizing:border-box;line-height:1.7;color:#e8e3f5;background:#362f52;" onchange="window.updateField(\'' + h.id + '\',\'note\',this.value)">' + escapeHtml(h.note||'') + '</textarea>'
         + '</div>';
 
     const bountyHtml = h.bountyActive
@@ -257,7 +257,7 @@ window.showManageDetail = (id) => {
 
 export function computeForecast(h) {
     if (!state.weeklyHistory.length) return null;
-    const sorted   = state.weeklyHistory.slice().sort((a, b) => b.timestamp - a.timestamp);
+    const sorted   = sortedNewestFirst(state.weeklyHistory);
     const lastWk   = sorted[0];
     const lastHab  = (lastWk.habits || []).find(x => x.id === h.id);
     if (!lastHab || !lastHab.history) return null;
@@ -744,7 +744,7 @@ function _thisWeekBreakdown(h, periodActive) {
 // Replay history with the habit's current rates to estimate cumulative
 // streak $ contribution across all recorded weeks.
 function _rollingStreakDollars(habit, weeklyHistory) {
-    const sorted = weeklyHistory.slice().sort((a, b) => a.timestamp - b.timestamp);
+    const sorted = sortedOldestFirst(weeklyHistory);
     let goodRun = 0, badRun = 0;
     let totalGood = 0, totalBad = 0;
     let weeksWithHabit = 0;
@@ -808,7 +808,7 @@ export function renderStreakDollarsManage() {
         const excusedNote   = br.excused ? ' <span style="font-size:9px;color:#aaa;">excused</span>' : '';
         return `
             <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
-                <td style="padding:6px 4px;font-size:12px;">${h.icon} ${h.name}${protectedNote}${excusedNote}</td>
+                <td style="padding:6px 4px;font-size:12px;">${h.icon} ${escapeHtml(h.name)}${protectedNote}${excusedNote}</td>
                 <td style="padding:6px 4px;text-align:right;font-size:11px;color:#aaa;">${br.tier.toUpperCase()}</td>
                 <td style="padding:6px 4px;text-align:right;font-size:11px;color:${_moneyColor(br.base)};">${_money(br.base)}</td>
                 <td style="padding:6px 4px;text-align:right;font-size:11px;">
@@ -830,7 +830,7 @@ export function renderStreakDollarsManage() {
 
     const rollingRows = rolling.filter(x => x.r.weeksWithHabit > 0).map(({ h, r }) => `
         <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
-            <td style="padding:6px 4px;font-size:12px;">${h.icon} ${h.name}</td>
+            <td style="padding:6px 4px;font-size:12px;">${h.icon} ${escapeHtml(h.name)}</td>
             <td style="padding:6px 4px;text-align:right;font-size:11px;color:#888;">${r.weeksWithHabit}w</td>
             <td style="padding:6px 4px;text-align:right;font-size:11px;color:${_moneyColor(r.totalGood)};">${r.totalGood ? '+$' + r.totalGood.toFixed(2) : '—'}</td>
             <td style="padding:6px 4px;text-align:right;font-size:11px;color:${_moneyColor(-r.totalBad)};">${r.totalBad ? '-$' + r.totalBad.toFixed(2) : '—'}</td>

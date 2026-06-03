@@ -6,6 +6,7 @@
 import { uiState } from './ui-state.js';
 import { state } from '../../Core/state.js';
 import { SEASON_META } from '../../Core/config.js';
+import { escapeHtml } from '../../Core/utils.js';
 import {
     loadSeasonalEvents as coreLoadSeasonalEvents,
     isEventActive,
@@ -86,7 +87,7 @@ export function renderSeasonalSection() {
                         <div class="ev-card-top">
                             <span class="ev-icon">${ev.icon}</span>
                             <div class="ev-info">
-                                <div class="ev-name">${ev.name}${done ? ' <span class="ev-done-badge">Done!</span>' : ''}</div>
+                                <div class="ev-name">${escapeHtml(ev.name)}${done ? ' <span class="ev-done-badge">Done!</span>' : ''}</div>
                                 <div class="ev-meta">${ev.completions}/${ev.maxCompletions} complete · ${daysLeft}d left · +$${ev.payout.toFixed(2)}/ea</div>
                             </div>
                             <div class="ev-actions">
@@ -114,7 +115,7 @@ export function renderEventsManage() {
         return `<div class="manage-card" style="border-left:3px solid ${meta.border};">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
                 <span style="font-size:18px;">${ev.icon}</span>
-                <span style="font-family:'Great Vibes';font-size:20px;color:${meta.accent};flex:1;">${ev.name}</span>
+                <span style="font-family:'Great Vibes';font-size:20px;color:${meta.accent};flex:1;">${escapeHtml(ev.name)}</span>
                 <button class="btn-delete" style="padding:4px 10px;font-size:9px;" onclick="window.deleteEvent('${ev.id}')">DELETE</button>
             </div>
             <div style="font-size:11px;color:#ccc8e0;">
@@ -123,7 +124,7 @@ export function renderEventsManage() {
                 Done: ${ev.completions} &nbsp;·&nbsp;
                 $${ev.payout.toFixed(2)}/ea
             </div>
-            ${ev.note ? `<div style="font-size:11px;color:#9d99b8;margin-top:4px;">${ev.note}</div>` : ''}
+            ${ev.note ? `<div style="font-size:11px;color:#9d99b8;margin-top:4px;">${escapeHtml(ev.note)}</div>` : ''}
         </div>`;
     }).join('');
 }

@@ -4,6 +4,28 @@
 // Counter-free design: avoids drift from missed resets or manual edits.
 // ─────────────────────────────────────────────────────────────────────
 
+// Tiny array-identity memo. Both helpers do their own sort, and render.js
+// calls them N times per render (once per habit) with the same array.
+// Caching by reference means O(N log N) -> O(1) for every call after the
+// first within a render — and stays correct on data updates because the
+// state setter replaces the array with a fresh reference.
+let _newestFirstSrc = null, _newestFirstSorted = null;
+let _oldestFirstSrc = null, _oldestFirstSorted = null;
+
+export function sortedNewestFirst(weeklyHistory) {
+    if (_newestFirstSrc === weeklyHistory) return _newestFirstSorted;
+    _newestFirstSrc    = weeklyHistory;
+    _newestFirstSorted = weeklyHistory.slice().sort((a, b) => b.timestamp - a.timestamp);
+    return _newestFirstSorted;
+}
+
+export function sortedOldestFirst(weeklyHistory) {
+    if (_oldestFirstSrc === weeklyHistory) return _oldestFirstSorted;
+    _oldestFirstSrc    = weeklyHistory;
+    _oldestFirstSorted = weeklyHistory.slice().sort((a, b) => a.timestamp - b.timestamp);
+    return _oldestFirstSorted;
+}
+
 /**
  * Compute current streak and bad streak for a habit by scanning
  * the weekly_history array backward (most recent first).
@@ -17,8 +39,7 @@
 export function computeStreaksFromHistory(weeklyHistory, habitId) {
     if (!weeklyHistory.length) return { streak: 0, badStreak: 0 };
 
-    // Sort newest first (immutable — don't mutate caller's array).
-    const sorted = weeklyHistory.slice().sort((a, b) => b.timestamp - a.timestamp);
+    const sorted = sortedNewestFirst(weeklyHistory);
     let streak = 0, badStreak = 0;
 
     // Count consecutive good weeks from most recent.
@@ -46,8 +67,7 @@ export function computeStreaksFromHistory(weeklyHistory, habitId) {
  */
 export function computeBestStreak(weeklyHistory, habitId) {
     if (!weeklyHistory.length) return 0;
-    // Sort oldest first for a forward scan.
-    const sorted = weeklyHistory.slice().sort((a, b) => a.timestamp - b.timestamp);
+    const sorted = sortedOldestFirst(weeklyHistory);
     let best = 0, run = 0;
     for (const wk of sorted) {
         const h = (wk.habits || []).find(x => x.id === habitId);

@@ -53,3 +53,20 @@ export function formatMoney(n, alwaysShowSign = false) {
     if (n < 0) return '-$' + abs;
     return (alwaysShowSign ? '+$' : '$') + abs;
 }
+
+/**
+ * Escape a value for safe use in HTML text content / attribute values.
+ * Used wherever user-entered strings (habit names, notes, event names,
+ * shop item names, star log reasons) flow into innerHTML template literals.
+ * Single-user app so XSS isn't the threat — the real bug is that a stray
+ * `<` in a name corrupts layout. null/undefined render as empty string.
+ */
+export function escapeHtml(v) {
+    if (v === null || v === undefined) return '';
+    return String(v)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}

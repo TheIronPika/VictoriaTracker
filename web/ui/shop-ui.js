@@ -5,6 +5,7 @@
 
 import { uiState } from './ui-state.js';
 import { state } from '../../Core/state.js';
+import { escapeHtml } from '../../Core/utils.js';
 import {
     syncStarData,
     awardStars      as coreAwardStars,
@@ -12,6 +13,7 @@ import {
     addShopItem     as coreAddShopItem,
     deleteShopItem  as coreDeleteShopItem,
     addExcuseToken,
+    grantExcuseTokens,
     useExcuseToken
 } from '../../Core/stars.js';
 
@@ -38,7 +40,7 @@ export function renderShopSheet() {
             const cant = it.cost > state.starBalance;
             return '<div class="shop-item' + (cant ? ' shop-item-cant' : '') + '" onclick="' + (cant ? '' : 'window.selectShopItem(' + i + ')') + '">'
                 + '<div class="shop-item-ico">' + (it.icon || '✨') + '</div>'
-                + '<div class="shop-item-name">' + it.name + '</div>'
+                + '<div class="shop-item-name">' + escapeHtml(it.name) + '</div>'
                 + '<div class="shop-item-cost">✨ ' + it.cost + '</div>'
                 + '</div>';
         }).join('');
@@ -57,7 +59,7 @@ export function renderShopSheet() {
                 const negative = e.type === 'spend' || e.amount < 0;
                 return '<div class="shop-log-row">'
                     + '<span class="shop-log-date">' + ds + '</span>'
-                    + '<span class="shop-log-reason">' + e.reason + '</span>'
+                    + '<span class="shop-log-reason">' + escapeHtml(e.reason) + '</span>'
                     + '<span class="shop-log-amt ' + (negative ? 'spend' : 'earn') + '">' + (negative ? '-' : '+') + '✨' + Math.abs(e.amount) + '</span>'
                     + '</div>';
             }).join('');
@@ -79,7 +81,7 @@ export function renderShopManage() {
     root.innerHTML = state.shopItems.map(it =>
         '<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.1)">'
         + '<span style="font-size:18px;">' + it.icon + '</span>'
-        + '<span style="flex:1;font-size:12px;font-weight:600;color:#e8e3f5;">' + it.name + '</span>'
+        + '<span style="flex:1;font-size:12px;font-weight:600;color:#e8e3f5;">' + escapeHtml(it.name) + '</span>'
         + '<label style="display:flex;align-items:center;gap:4px;font-size:10px;color:#c8942a;cursor:pointer;white-space:nowrap;" title="Grants an excuse token when redeemed">'
         + '<input type="checkbox" ' + (it.isExcuseToken ? 'checked' : '') + ' style="accent-color:#c8942a;" onchange="window.toggleShopItemExcuseToken(\'' + it.id + '\',this.checked)"> excuse token'
         + '</label>'
@@ -174,7 +176,8 @@ window.toggleShopItemExcuseToken = async (id, checked) => {
 window.grantExcuseToken = async () => {
     const amt = parseInt(document.getElementById('grantExcuseAmt')?.value) || 1;
     if (amt <= 0) return;
-    for (let i = 0; i < amt; i++) await addExcuseToken();
+    // Single batched write instead of N awaited syncStarData() round trips.
+    await grantExcuseTokens(amt);
     document.getElementById('grantExcuseAmt').value = '';
     renderExcuseTokenCount();
     alert('✦ ' + amt + ' excuse token' + (amt !== 1 ? 's' : '') + ' granted!');

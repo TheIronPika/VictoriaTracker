@@ -8,7 +8,7 @@
 
 import { uiState, saveCollapsedState } from './ui-state.js';
 import { state } from '../../Core/state.js';
-import { getDayIdx } from '../../Core/utils.js';
+import { getDayIdx, escapeHtml } from '../../Core/utils.js';
 import { getTier } from '../../Core/habits.js';
 import { isCycleDue, cycleLabel, cycleDueLabel } from '../../Core/cycles.js';
 import { computeStreaksFromHistory } from '../../Core/streaks.js';
@@ -104,7 +104,7 @@ export function render() {
         todayHtml += `
             <div class="category-header" onclick="window.toggleCol('${cat}')">
                 <div style="flex:1">
-                    <span class="cat-label">${cat}</span>
+                    <span class="cat-label">${escapeHtml(cat)}</span>
                     <div class="status-mini-bar">${miniDotsHtml}</div>
                 </div>
                 <span style="color:var(--header-pink); font-size:12px; font-weight:bold;">${isCol ? 'SHOW ✦' : 'HIDE ✧'}</span>
@@ -113,7 +113,7 @@ export function render() {
 
         let weekSectionHtml = `
             <div class="weekly-cat-section">
-                <h3 class="weekly-cat-label" style="font-family:'Playfair Display'; font-size:14px; margin: 20px 0 10px 5px; color:var(--header-pink); text-transform:uppercase; letter-spacing:1px;">${cat}</h3>
+                <h3 class="weekly-cat-label" style="font-family:'Playfair Display'; font-size:14px; margin: 20px 0 10px 5px; color:var(--header-pink); text-transform:uppercase; letter-spacing:1px;">${escapeHtml(cat)}</h3>
                 <div class="weekly-grid">
                     <div class="weekly-row day-labels">
                         <span class="weekly-task-name"></span>
@@ -129,7 +129,7 @@ export function render() {
             const catId = cat.replace(/[^a-zA-Z0-9]/g, '_');
             const mspCatCollapsed = JSON.parse(localStorage.getItem('mspCatCollapsed') || '{}');
             const isCatCollapsed  = mspCatCollapsed[catId] === true;
-            manageCatHtml = `<div class="msp-cat-label msp-cat-toggle" onclick="window.toggleMspCat('${catId}')"><span>${cat}</span><span id="msp-chev-${catId}" style="transition:transform 0.2s;display:inline-block;${isCatCollapsed ? 'transform:rotate(-90deg)' : ''}">&#9662;</span></div><div id="msp-cat-${catId}" style="${isCatCollapsed ? 'display:none' : ''}">`;
+            manageCatHtml = `<div class="msp-cat-label msp-cat-toggle" onclick="window.toggleMspCat('${catId}')"><span>${escapeHtml(cat)}</span><span id="msp-chev-${catId}" style="transition:transform 0.2s;display:inline-block;${isCatCollapsed ? 'transform:rotate(-90deg)' : ''}">&#9662;</span></div><div id="msp-cat-${catId}" style="${isCatCollapsed ? 'display:none' : ''}">`;
             manageListHtml += manageCatHtml;
         }
 
@@ -213,7 +213,7 @@ export function render() {
                         ${periodProtectedCard ? '<span class="period-tag">✦ Period protected</span>' : ''}
                         ${h.excused ? '<span class="excused-tag">✦ Excused this week</span>' : ''}
                         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-                            <p style="margin:0; font-weight:600;">${h.name}</p>
+                            <p style="margin:0; font-weight:600;">${escapeHtml(h.name)}</p>
                             ${streaks.streak >= 1 ? `<span class="streak-badge">🔥 ${streaks.streak}</span>` : ''}
                             ${streaks.badStreak >= 1 ? `<span class="bad-streak-badge">🌧️ ${streaks.badStreak}</span>` : ''}
                             ${cycleLabel(h) ? `<span class="cycle-badge">🔄 ${cycleLabel(h)}</span>` : ''}
@@ -245,13 +245,13 @@ export function render() {
 
             weekSectionHtml += `
                 <div class="weekly-row">
-                    <span class="weekly-task-name">${h.name}</span>
+                    <span class="weekly-task-name">${escapeHtml(h.name)}</span>
                     <div class="weekly-dots-row">${weeklyDotsHtml}</div>
                 </div>`;
 
             manageHtml += `
                 <div class="manage-card">
-                    <h4 class="beloved-small" style="font-family:'Great Vibes'; font-size:24px; color:var(--header-pink); margin:0 0 10px 0;">${h.icon} ${h.name}</h4>
+                    <h4 class="beloved-small" style="font-family:'Great Vibes'; font-size:24px; color:var(--header-pink); margin:0 0 10px 0;">${h.icon} ${escapeHtml(h.name)}</h4>
                     <div style="margin-bottom:10px; display:flex; gap:20px; align-items:center; flex-wrap:wrap;">
                         <div style="font-size:12px;">Max Circles (week):
                             <input type="number" value="${h.max || 7}" min="1" max="49" style="width:45px; margin-left:4px;"
@@ -298,7 +298,7 @@ export function render() {
                         <div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Definition / Rules</div>
                         <textarea placeholder="Describe exactly what counts for this habit…"
                             style="width:100%;padding:8px;border:1px solid #eee;border-radius:8px;font-family:'Montserrat';font-size:12px;resize:vertical;min-height:60px;box-sizing:border-box;"
-                            onchange="window.updateField('${h.id}','note',this.value)">${h.note || ''}</textarea>
+                            onchange="window.updateField('${h.id}','note',this.value)">${escapeHtml(h.note || '')}</textarea>
                     </div>
                     <button class="btn-delete" onclick="window.deleteTask('${h.id}')">DELETE TASK</button>
                 </div>`;
@@ -307,7 +307,7 @@ export function render() {
         // Build manage list items using allItemsForManage (includes cycle-inactive habits)
         if (manageVisible) {
             allItemsForManage.forEach(h => {
-                manageListHtml += `<div class="msp-habit-row" onclick="window.showManageDetail('${h.id}')" id="msp-row-${h.id}"><span class="msp-drag-handle">⠿</span>${h.icon} <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${h.name}</span>${h.bountyActive ? '<span style="font-size:10px;flex-shrink:0;margin-left:4px" title="Bounty active">🏆</span>' : ''}</div>`;
+                manageListHtml += `<div class="msp-habit-row" onclick="window.showManageDetail('${h.id}')" id="msp-row-${h.id}"><span class="msp-drag-handle">⠿</span>${h.icon} <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(h.name)}</span>${h.bountyActive ? '<span style="font-size:10px;flex-shrink:0;margin-left:4px" title="Bounty active">🏆</span>' : ''}</div>`;
             });
             manageListHtml += `</div>`;
         }

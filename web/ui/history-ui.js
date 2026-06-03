@@ -8,6 +8,7 @@ import { uiState } from './ui-state.js';
 import { state } from '../../Core/state.js';
 import { loadWeeklyHistory } from '../../Core/history.js';
 import { MANAGE_PASSCODE } from '../../Core/config.js';
+import { sortedOldestFirst } from '../../Core/streaks.js';
 
 // ── Chart lifecycle ───────────────────────────────────────────────────
 
@@ -57,7 +58,7 @@ function _paintHistory(root) {
         return;
     }
 
-    const wks   = weeklyHistory.slice().sort((a, b) => a.timestamp - b.timestamp);
+    const wks   = sortedOldestFirst(weeklyHistory);
     const allT  = wks.reduce((s, w) => s + w.totalBalance, 0);
     const best  = wks.reduce((b, w) => w.totalBalance > b.totalBalance ? w : b, wks[0]);
     const profW = wks.filter(w => w.totalBalance >= 0).length;

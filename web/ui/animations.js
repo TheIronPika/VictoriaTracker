@@ -10,6 +10,7 @@ import { state } from '../../Core/state.js';
 import { getTier } from '../../Core/habits.js';
 import { getDayIdx } from '../../Core/utils.js';
 import { computeStreaksFromHistory } from '../../Core/streaks.js';
+import { WEATHER_CONFIG } from '../../Core/config.js';
 
 // ── Bubble pop sound ──────────────────────────────────────────────────
 
@@ -252,7 +253,7 @@ export async function fetchWeatherAndUV() {
     navigator.geolocation.getCurrentPosition(async (position) => {
         const { latitude: lat, longitude: lon } = position.coords;
         try {
-            const res   = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=imperial&appid=ff4155f6320e193fc795a67d1b40b6dd`);
+            const res   = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=imperial&appid=${WEATHER_CONFIG.openWeatherKey}`);
             const wData = await res.json();
             if (wData.main) {
                 const iconMap = {
@@ -267,7 +268,7 @@ export async function fetchWeatherAndUV() {
 
         try {
             const uvRes  = await fetch(`https://api.openuv.io/api/v1/uv?lat=${lat}&lng=${lon}`, {
-                headers: { 'x-access-token': 'openuv-q3onrmo2zfflc-io' }
+                headers: { 'x-access-token': WEATHER_CONFIG.openUVKey }
             });
             const uvData = await uvRes.json();
             const uvIdx  = Math.round(uvData.result.uv);

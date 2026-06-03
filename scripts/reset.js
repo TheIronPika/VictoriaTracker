@@ -6,8 +6,8 @@
 // mirroring the live UI's cycle gating and period protection so the
 // reset and on-screen balance agree.
 
-import { initializeApp, cert } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+// Note: no firebase-admin here on purpose — the script authenticates with
+// FIREBASE_API_KEY via the REST API helpers below, not a service account.
 import fetch from 'node-fetch';
 
 // ── Firebase init (uses REST API key for Firestore access) ──────────────────

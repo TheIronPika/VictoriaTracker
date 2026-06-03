@@ -94,6 +94,18 @@ export async function addExcuseToken() {
 }
 
 /**
+ * Grant N excuse tokens in a single sync — used by the Manage UI's bulk grant
+ * affordance. Avoids N round-trips to Firestore when N > 1.
+ */
+export async function grantExcuseTokens(count) {
+    const n = parseInt(count, 10);
+    if (!Number.isFinite(n) || n <= 0) return;
+    setExcuseTokens(state.excuseTokens + n);
+    addStarLog('excuseToken', n, n === 1 ? 'Excuse token added' : `${n} excuse tokens added`);
+    await syncStarData();
+}
+
+/**
  * Consume one excuse token. Returns false if balance is 0.
  */
 export async function useExcuseToken() {

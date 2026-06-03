@@ -7,7 +7,7 @@
 
 import { uiState, saveCollapsedState } from './ui-state.js';
 import { state } from '../../Core/state.js';
-import { getDayIdx } from '../../Core/utils.js';
+import { getDayIdx, escapeHtml } from '../../Core/utils.js';
 import { getTier } from '../../Core/habits.js';
 import { syncHabits, toggleExcused as coreToggleExcused, deleteHabit as coreDeleteHabit } from '../../Core/habits-data.js';
 import { syncStarData, addStarLog, useExcuseToken } from '../../Core/stars.js';
@@ -150,7 +150,7 @@ window.toggleExcused = async (id) => {
         ? `<div class="period-modal-sheet">
                <div class="period-modal-title">✦ Use an excuse token?</div>
                <div class="period-modal-sub">
-                   This will excuse <strong>${h.name}</strong> for the week — no payout penalty and your streak won't reset.<br><br>
+                   This will excuse <strong>${escapeHtml(h.name)}</strong> for the week — no payout penalty and your streak won't reset.<br><br>
                    You have <strong>${tokens} excuse token${tokens !== 1 ? 's' : ''}</strong>. You'll have ${tokens - 1} after this.
                </div>
                <div class="period-modal-btns">

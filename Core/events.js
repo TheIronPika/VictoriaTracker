@@ -33,26 +33,18 @@ export function isEventActive(ev) {
     const today = new Date();
     const m = today.getMonth() + 1;
     const d = today.getDate();
-    const y = today.getFullYear();
 
     const start = ev.startMonth * 100 + ev.startDay;
     const end   = ev.endMonth   * 100 + ev.endDay;
     const now   = m * 100 + d;
 
-    let inRange;
-    if (start <= end) {
-        inRange = now >= start && now <= end;
-    } else {
-        // wraps across year boundary (Dec–Feb)
-        inRange = now >= start || now <= end;
-    }
-    if (!inRange) return false;
-
-    // Auto-reset on new year — caller resets completions on first interaction.
-    if ((ev.resetYear || 0) < y) return true;
-
-    // Even completed events stay visible (UI dims them) until weekly reset.
-    return true;
+    // Range may wrap across year boundary (e.g. Dec 15 – Feb 15).
+    // Completed events stay visible (UI dims them) until the yearly auto-reset
+    // baked into completeEvent — so the only thing that hides an event here
+    // is the calendar window.
+    return (start <= end)
+        ? (now >= start && now <= end)
+        : (now >= start || now <= end);
 }
 
 /**

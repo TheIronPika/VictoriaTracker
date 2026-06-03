@@ -4,6 +4,7 @@
 // ─────────────────────────────────────────────────────────────────────
 
 import { state } from '../../Core/state.js';
+import { escapeHtml } from '../../Core/utils.js';
 import { loadRoomsData as coreLoadRoomsData, syncRoomsData, toggleRoomCheck as coreToggleRoomCheck } from '../../Core/rooms.js';
 import { playBubblePop } from './animations.js';
 
@@ -38,7 +39,7 @@ export function renderRoomsSection() {
                     <div style="font-size:24px;margin-right:14px;">${room.icon}</div>
                     <div style="flex:1;">
                         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-                            <p style="margin:0;font-weight:600;">${room.name}</p>
+                            <p style="margin:0;font-weight:600;">${escapeHtml(room.name)}</p>
                             ${room.streak > 0 ? `<span class="streak-badge">🏠 ${room.streak}wk</span>` : ''}
                             <span style="font-size:9px;color:#bbb;font-weight:600;">max ${room.maxStreak}wk</span>
                         </div>

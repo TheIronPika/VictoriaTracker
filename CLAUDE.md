@@ -117,7 +117,7 @@ VictoriaTracker/
 │
 ├── scripts/
 │   ├── reset.js          ← Node.js weekly reset job (runs in GitHub Actions)
-│   └── package.json      ← firebase-admin + node-fetch deps for reset script
+│   └── package.json      ← node-fetch dep for reset script (REST API, no firebase-admin)
 │
 ├── .github/workflows/
 │   └── weekly-reset.yml  ← Cron: every Monday 09:00 UTC (4 AM Central)
@@ -200,7 +200,7 @@ All data lives in **Firebase Firestore**, project `victoria-tracker-1d2ab`, coll
 
 4. **`scripts/reset.js` (Node/Actions) is the single source of truth for weekly reset math.** It runs unattended via GitHub Actions — no one needs the app open. The browser-side `runWeeklyReport` flow no longer exists; the live UI in `web/ui/render.js` mirrors the reset's per-habit payout/streak logic for the on-screen "This Week's Balance" only. If you change tier/payout math, update both sites.
 
-5. **`reset.js` uses the Firestore REST API, not firebase-admin.** The script authenticates with `FIREBASE_API_KEY` via `node-fetch` to the REST endpoint — not a service account. The `firebase-admin` import at the top of `reset.js` is unused; the actual reads/writes go through the hand-rolled REST helpers in the same file.
+5. **`scripts/reset.js` uses the Firestore REST API, not firebase-admin.** The script authenticates with `FIREBASE_API_KEY` via `node-fetch` to the REST endpoint — not a service account. There is no `firebase-admin` import or dependency.
 
 6. **Period protection skips scoring, not history.** When a period is active, period-sensitive habits keep logging completions normally but the reset ignores their payouts/penalties. Bubbles turn pink for those days.
 
