@@ -141,9 +141,9 @@ export function render() {
             let payout = 0;
             if (!h.excused) {
                 if (tier === 'punish')     payout = periodProtected ? 0 : (h.valPunish || 0);
-                else if (tier === 'low')   payout = h.valLow;
-                else if (tier === 'goal')  payout = h.valGoal;
-                else if (tier === 'bonus') payout = h.valBonus;
+                else if (tier === 'low')   payout = h.valLow  || 0;
+                else if (tier === 'goal')  payout = h.valGoal || 0;
+                else if (tier === 'bonus') payout = h.valBonus|| 0;
 
                 if ((tier === 'goal' || tier === 'bonus') && (h.streak || 0) >= 2 && (h.streakBonusPer || 0) > 0) {
                     const raw = (h.streak || 0) * h.streakBonusPer;
