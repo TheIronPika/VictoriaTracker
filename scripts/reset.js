@@ -110,6 +110,19 @@ function isCycleDue(h) {
     return Date.now() >= (h.cycleNextDue || 0);
 }
 
+function isCyclic(h) {
+    return !!(h.cycleType && h.cycleType !== 'none');
+}
+
+// Whole weeks past the cyclic habit's due date — drives the late-completion
+// payout reduction. Cyclic habits don't take weekly negative hits; instead
+// when she eventually completes a late cycle, the payout is knocked down by
+// (weeksLate × streakPenaltyPer), floored at 0.
+function weeksLate(h, now) {
+    if (!isCyclic(h) || !h.cycleNextDue) return 0;
+    return Math.max(0, Math.floor((now - h.cycleNextDue) / (7 * 86400000)));
+}
+
 // ── Main reset ───────────────────────────────────────────────────────────────
 async function runReset() {
     const now    = new Date();
@@ -166,6 +179,7 @@ async function runReset() {
     let totalMoney = 0;
     let reportLines = [];
 
+    const nowTs = Date.now();
     habits.forEach(h => {
         if (isDormant(h)) {
             // Cyclic habit not yet due — hidden from live UI, so ignore here too.
@@ -178,24 +192,35 @@ async function runReset() {
         const cur   = hist[6] !== undefined ? hist[6] : (hist[hist.length - 1] || 0);
         const tier  = getTier(h, cur);
         const protectedNow = periodProtectedH(h);
+        const cyclic = isCyclic(h);
+        const wkLate = cyclic ? weeksLate(h, nowTs) : 0;
         let payout  = 0;
+        let lateReduction = 0;
 
-        if (tier === 'punish')    payout = protectedNow ? 0 : (h.valPunish || 0);
+        if (tier === 'punish') {
+            // Cyclic habits never take a weekly negative — punish weeks pay $0.
+            payout = cyclic ? 0 : (protectedNow ? 0 : (h.valPunish || 0));
+        }
         else if (tier === 'low')   payout = h.valLow   || 0;
         else if (tier === 'goal')  payout = h.valGoal  || 0;
         else if (tier === 'bonus') payout = h.valBonus || 0;
 
-        // Streak payouts
-        const curStreak    = h.streak    || 0;
-        const curBadStreak = h.badStreak || 0;
-        // Flat per-week: every good/bad week applies streakBonusPer / streakPenaltyPer
-        // once. No multiplier by streak length and no grace threshold.
-        // streakCap still bounds the per-week amount if set.
+        // Cyclic late-completion reduction: when a positive payout lands after
+        // a late cycle, knock streakPenaltyPer × weeksLate off the top.
+        if (cyclic && wkLate > 0 && payout > 0 && (h.streakPenaltyPer || 0) > 0) {
+            const requested  = wkLate * h.streakPenaltyPer;
+            lateReduction    = Math.min(requested, payout); // floor at $0
+            payout          -= lateReduction;
+        }
+
+        // Streak payouts (positive) — applies to any goal/bonus week, cyclic or not.
         if ((tier==='goal'||tier==='bonus') && (h.streakBonusPer||0)>0) {
             const cap = h.streakCap ? parseFloat(h.streakCap) : Infinity;
             payout += Math.min(h.streakBonusPer, cap);
         }
-        if (!protectedNow && (tier==='punish'||tier==='low') && (h.streakPenaltyPer||0)>0) {
+        // Bad-streak penalty (negative) — skipped for cyclic (no weekly negative)
+        // and for period-protected habits.
+        if (!cyclic && !protectedNow && (tier==='punish'||tier==='low') && (h.streakPenaltyPer||0)>0) {
             const cap = h.streakCap ? parseFloat(h.streakCap) : Infinity;
             payout -= Math.min(h.streakPenaltyPer, cap);
         }
@@ -212,7 +237,8 @@ async function runReset() {
         if (bountyTriggered && (h.bountyExcuseTokens || 0) > 0) bountyParts.push(`🎫×${h.bountyExcuseTokens}`);
         const bountyNote = bountyParts.length ? ` 🏆 ${bountyParts.join(' ')} bounty` : '';
         const protectedNote = protectedNow ? ' 🩸 period-protected' : '';
-        reportLines.push(`${h.icon} ${h.name}: ${tierLabel} (${sign}${Math.abs(payout).toFixed(2)})${bountyNote}${protectedNote}`);
+        const lateNote = lateReduction > 0 ? ` ⏰ ${wkLate}w late (-$${lateReduction.toFixed(2)})` : '';
+        reportLines.push(`${h.icon} ${h.name}: ${tierLabel} (${sign}${Math.abs(payout).toFixed(2)})${bountyNote}${protectedNote}${lateNote}`);
     });
 
     // ── Room payouts (each cleaned room earns min(streak+1, maxStreak)) ──────
@@ -319,6 +345,9 @@ async function runReset() {
     // ── Update streaks ───────────────────────────────────────────────────────
     // Dormant cyclic habits and period-sensitive habits (during/after period
     // this week) have their streak frozen — neither incremented nor reset.
+    // Cyclic habits: streak only grows on completed cycles (goal/bonus weeks);
+    // a punish/low week during a wait does NOT zero the streak and badStreak
+    // stays at 0 — there are no weekly negatives for cyclic habits.
     console.log('🔥 Updating streaks...');
     habits = habits.map(h => {
         if (isDormant(h))   return { ...h };
@@ -328,9 +357,15 @@ async function runReset() {
         const cur     = hist[6] !== undefined ? hist[6] : (hist[hist.length-1]||0);
         const tier    = getTier(h, cur);
         const isGood    = tier === 'goal' || tier === 'bonus';
-        const streak    = isGood ? (h.streak||0) + 1 : 0;
-        const badStreak = !isGood ? (h.badStreak||0) + 1 : 0;
-        const best      = Math.max(streak, h.bestStreak||0);
+        let streak, badStreak;
+        if (isCyclic(h)) {
+            streak    = isGood ? (h.streak || 0) + 1 : (h.streak || 0);
+            badStreak = 0;
+        } else {
+            streak    = isGood ? (h.streak    || 0) + 1 : 0;
+            badStreak = !isGood ? (h.badStreak || 0) + 1 : 0;
+        }
+        const best = Math.max(streak, h.bestStreak||0);
         return { ...h, streak, badStreak, bestStreak: best };
     });
 

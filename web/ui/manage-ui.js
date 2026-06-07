@@ -18,6 +18,7 @@ import { resolveOrderedSections, moveSection, SECTION_SEASONAL, SECTION_ROOMS } 
 import { isPeriodActive } from '../../Core/period.js';
 import { getRoomPayoutsTotal } from '../../Core/rooms.js';
 import { getEventPayoutsTotal } from '../../Core/events.js';
+import { isCyclic, weeksLate } from '../../Core/cycles.js';
 
 // ── Manage section state ──────────────────────────────────────────────
 let currentManageSection  = 'habits';
@@ -730,18 +731,31 @@ function _thisWeekBreakdown(h, periodActive) {
     const cur  = hist[6] !== undefined ? hist[6] : (hist[hist.length - 1] || 0);
     const tier = getTier(h, cur);
     const periodProtected = periodActive && !!h.periodSensitive;
+    const cyclic = isCyclic(h);
+    const wkLate = cyclic ? weeksLate(h) : 0;
 
-    let base = 0, goodStreak = 0, badStreak = 0, bounty = 0;
+    let base = 0, goodStreak = 0, badStreak = 0, bounty = 0, lateReduction = 0;
     if (!h.excused) {
-        if (tier === 'punish')     base = periodProtected ? 0 : (h.valPunish || 0);
+        if (tier === 'punish') {
+            // Cyclic: no weekly negative.
+            base = cyclic ? 0 : (periodProtected ? 0 : (h.valPunish || 0));
+        }
         else if (tier === 'low')   base = h.valLow  || 0;
         else if (tier === 'goal')  base = h.valGoal || 0;
         else if (tier === 'bonus') base = h.valBonus|| 0;
 
+        // Cyclic late-completion reduction (applied to positive base).
+        if (cyclic && wkLate > 0 && base > 0 && (h.streakPenaltyPer || 0) > 0) {
+            const requested = wkLate * h.streakPenaltyPer;
+            lateReduction = Math.min(requested, base);
+            base -= lateReduction;
+        }
+
         if ((tier === 'goal' || tier === 'bonus') && (h.streakBonusPer || 0) > 0) {
             goodStreak = Math.min(h.streakBonusPer, _streakCap(h));
         }
-        if (!periodProtected && (tier === 'punish' || tier === 'low') && (h.streakPenaltyPer || 0) > 0) {
+        // Bad-streak penalty — skip for cyclic and period-protected.
+        if (!cyclic && !periodProtected && (tier === 'punish' || tier === 'low') && (h.streakPenaltyPer || 0) > 0) {
             badStreak = -Math.min(h.streakPenaltyPer, _streakCap(h));
         }
         if (h.bountyActive && (tier === 'goal' || tier === 'bonus') && (h.bountyDollars || 0) > 0) {
@@ -751,6 +765,7 @@ function _thisWeekBreakdown(h, periodActive) {
     const total = base + goodStreak + badStreak + bounty;
     return { tier, base, goodStreak, badStreak, bounty, total,
              excused: !!h.excused, periodProtected,
+             cyclic, weeksLate: wkLate, lateReduction,
              streakCount: h.streak || 0, badStreakCount: h.badStreak || 0 };
 }
 
@@ -838,9 +853,12 @@ export function renderStreakDollarsManage() {
             ? `<span style="font-size:10px;color:#888;">🌧️${br.badStreakCount}</span>` : '';
         const protectedNote = br.periodProtected ? ' <span title="Period protected" style="font-size:9px;color:#d4a3a3;">🩸</span>' : '';
         const excusedNote   = br.excused ? ' <span style="font-size:9px;color:#aaa;">excused</span>' : '';
+        const lateNote      = br.weeksLate > 0
+            ? ` <span title="Cyclic habit overdue — eventual payout reduced by ${br.weeksLate}w × $/wk" style="font-size:9px;color:#d9534f;">⏰ ${br.weeksLate}w late${br.lateReduction > 0 ? ` (−$${br.lateReduction.toFixed(2)})` : ''}</span>` : '';
+        const cyclicNote    = br.cyclic && !lateNote ? ' <span title="Cyclic — no weekly negative" style="font-size:9px;color:#888;">🔄</span>' : '';
         return `
             <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
-                <td style="padding:6px 4px;font-size:12px;">${h.icon} ${escapeHtml(h.name)}${protectedNote}${excusedNote}</td>
+                <td style="padding:6px 4px;font-size:12px;">${h.icon} ${escapeHtml(h.name)}${protectedNote}${excusedNote}${cyclicNote}${lateNote}</td>
                 <td style="padding:6px 4px;text-align:right;font-size:11px;color:#aaa;">${br.tier.toUpperCase()}</td>
                 <td style="padding:6px 4px;text-align:right;font-size:11px;color:${_moneyColor(br.base)};">${_money(br.base)}</td>
                 <td style="padding:6px 4px;text-align:right;font-size:11px;">
@@ -855,8 +873,12 @@ export function renderStreakDollarsManage() {
             </tr>`;
     }).join('');
 
-    // ── Rolling ───────────────────────────────────────────────────────
-    const rolling = habits.map(h => ({ h, r: _rollingStreakDollars(h, state.weeklyHistory || []) }));
+    // ── Current streak (rolling) ──────────────────────────────────────
+    // Skip cyclic habits — they don't accumulate weekly negative streaks and
+    // the "current run" concept doesn't apply (each cycle is its own event).
+    const rolling = habits
+        .filter(h => !isCyclic(h))
+        .map(h => ({ h, r: _rollingStreakDollars(h, state.weeklyHistory || []) }));
     rolling.sort((a, b) => a.r.net - b.r.net);
     const rollingWeeks = (state.weeklyHistory || []).length;
 

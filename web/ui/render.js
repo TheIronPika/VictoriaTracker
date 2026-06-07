@@ -10,7 +10,7 @@ import { uiState, saveCollapsedState } from './ui-state.js';
 import { state } from '../../Core/state.js';
 import { getDayIdx, escapeHtml } from '../../Core/utils.js';
 import { getTier } from '../../Core/habits.js';
-import { isCycleDue, cycleLabel, cycleDueLabel } from '../../Core/cycles.js';
+import { isCycleDue, cycleLabel, cycleDueLabel, isCyclic, weeksLate } from '../../Core/cycles.js';
 import { computeStreaksFromHistory } from '../../Core/streaks.js';
 import { MANAGE_PASSCODE } from '../../Core/config.js';
 import { animateMoneyDisplay } from './animations.js';
@@ -137,19 +137,32 @@ export function render() {
             const cur  = h.history[dIdx];
             const tier = getTier(h, cur);
             const periodProtected = isPeriodActive() && !!h.periodSensitive;
+            const cyclic = isCyclic(h);
+            const wkLate = cyclic ? weeksLate(h) : 0;
 
             let payout = 0;
             if (!h.excused) {
-                if (tier === 'punish')     payout = periodProtected ? 0 : (h.valPunish || 0);
+                if (tier === 'punish') {
+                    // Cyclic: no weekly negative — punish weeks pay $0.
+                    payout = cyclic ? 0 : (periodProtected ? 0 : (h.valPunish || 0));
+                }
                 else if (tier === 'low')   payout = h.valLow  || 0;
                 else if (tier === 'goal')  payout = h.valGoal || 0;
                 else if (tier === 'bonus') payout = h.valBonus|| 0;
+
+                // Cyclic late-completion reduction (positive payout shrinks by
+                // weeksLate × streakPenaltyPer, floored at $0).
+                if (cyclic && wkLate > 0 && payout > 0 && (h.streakPenaltyPer || 0) > 0) {
+                    const requested = wkLate * h.streakPenaltyPer;
+                    payout -= Math.min(requested, payout);
+                }
 
                 // Flat per-week — see scripts/reset.js for the canonical formula.
                 if ((tier === 'goal' || tier === 'bonus') && (h.streakBonusPer || 0) > 0) {
                     payout += Math.min(h.streakBonusPer, h.streakCap ? parseFloat(h.streakCap) : Infinity);
                 }
-                if (!periodProtected && (tier === 'punish' || tier === 'low') && (h.streakPenaltyPer || 0) > 0) {
+                // Bad-streak penalty — skip for cyclic and period-protected.
+                if (!cyclic && !periodProtected && (tier === 'punish' || tier === 'low') && (h.streakPenaltyPer || 0) > 0) {
                     payout -= Math.min(h.streakPenaltyPer, h.streakCap ? parseFloat(h.streakCap) : Infinity);
                 }
                 totalMoney += payout;
@@ -216,6 +229,7 @@ export function render() {
                             ${streaks.streak >= 1 ? `<span class="streak-badge">🔥 ${streaks.streak}</span>` : ''}
                             ${streaks.badStreak >= 1 ? `<span class="bad-streak-badge">🌧️ ${streaks.badStreak}</span>` : ''}
                             ${cycleLabel(h) ? `<span class="cycle-badge">🔄 ${cycleLabel(h)}</span>` : ''}
+                            ${wkLate > 0 ? `<span class="cycle-badge" style="background:rgba(217,83,79,0.15);color:#d9534f;border-color:rgba(217,83,79,0.3);" title="Late completion will reduce payout">⏰ ${wkLate}w late</span>` : ''}
                             ${h.bountyActive ? `<span class="bounty-badge">🏆 Bounty</span>` : ''}
                             ${forecastBadgeSpan}
                             <button class="excuse-btn ${h.excused ? 'excuse-on' : ''}" onclick="event.stopPropagation();window.toggleExcused('${h.id}')">${h.excused ? 'Unexcuse' : 'Excuse'}</button>

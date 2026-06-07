@@ -33,6 +33,24 @@ export function isCycleDue(habit) {
 }
 
 /**
+ * True for any habit with a real cycleType (not 'none').
+ */
+export function isCyclic(habit) {
+    return !!(habit.cycleType && habit.cycleType !== 'none');
+}
+
+/**
+ * Whole weeks past the cyclic habit's due date. 0 if non-cyclic, no due date
+ * set, or still before the due date. The reset uses this to reduce a positive
+ * payout when she finally completes a late cycle — cyclic habits don't take
+ * weekly negative hits, but the eventual payout shrinks the longer she waits.
+ */
+export function weeksLate(habit, now = Date.now()) {
+    if (!isCyclic(habit) || !habit.cycleNextDue) return 0;
+    return Math.max(0, Math.floor((now - habit.cycleNextDue) / (7 * DAY_MS)));
+}
+
+/**
  * Short label describing the cycle (e.g. "Every 2w", "Monthly").
  */
 export function cycleLabel(habit) {
