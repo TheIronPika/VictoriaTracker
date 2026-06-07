@@ -188,15 +188,16 @@ async function runReset() {
         // Streak payouts
         const curStreak    = h.streak    || 0;
         const curBadStreak = h.badStreak || 0;
-        if ((tier==='goal'||tier==='bonus') && curStreak>=2 && (h.streakBonusPer||0)>0) {
-            const raw = curStreak * h.streakBonusPer;
+        // Flat per-week: every good/bad week applies streakBonusPer / streakPenaltyPer
+        // once. No multiplier by streak length and no grace threshold.
+        // streakCap still bounds the per-week amount if set.
+        if ((tier==='goal'||tier==='bonus') && (h.streakBonusPer||0)>0) {
             const cap = h.streakCap ? parseFloat(h.streakCap) : Infinity;
-            payout += Math.min(raw, cap);
+            payout += Math.min(h.streakBonusPer, cap);
         }
-        if (!protectedNow && (tier==='punish'||tier==='low') && curBadStreak>=2 && (h.streakPenaltyPer||0)>0) {
-            const raw = curBadStreak * h.streakPenaltyPer;
+        if (!protectedNow && (tier==='punish'||tier==='low') && (h.streakPenaltyPer||0)>0) {
             const cap = h.streakCap ? parseFloat(h.streakCap) : Infinity;
-            payout -= Math.min(raw, cap);
+            payout -= Math.min(h.streakPenaltyPer, cap);
         }
 
         // Bounty payout (one-time, clears on reset)

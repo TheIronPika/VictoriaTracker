@@ -579,19 +579,19 @@ window.maybeShowWeeklyReportAfterReset = () => {
 
 // Shared streak model — used by both the interactive report and the static
 // "View Report" page. For each non-excused habit: its current good/bad streak
-// (as of the given history) and the rolling $ it's worth this week
-// (min(weeks × per, cap), the payout engine's formula). Tracks the leaders by
-// weeks and by $, plus weekly totals.
+// (as of the given history) and the rolling $ it's worth this week — under
+// the flat-per-week formula (min(per, cap)). Tracks leaders by weeks and by $,
+// plus weekly totals.
 function _streakModel(habitsArr, hist) {
     let topStreak = null, topSlump = null, topBonus = null, topPenalty = null, totalBonus = 0, totalPenalty = 0;
     habitsArr.filter(h => !h.excused).forEach(h => {
         const { streak, badStreak } = computeStreaksFromHistory(hist, h.id);
         const cap     = h.streakCap ? parseFloat(h.streakCap) : Infinity;
-        const bonus   = (streak    >= 2 && (h.streakBonusPer   || 0) > 0) ? Math.min(streak    * h.streakBonusPer,   cap) : 0;
-        const penalty = (badStreak >= 2 && (h.streakPenaltyPer || 0) > 0) ? Math.min(badStreak * h.streakPenaltyPer, cap) : 0;
+        const bonus   = (streak    >= 1 && (h.streakBonusPer   || 0) > 0) ? Math.min(h.streakBonusPer,   cap) : 0;
+        const penalty = (badStreak >= 1 && (h.streakPenaltyPer || 0) > 0) ? Math.min(h.streakPenaltyPer, cap) : 0;
         totalBonus += bonus; totalPenalty += penalty;
-        if (streak    >= 2 && (!topStreak || streak    > topStreak.streak))   topStreak  = { icon: h.icon, name: h.name, streak, bonus };
-        if (badStreak >= 2 && (!topSlump  || badStreak > topSlump.badStreak)) topSlump   = { icon: h.icon, name: h.name, badStreak, penalty };
+        if (streak    >= 1 && (!topStreak || streak    > topStreak.streak))   topStreak  = { icon: h.icon, name: h.name, streak, bonus };
+        if (badStreak >= 1 && (!topSlump  || badStreak > topSlump.badStreak)) topSlump   = { icon: h.icon, name: h.name, badStreak, penalty };
         if (bonus   > 0 && (!topBonus   || bonus   > topBonus.bonus))     topBonus   = { icon: h.icon, name: h.name, streak, bonus };
         if (penalty > 0 && (!topPenalty || penalty > topPenalty.penalty)) topPenalty = { icon: h.icon, name: h.name, badStreak, penalty };
     });
@@ -738,11 +738,11 @@ function _thisWeekBreakdown(h, periodActive) {
         else if (tier === 'goal')  base = h.valGoal || 0;
         else if (tier === 'bonus') base = h.valBonus|| 0;
 
-        if ((tier === 'goal' || tier === 'bonus') && (h.streak || 0) >= 2 && (h.streakBonusPer || 0) > 0) {
-            goodStreak = Math.min((h.streak || 0) * h.streakBonusPer, _streakCap(h));
+        if ((tier === 'goal' || tier === 'bonus') && (h.streakBonusPer || 0) > 0) {
+            goodStreak = Math.min(h.streakBonusPer, _streakCap(h));
         }
-        if (!periodProtected && (tier === 'punish' || tier === 'low') && (h.badStreak || 0) >= 2 && (h.streakPenaltyPer || 0) > 0) {
-            badStreak = -Math.min((h.badStreak || 0) * h.streakPenaltyPer, _streakCap(h));
+        if (!periodProtected && (tier === 'punish' || tier === 'low') && (h.streakPenaltyPer || 0) > 0) {
+            badStreak = -Math.min(h.streakPenaltyPer, _streakCap(h));
         }
         if (h.bountyActive && (tier === 'goal' || tier === 'bonus') && (h.bountyDollars || 0) > 0) {
             bounty = h.bountyDollars;
@@ -770,11 +770,12 @@ function _rollingStreakDollars(habit, weeklyHistory) {
 
         // At reset time, payouts use the streak counter BEFORE this week's
         // increment — same convention as scripts/reset.js.
-        if (isGood && goodRun >= 2 && (habit.streakBonusPer || 0) > 0) {
-            totalGood += Math.min(goodRun * habit.streakBonusPer, _streakCap(habit));
+        // Flat per-week, no grace — match scripts/reset.js exactly.
+        if (isGood && (habit.streakBonusPer || 0) > 0) {
+            totalGood += Math.min(habit.streakBonusPer, _streakCap(habit));
         }
-        if (!isGood && badRun >= 2 && (habit.streakPenaltyPer || 0) > 0) {
-            totalBad += Math.min(badRun * habit.streakPenaltyPer, _streakCap(habit));
+        if (!isGood && (habit.streakPenaltyPer || 0) > 0) {
+            totalBad += Math.min(habit.streakPenaltyPer, _streakCap(habit));
         }
         goodRun = isGood ? goodRun + 1 : 0;
         badRun  = !isGood ? badRun + 1 : 0;

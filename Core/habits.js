@@ -38,32 +38,29 @@ export function getCurrentCount(habit) {
 
 /**
  * Calculate the positive streak bonus for a habit.
- * Only applies if tier is 'goal' or 'bonus' AND streak >= 2.
- * Capped by habit.streakCap if set.
+ * Flat per-week: applies the configured streakBonusPer once on every good
+ * (goal/bonus) week. streakCap caps the per-week amount if set.
+ * Note: currentStreak is no longer used in the formula but kept in the
+ * signature so callers don't need to change.
  */
-export function getStreakBonus(habit, tier, currentStreak) {
-    if ((tier === 'goal' || tier === 'bonus') &&
-        currentStreak >= 2 &&
-        (habit.streakBonusPer || 0) > 0) {
-        const raw = currentStreak * habit.streakBonusPer;
+export function getStreakBonus(habit, tier, _currentStreak) {
+    if ((tier === 'goal' || tier === 'bonus') && (habit.streakBonusPer || 0) > 0) {
         const cap = habit.streakCap ? parseFloat(habit.streakCap) : Infinity;
-        return Math.min(raw, cap);
+        return Math.min(habit.streakBonusPer, cap);
     }
     return 0;
 }
 
 /**
  * Calculate the negative streak penalty for a habit.
- * Only applies if tier is 'punish' or 'low' AND badStreak >= 2.
- * Capped by habit.streakCap if set. Returns a positive number — caller subtracts.
+ * Flat per-week: applies the configured streakPenaltyPer once on every bad
+ * (punish/low) week. streakCap caps the per-week amount if set. Returns a
+ * positive number — caller subtracts.
  */
-export function getStreakPenalty(habit, tier, currentBadStreak) {
-    if ((tier === 'punish' || tier === 'low') &&
-        currentBadStreak >= 2 &&
-        (habit.streakPenaltyPer || 0) > 0) {
-        const raw = currentBadStreak * habit.streakPenaltyPer;
+export function getStreakPenalty(habit, tier, _currentBadStreak) {
+    if ((tier === 'punish' || tier === 'low') && (habit.streakPenaltyPer || 0) > 0) {
         const cap = habit.streakCap ? parseFloat(habit.streakCap) : Infinity;
-        return Math.min(raw, cap);
+        return Math.min(habit.streakPenaltyPer, cap);
     }
     return 0;
 }

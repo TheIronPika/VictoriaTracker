@@ -145,13 +145,12 @@ export function render() {
                 else if (tier === 'goal')  payout = h.valGoal || 0;
                 else if (tier === 'bonus') payout = h.valBonus|| 0;
 
-                if ((tier === 'goal' || tier === 'bonus') && (h.streak || 0) >= 2 && (h.streakBonusPer || 0) > 0) {
-                    const raw = (h.streak || 0) * h.streakBonusPer;
-                    payout += Math.min(raw, h.streakCap ? parseFloat(h.streakCap) : Infinity);
+                // Flat per-week — see scripts/reset.js for the canonical formula.
+                if ((tier === 'goal' || tier === 'bonus') && (h.streakBonusPer || 0) > 0) {
+                    payout += Math.min(h.streakBonusPer, h.streakCap ? parseFloat(h.streakCap) : Infinity);
                 }
-                if (!periodProtected && (tier === 'punish' || tier === 'low') && (h.badStreak || 0) >= 2 && (h.streakPenaltyPer || 0) > 0) {
-                    const raw = (h.badStreak || 0) * h.streakPenaltyPer;
-                    payout -= Math.min(raw, h.streakCap ? parseFloat(h.streakCap) : Infinity);
+                if (!periodProtected && (tier === 'punish' || tier === 'low') && (h.streakPenaltyPer || 0) > 0) {
+                    payout -= Math.min(h.streakPenaltyPer, h.streakCap ? parseFloat(h.streakCap) : Infinity);
                 }
                 totalMoney += payout;
                 if (tier === 'punish' && h.valPunish < 0) { counts.punish++; }
@@ -292,7 +291,7 @@ export function render() {
                             <label>🌧️ Penalty $/streak&nbsp;<input type="number" step="0.05" value="${h.streakPenaltyPer||''}" placeholder="—" style="width:52px;padding:4px;border:1px solid #eee;border-radius:6px;" onchange="window.updateField('${h.id}','streakPenaltyPer',this.value)"></label>
                             <label>Cap $&nbsp;<input type="number" step="0.25" value="${h.streakCap||''}" placeholder="none" style="width:52px;padding:4px;border:1px solid #eee;border-radius:6px;" onchange="window.updateField('${h.id}','streakCap',this.value)"></label>
                         </div>
-                        <div style="font-size:10px;color:#bbb;margin-top:4px;">e.g. $0.25/streak × streak 4 = $1.00 (capped at Cap $)</div>
+                        <div style="font-size:10px;color:#bbb;margin-top:4px;">Flat per week — every good week adds Bonus $, every bad week subtracts Penalty $. Cap $ limits the per-week amount.</div>
                     </div>
                     <div style="margin-top:10px;">
                         <div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Definition / Rules</div>
@@ -307,7 +306,11 @@ export function render() {
         // Build manage list items using allItemsForManage (includes cycle-inactive habits)
         if (manageVisible) {
             allItemsForManage.forEach(h => {
-                manageListHtml += `<div class="msp-habit-row" onclick="window.showManageDetail('${h.id}')" id="msp-row-${h.id}"><span class="msp-drag-handle">⠿</span>${h.icon} <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(h.name)}</span>${h.bountyActive ? '<span style="font-size:10px;flex-shrink:0;margin-left:4px" title="Bounty active">🏆</span>' : ''}</div>`;
+                const _cycleTag = (!h.cycleType || h.cycleType === 'none') ? ''
+                    : h.cycleType === 'yearly'
+                        ? `<span style="font-size:10px;flex-shrink:0;margin-left:4px" title="Seasonal (Yearly)">🌸</span>`
+                        : `<span style="font-size:10px;flex-shrink:0;margin-left:4px" title="${cycleLabel(h)}">🔄</span>`;
+                manageListHtml += `<div class="msp-habit-row" onclick="window.showManageDetail('${h.id}')" id="msp-row-${h.id}"><span class="msp-drag-handle">⠿</span>${h.icon} <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(h.name)}</span>${_cycleTag}${h.bountyActive ? '<span style="font-size:10px;flex-shrink:0;margin-left:4px" title="Bounty active">🏆</span>' : ''}</div>`;
             });
             manageListHtml += `</div>`;
         }
