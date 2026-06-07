@@ -713,11 +713,11 @@ export { buildVictoriaReportHtml };
 //     Mirrors render.js / scripts/reset.js so the numbers match what Monday
 //     will pay. Sorted most-negative-first so the source of a red total is
 //     at the top.
-//   • Rolling — replays state.weeklyHistory using each habit's CURRENT
-//     streak $ rates to reconstruct what streak bonuses/penalties were
-//     applied per week. Limitation: if you changed streakBonusPer or
-//     streakPenaltyPer historically, the rolling tally uses today's rates,
-//     not the rates active at that time. Called out in the UI.
+//   • Current streak — for each habit, scans state.weeklyHistory for the
+//     most recent contiguous good-or-bad run and sums the per-week $ at the
+//     habit's current rates. A good week zeroes a prior bad run (and vice
+//     versa) — so a habit shows Good $ OR Bad $, never both. The intent is
+//     "where is she right now?", not lifetime accounting.
 // ─────────────────────────────────────────────────────────────────────
 
 function _streakCap(h) {
@@ -754,33 +754,51 @@ function _thisWeekBreakdown(h, periodActive) {
              streakCount: h.streak || 0, badStreakCount: h.badStreak || 0 };
 }
 
-// Replay history with the habit's current rates to estimate cumulative
-// streak $ contribution across all recorded weeks.
+// "Current streak $" — only the most recent contiguous run at the end of
+// history counts. A good week breaks (and zeroes) any prior bad run, and
+// vice versa. So a habit can only show Good $ OR Bad $, never both.
+// Money paid out in prior runs is already gone (the reset withdrew/added
+// it at the time); this view answers "where is she right now?", not
+// "what did this habit cost/earn lifetime?".
 function _rollingStreakDollars(habit, weeklyHistory) {
     const sorted = sortedOldestFirst(weeklyHistory);
-    let goodRun = 0, badRun = 0;
-    let totalGood = 0, totalBad = 0;
-    let weeksWithHabit = 0;
+    let currentRunIsGood = null; // null = unknown / no habit data yet
+    let currentRunLength = 0;
+    let weeksWithHabit  = 0;
 
     for (const wk of sorted) {
         const h = (wk.habits || []).find(x => x.id === habit.id);
-        if (!h) { goodRun = 0; badRun = 0; continue; }
+        if (!h) {
+            // Habit didn't exist that week — treat as a break.
+            currentRunIsGood = null;
+            currentRunLength = 0;
+            continue;
+        }
         weeksWithHabit++;
         const isGood = h.tier === 'goal' || h.tier === 'bonus';
-
-        // At reset time, payouts use the streak counter BEFORE this week's
-        // increment — same convention as scripts/reset.js.
-        // Flat per-week, no grace — match scripts/reset.js exactly.
-        if (isGood && (habit.streakBonusPer || 0) > 0) {
-            totalGood += Math.min(habit.streakBonusPer, _streakCap(habit));
+        if (currentRunIsGood === null || isGood !== currentRunIsGood) {
+            currentRunIsGood = isGood;
+            currentRunLength = 1;
+        } else {
+            currentRunLength++;
         }
-        if (!isGood && (habit.streakPenaltyPer || 0) > 0) {
-            totalBad += Math.min(habit.streakPenaltyPer, _streakCap(habit));
-        }
-        goodRun = isGood ? goodRun + 1 : 0;
-        badRun  = !isGood ? badRun + 1 : 0;
     }
-    return { totalGood, totalBad, net: totalGood - totalBad, weeksWithHabit };
+
+    let totalGood = 0, totalBad = 0;
+    const cap = _streakCap(habit);
+    if (currentRunIsGood === true && (habit.streakBonusPer || 0) > 0) {
+        totalGood = currentRunLength * Math.min(habit.streakBonusPer, cap);
+    } else if (currentRunIsGood === false && (habit.streakPenaltyPer || 0) > 0) {
+        totalBad = currentRunLength * Math.min(habit.streakPenaltyPer, cap);
+    }
+
+    return {
+        totalGood, totalBad,
+        net: totalGood - totalBad,
+        weeksWithHabit,
+        currentRunLength,
+        currentRunIsGood,
+    };
 }
 
 function _money(n) {
@@ -842,14 +860,21 @@ export function renderStreakDollarsManage() {
     rolling.sort((a, b) => a.r.net - b.r.net);
     const rollingWeeks = (state.weeklyHistory || []).length;
 
-    const rollingRows = rolling.filter(x => x.r.weeksWithHabit > 0).map(({ h, r }) => `
+    const rollingRows = rolling.filter(x => x.r.weeksWithHabit > 0).map(({ h, r }) => {
+        const runBadge = r.currentRunLength > 0
+            ? (r.currentRunIsGood
+                ? `<span style="font-size:10px;color:#888;">🔥${r.currentRunLength}w</span>`
+                : `<span style="font-size:10px;color:#888;">🌧️${r.currentRunLength}w</span>`)
+            : '<span style="font-size:10px;color:#555;">—</span>';
+        return `
         <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
             <td style="padding:6px 4px;font-size:12px;">${h.icon} ${escapeHtml(h.name)}</td>
-            <td style="padding:6px 4px;text-align:right;font-size:11px;color:#888;">${r.weeksWithHabit}w</td>
+            <td style="padding:6px 4px;text-align:right;font-size:11px;">${runBadge}</td>
             <td style="padding:6px 4px;text-align:right;font-size:11px;color:${_moneyColor(r.totalGood)};">${r.totalGood ? '+$' + r.totalGood.toFixed(2) : '—'}</td>
             <td style="padding:6px 4px;text-align:right;font-size:11px;color:${_moneyColor(-r.totalBad)};">${r.totalBad ? '-$' + r.totalBad.toFixed(2) : '—'}</td>
             <td style="padding:6px 4px;text-align:right;font-size:12px;font-weight:700;color:${_moneyColor(r.net)};">${_money(r.net)}</td>
-        </tr>`).join('') || '<tr><td colspan="5" style="padding:12px;color:#888;font-size:11px;text-align:center;">No weekly history yet — rolling figures appear after the first reset.</td></tr>';
+        </tr>`;
+    }).join('') || '<tr><td colspan="5" style="padding:12px;color:#888;font-size:11px;text-align:center;">No weekly history yet — current-streak figures appear after the first reset.</td></tr>';
 
     const rollingGrandGood = rolling.reduce((s, x) => s + x.r.totalGood, 0);
     const rollingGrandBad  = rolling.reduce((s, x) => s + x.r.totalBad, 0);
@@ -888,17 +913,16 @@ export function renderStreakDollarsManage() {
             <tbody>${thisWeekRows || '<tr><td colspan="6" style="padding:12px;color:#888;font-size:11px;text-align:center;">No habits.</td></tr>'}</tbody>
         </table>
 
-        <!-- Rolling -->
+        <!-- Current streak run -->
         <div style="margin-top:28px;padding:14px 16px;background:rgba(255,255,255,0.04);border-radius:10px;margin-bottom:14px;">
-            <div style="font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#7a7390;font-weight:700;margin-bottom:6px;">Rolling — ${rollingWeeks} week${rollingWeeks === 1 ? '' : 's'} of history</div>
+            <div style="font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#7a7390;font-weight:700;margin-bottom:6px;">Current streak — ${rollingWeeks} week${rollingWeeks === 1 ? '' : 's'} of history scanned</div>
             <div style="font-size:32px;font-weight:700;color:${_moneyColor(rollingGrandNet)};line-height:1;">${_money(rollingGrandNet)}</div>
             <div style="font-size:10px;color:#888;margin-top:8px;line-height:1.6;">
-                Good streak total <span style="color:${_moneyColor(rollingGrandGood)};">${rollingGrandGood ? '+$' + rollingGrandGood.toFixed(2) : '$0.00'}</span>
-                · Bad streak total <span style="color:${_moneyColor(-rollingGrandBad)};">${rollingGrandBad ? '-$' + rollingGrandBad.toFixed(2) : '$0.00'}</span>
+                On a good streak <span style="color:${_moneyColor(rollingGrandGood)};">${rollingGrandGood ? '+$' + rollingGrandGood.toFixed(2) : '$0.00'}</span>
+                · On a bad streak <span style="color:${_moneyColor(-rollingGrandBad)};">${rollingGrandBad ? '-$' + rollingGrandBad.toFixed(2) : '$0.00'}</span>
             </div>
-            <div style="font-size:10px;color:#c9a8c9;margin-top:6px;font-style:italic;">
-                ⚠️ Replays history with each habit's <strong>current</strong> streak $ rates. If you changed
-                streakBonusPer / streakPenaltyPer / streakCap in the past, those rate changes aren't reflected.
+            <div style="font-size:10px;color:#888;margin-top:6px;line-height:1.5;">
+                Each habit shows only its <strong>current</strong> contiguous run — a good week zeroes any prior bad streak and vice versa. Money paid out in earlier runs already hit the balance at the time; this view is "where is she right now?"
             </div>
         </div>
 
@@ -907,7 +931,7 @@ export function renderStreakDollarsManage() {
             <thead>
                 <tr style="border-bottom:1px solid rgba(255,255,255,0.12);">
                     <th style="padding:6px 4px;text-align:left;font-size:9px;color:#7a7390;text-transform:uppercase;">Habit</th>
-                    <th style="padding:6px 4px;text-align:right;font-size:9px;color:#7a7390;text-transform:uppercase;">Weeks</th>
+                    <th style="padding:6px 4px;text-align:right;font-size:9px;color:#7a7390;text-transform:uppercase;">Run</th>
                     <th style="padding:6px 4px;text-align:right;font-size:9px;color:#7a7390;text-transform:uppercase;">Good $</th>
                     <th style="padding:6px 4px;text-align:right;font-size:9px;color:#7a7390;text-transform:uppercase;">Bad $</th>
                     <th style="padding:6px 4px;text-align:right;font-size:9px;color:#7a7390;text-transform:uppercase;">Net</th>
