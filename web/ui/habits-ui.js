@@ -26,6 +26,18 @@ window.addTask = async () => {
     const intVal = (id, def) => { const v = parseInt(document.getElementById(id)?.value);   return isNaN(v) ? def : v; };
     const optNum = (id)      => { const v = parseFloat(document.getElementById(id)?.value); return isNaN(v) ? undefined : v; };
 
+    const cycleType = document.getElementById('newCycleType')?.value || 'none';
+
+    // "First due" date — only meaningful for cyclic habits. Hides the new
+    // habit from the live UI until this calendar day (local midnight).
+    // Parse YYYY-MM-DD as a local date so the user sees the day they picked.
+    let cycleNextDue = 0;
+    const firstDueStr = document.getElementById('newCycleFirstDue')?.value;
+    if (cycleType !== 'none' && firstDueStr) {
+        const [y, m, d] = firstDueStr.split('-').map(Number);
+        if (y && m && d) cycleNextDue = new Date(y, m - 1, d).getTime();
+    }
+
     const newH = {
         id: Date.now().toString(), name, icon, cat,
         note: document.getElementById('newNote')?.value.trim() || '',
@@ -39,10 +51,11 @@ window.addTask = async () => {
         valLow:    numVal('newValLow',    1.00),
         valGoal:   numVal('newValGoal',   2.00),
         valBonus:  numVal('newValBonus',  3.00),
-        cycleType: document.getElementById('newCycleType')?.value || 'none',
+        cycleType,
         periodSensitive: document.getElementById('newPeriodSensitive')?.checked || false,
         history: [0, 0, 0, 0, 0, 0, 0]
     };
+    if (cycleNextDue) newH.cycleNextDue = cycleNextDue;
 
     const starGoal         = optNum('newStarGoal');
     const starBonus        = optNum('newStarBonus');
@@ -67,6 +80,7 @@ window.addTask = async () => {
     document.getElementById('newIcon').value              = '';
     document.getElementById('newPeriodSensitive').checked = false;
     document.getElementById('newCycleType').value         = 'none';
+    const _fd = document.getElementById('newCycleFirstDue'); if (_fd) _fd.value = '';
     document.getElementById('newPunish').value            = '1';
     document.getElementById('newLow').value               = '3';
     document.getElementById('newGoal').value              = '5';
@@ -95,6 +109,16 @@ window.updateField = async (id, field, value) => {
     if (field === 'note' || field === 'cycleType' || field === 'bountyNote')
                                                               h[field] = value;
     else if (field === 'periodSensitive')                    h[field] = !!value;
+    else if (field === 'cycleNextDue') {
+        // Date picker sends "YYYY-MM-DD". Empty value clears the field
+        // (cyclic habit becomes visible immediately).
+        if (!value) {
+            delete h.cycleNextDue;
+        } else {
+            const [y, mo, d] = String(value).split('-').map(Number);
+            if (y && mo && d) h.cycleNextDue = new Date(y, mo - 1, d).getTime();
+        }
+    }
     else if (field.startsWith('val'))                        h[field] = parseFloat(value);
     else if (field.startsWith('star'))                       h[field] = parseInt(value) || 0;
     else if (field === 'streakBonusPer' || field === 'streakPenaltyPer' || field === 'streakCap')

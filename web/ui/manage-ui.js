@@ -97,6 +97,18 @@ window.moveSectionDown = async (id) => {
     renderSectionOrderManage();
 };
 
+// Render a Date.now()-style timestamp as a local YYYY-MM-DD string for an
+// <input type="date">. Used by the cycle "Next due" field so the picker
+// shows the calendar day the user picked (not UTC).
+function _tsToDateInput(ts) {
+    if (!ts) return '';
+    const d = new Date(ts);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.getFullYear()
+        + '-' + String(d.getMonth() + 1).padStart(2, '0')
+        + '-' + String(d.getDate()).padStart(2, '0');
+}
+
 // ── Category toggle (left panel) ─────────────────────────────────────
 
 window.toggleMspCat = (catId) => {
@@ -208,7 +220,8 @@ window.showManageDetail = (id) => {
         +       '</div>'
         +     '</div>'
         +     (h.cycleType==='weeks' ? '<div style="margin-top:12px;font-size:13px;color:#ccc8e0">Every <input type="number" class="msp-num" style="width:60px;margin:0 6px" value="' + (h.cycleEvery||1) + '" min="1" max="52" onchange="window.updateField(\'' + h.id + '\',\'cycleEvery\',this.value)"> weeks</div>' : '')
-        +     (h.cycleNextDue ? '<div style="margin-top:8px;font-size:11px;color:#7a7390">' + cycleDueLabel(h) + '</div>' : '')
+        +     (h.cycleType && h.cycleType !== 'none' ? '<div style="margin-top:12px;font-size:13px;color:#ccc8e0;display:flex;align-items:center;gap:8px;flex-wrap:wrap">Next due <input type="date" class="msp-field-input" style="padding:4px 8px;font-size:12px" value="' + _tsToDateInput(h.cycleNextDue) + '" onchange="window.updateField(\'' + h.id + '\',\'cycleNextDue\',this.value)"><span style="font-size:10px;color:#7a7390">(blank = visible now)</span></div>' : '')
+        +     (h.cycleNextDue && Date.now() < h.cycleNextDue ? '<div style="margin-top:6px;font-size:11px;color:#c9a8c9;font-style:italic">⏳ Hidden until ' + cycleDueLabel(h).replace('Due back ', '') + '</div>' : '')
         +   '</div>'
         +   '<div class="msp-section">'
         +     '<div class="msp-section-title">Streak Payouts</div>'

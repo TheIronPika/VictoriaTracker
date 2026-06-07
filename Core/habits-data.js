@@ -64,6 +64,16 @@ export async function updateHabitField(id, field, value) {
 
     if (field === 'note' || field === 'cycleType') {
         h[field] = value;
+    } else if (field === 'cycleNextDue') {
+        // <input type="date"> sends "YYYY-MM-DD" — parse as a local date so
+        // the hide-until window aligns with the calendar day the user picked.
+        // Empty string clears the field (habit is visible immediately).
+        if (!value) {
+            delete h.cycleNextDue;
+        } else {
+            const [y, m, d] = String(value).split('-').map(Number);
+            if (y && m && d) h.cycleNextDue = new Date(y, m - 1, d).getTime();
+        }
     } else if (field.startsWith('val')) {
         h[field] = parseFloat(value);
     } else if (field.startsWith('star')) {
