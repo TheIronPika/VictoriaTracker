@@ -9,6 +9,7 @@ import { state } from '../../Core/state.js';
 import { loadWeeklyHistory } from '../../Core/history.js';
 import { MANAGE_PASSCODE } from '../../Core/config.js';
 import { sortedOldestFirst } from '../../Core/streaks.js';
+import { escapeHtml } from '../../Core/utils.js';
 
 // ── Chart lifecycle ───────────────────────────────────────────────────
 
@@ -110,13 +111,13 @@ function _paintHistory(root) {
             const t = h ? h.tier : 'punish';
             const payout = h ? ((h.payout || 0) < 0 ? '-$' : '+$') + Math.abs(h.payout || 0).toFixed(2) : '—';
             return '<div class="hm-cell"'
-                + ' data-habit="' + habitMeta[id].name.replace(/"/g, '&quot;') + '"'
+                + ' data-habit="' + escapeHtml(habitMeta[id].name) + '"'
                 + ' data-week="' + hmWkLabels[wi] + '"'
                 + ' data-tier="' + (h ? TL[t] : '—') + '"'
                 + ' data-payout="' + payout + '"'
                 + ' style="background:' + (h ? TC[t] : '#eee') + ';opacity:0.82;"></div>';
         }).join('');
-        return '<div class="hm-row"><span class="hm-label">' + habitMeta[id].icon + ' ' + habitMeta[id].name + '</span>' + cells + '</div>';
+        return '<div class="hm-row"><span class="hm-label">' + habitMeta[id].icon + ' ' + escapeHtml(habitMeta[id].name) + '</span>' + cells + '</div>';
     }).join('');
     const hmLegend = Object.entries(TL).map(([k, v]) =>
         '<span style="display:flex;align-items:center;gap:4px;font-size:10px;color:#888;">'
@@ -156,7 +157,7 @@ function _paintHistory(root) {
         const weekSub   = '';
         let body = '';
         cats.forEach(cat => {
-            body += '<div style="font-size:9px;font-weight:800;color:#bbb;text-transform:uppercase;letter-spacing:1px;margin:10px 0 4px;">' + cat + '</div>';
+            body += '<div style="font-size:9px;font-weight:800;color:#bbb;text-transform:uppercase;letter-spacing:1px;margin:10px 0 4px;">' + escapeHtml(cat) + '</div>';
             (wk.habits || []).filter(h => h.cat === cat).forEach(h => {
                 const dots = (h.history || []).slice(0, 7).map(c =>
                     !c ? '<div class="hist-dot" style="background:#ebebeb;"></div>'
@@ -166,7 +167,7 @@ function _paintHistory(root) {
                 const pS = (h.payout < 0 ? '-$' : '+$') + Math.abs(h.payout).toFixed(2);
                 body += '<div class="hist-habit-row">'
                       + '<span class="hist-habit-icon">' + h.icon + '</span>'
-                      + '<span class="hist-habit-name">' + h.name + '</span>'
+                      + '<span class="hist-habit-name">' + escapeHtml(h.name) + '</span>'
                       + '<div class="hist-dots-row">' + dots + '</div>'
                       + '<span class="hist-tier-badge" style="color:' + TC[h.tier] + ';">' + TL[h.tier] + '</span>'
                       + '<span class="hist-payout" style="color:' + pC + ';">' + pS + '</span></div>';

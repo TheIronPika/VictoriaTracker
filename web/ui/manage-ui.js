@@ -8,7 +8,7 @@ import { uiState } from './ui-state.js';
 import { state } from '../../Core/state.js';
 import { cycleDueLabel } from '../../Core/cycles.js';
 import { computeStreaksFromHistory, sortedNewestFirst, sortedOldestFirst } from '../../Core/streaks.js';
-import { getTier } from '../../Core/habits.js';
+import { getTier, computeWeeklyPayout } from '../../Core/habits.js';
 import { getDayIdx, escapeHtml } from '../../Core/utils.js';
 import { loadWeeklyHistory } from '../../Core/history.js';
 import { renderPeriodHistory } from './period-ui.js';
@@ -725,48 +725,16 @@ function _streakCap(h) {
     return h.streakCap ? parseFloat(h.streakCap) : Infinity;
 }
 
-// Per-habit this-week numbers, mirroring scripts/reset.js + render.js.
+// Per-habit this-week numbers. Delegates to Core/habits.js so the headline,
+// this panel, and the Monday reset can never silently disagree. Adds the
+// stored streak/badStreak counters to the structure for badge rendering.
 function _thisWeekBreakdown(h, periodActive) {
-    const hist = (h.history || []).slice(0, 7);
-    const cur  = hist[6] !== undefined ? hist[6] : (hist[hist.length - 1] || 0);
-    const tier = getTier(h, cur);
-    const periodProtected = periodActive && !!h.periodSensitive;
-    const cyclic = isCyclic(h);
-    const wkLate = cyclic ? weeksLate(h) : 0;
-
-    let base = 0, goodStreak = 0, badStreak = 0, bounty = 0, lateReduction = 0;
-    if (!h.excused) {
-        if (tier === 'punish') {
-            // Cyclic: no weekly negative.
-            base = cyclic ? 0 : (periodProtected ? 0 : (h.valPunish || 0));
-        }
-        else if (tier === 'low')   base = h.valLow  || 0;
-        else if (tier === 'goal')  base = h.valGoal || 0;
-        else if (tier === 'bonus') base = h.valBonus|| 0;
-
-        // Cyclic late-completion reduction (applied to positive base).
-        if (cyclic && wkLate > 0 && base > 0 && (h.streakPenaltyPer || 0) > 0) {
-            const requested = wkLate * h.streakPenaltyPer;
-            lateReduction = Math.min(requested, base);
-            base -= lateReduction;
-        }
-
-        if ((tier === 'goal' || tier === 'bonus') && (h.streakBonusPer || 0) > 0) {
-            goodStreak = Math.min(h.streakBonusPer, _streakCap(h));
-        }
-        // Bad-streak penalty — skip for cyclic and period-protected.
-        if (!cyclic && !periodProtected && (tier === 'punish' || tier === 'low') && (h.streakPenaltyPer || 0) > 0) {
-            badStreak = -Math.min(h.streakPenaltyPer, _streakCap(h));
-        }
-        if (h.bountyActive && (tier === 'goal' || tier === 'bonus') && (h.bountyDollars || 0) > 0) {
-            bounty = h.bountyDollars;
-        }
-    }
-    const total = base + goodStreak + badStreak + bounty;
-    return { tier, base, goodStreak, badStreak, bounty, total,
-             excused: !!h.excused, periodProtected,
-             cyclic, weeksLate: wkLate, lateReduction,
-             streakCount: h.streak || 0, badStreakCount: h.badStreak || 0 };
+    const r = computeWeeklyPayout(h, { periodActive });
+    return {
+        ...r,
+        streakCount:    h.streak    || 0,
+        badStreakCount: h.badStreak || 0,
+    };
 }
 
 // "Current streak $" — only the most recent contiguous run at the end of

@@ -5,7 +5,7 @@
 // ─────────────────────────────────────────────────────────────────────
 
 import { state, setStarBalance, setStarsSpent, setShopItems, setStarLog, setExcuseTokens } from './state.js';
-import { readDoc, writeDoc } from './firebase.js';
+import { readDoc, writeDoc, watchDoc } from './firebase.js';
 import { FIRESTORE_DOCS, STAR_LOG_MAX } from './config.js';
 
 /**
@@ -23,6 +23,24 @@ export async function loadStarData() {
         }
         state.shopLoaded = true;
     } catch (e) { console.error('loadStarData:', e); }
+}
+
+/**
+ * Subscribe to live star_data updates so balance / shop changes from another
+ * device sync in without a refresh. Re-renders on update.
+ */
+export function watchStarData() {
+    return watchDoc(FIRESTORE_DOCS.STARS, (data) => {
+        if (data) {
+            setStarBalance  (data.balance      || 0);
+            setStarsSpent   (data.spent        || 0);
+            setShopItems    (data.items        || []);
+            setStarLog      (data.log          || []);
+            setExcuseTokens (data.excuseTokens || 0);
+        }
+        state.shopLoaded = true;
+        window.render?.();
+    });
 }
 
 /**

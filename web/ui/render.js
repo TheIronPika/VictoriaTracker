@@ -9,8 +9,8 @@
 import { uiState, saveCollapsedState } from './ui-state.js';
 import { state } from '../../Core/state.js';
 import { getDayIdx, escapeHtml } from '../../Core/utils.js';
-import { getTier } from '../../Core/habits.js';
-import { isCycleDue, cycleLabel, cycleDueLabel, isCyclic, weeksLate } from '../../Core/cycles.js';
+import { getTier, computeWeeklyPayout } from '../../Core/habits.js';
+import { isCycleDue, cycleLabel, cycleDueLabel } from '../../Core/cycles.js';
 import { computeStreaksFromHistory } from '../../Core/streaks.js';
 import { MANAGE_PASSCODE } from '../../Core/config.js';
 import { animateMoneyDisplay } from './animations.js';
@@ -134,41 +134,17 @@ export function render() {
         }
 
         items.forEach(h => {
-            const cur  = h.history[dIdx];
-            const tier = getTier(h, cur);
-            const periodProtected = isPeriodActive() && !!h.periodSensitive;
-            const cyclic = isCyclic(h);
-            const wkLate = cyclic ? weeksLate(h) : 0;
-
-            let payout = 0;
+            // Single source of truth — see Core/habits.js computeWeeklyPayout.
+            // Bounty, cyclic late-reduction, period protection, etc. all live
+            // there; we just consume the resulting total.
+            const result = computeWeeklyPayout(h, { periodActive: isPeriodActive() });
+            const { tier, total: payout, weeksLate: wkLate } = result;
             if (!h.excused) {
-                if (tier === 'punish') {
-                    // Cyclic: no weekly negative — punish weeks pay $0.
-                    payout = cyclic ? 0 : (periodProtected ? 0 : (h.valPunish || 0));
-                }
-                else if (tier === 'low')   payout = h.valLow  || 0;
-                else if (tier === 'goal')  payout = h.valGoal || 0;
-                else if (tier === 'bonus') payout = h.valBonus|| 0;
-
-                // Cyclic late-completion reduction (positive payout shrinks by
-                // weeksLate × streakPenaltyPer, floored at $0).
-                if (cyclic && wkLate > 0 && payout > 0 && (h.streakPenaltyPer || 0) > 0) {
-                    const requested = wkLate * h.streakPenaltyPer;
-                    payout -= Math.min(requested, payout);
-                }
-
-                // Flat per-week — see scripts/reset.js for the canonical formula.
-                if ((tier === 'goal' || tier === 'bonus') && (h.streakBonusPer || 0) > 0) {
-                    payout += Math.min(h.streakBonusPer, h.streakCap ? parseFloat(h.streakCap) : Infinity);
-                }
-                // Bad-streak penalty — skip for cyclic and period-protected.
-                if (!cyclic && !periodProtected && (tier === 'punish' || tier === 'low') && (h.streakPenaltyPer || 0) > 0) {
-                    payout -= Math.min(h.streakPenaltyPer, h.streakCap ? parseFloat(h.streakCap) : Infinity);
-                }
                 totalMoney += payout;
                 if (tier === 'punish' && h.valPunish < 0) { counts.punish++; }
                 else if (tier !== 'punish') { counts[tier]++; }
             }
+            const cur = h.history[dIdx];
 
             const daysRemaining = 7 - dIdx;
             const modeThresh    = uiState.priorityMode === 'bonus' ? h.bonus : h.goal;

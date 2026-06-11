@@ -10,6 +10,12 @@
 // FIREBASE_API_KEY via the REST API helpers below, not a service account.
 import fetch from 'node-fetch';
 
+// Single source of truth for per-habit payout math. Same module the browser
+// uses, imported here so the headline, Streak $ panel, and Monday reset can
+// never silently disagree on what a week is worth.
+import { getTier, computeWeeklyPayout } from '../Core/habits.js';
+import { isCycleDue, isCyclic, cycleIntervalMs as _cycleIntervalMs } from '../Core/cycles.js';
+
 // ── Firebase init (uses REST API key for Firestore access) ──────────────────
 const PROJECT_ID  = process.env.FIREBASE_PROJECT_ID;
 const API_KEY     = process.env.FIREBASE_API_KEY;
@@ -83,45 +89,9 @@ function fromDoc(doc) {
     return obj;
 }
 
-// ── Tier logic (mirrors the app exactly) ─────────────────────────────────────
-function getTier(h, val) {
-    if (val >= (h.bonus || 7)) return 'bonus';
-    if (val >= (h.goal  || 5)) return 'goal';
-    if (val >= (h.low   || 3)) return 'low';
-    return 'punish';
-}
-
-// ── Cycle interval + due check (mirrors Core/cycles.js) ──────────────────────
-function cycleIntervalMs(h) {
-    const DAY = 86400000;
-    switch (h.cycleType) {
-        case 'weeks':     return (h.cycleEvery || 1) * 7 * DAY;
-        case 'monthly':   return 30  * DAY;
-        case 'quarterly': return 91  * DAY;
-        case 'yearly':    return 365 * DAY;
-        default:          return 0;
-    }
-}
-
-function isCycleDue(h) {
-    if (!h.cycleType || h.cycleType === 'none') return true;
-    const interval = cycleIntervalMs(h);
-    if (!interval) return true;
-    return Date.now() >= (h.cycleNextDue || 0);
-}
-
-function isCyclic(h) {
-    return !!(h.cycleType && h.cycleType !== 'none');
-}
-
-// Whole weeks past the cyclic habit's due date — drives the late-completion
-// payout reduction. Cyclic habits don't take weekly negative hits; instead
-// when she eventually completes a late cycle, the payout is knocked down by
-// (weeksLate × streakPenaltyPer), floored at 0.
-function weeksLate(h, now) {
-    if (!isCyclic(h) || !h.cycleNextDue) return 0;
-    return Math.max(0, Math.floor((now - h.cycleNextDue) / (7 * 86400000)));
-}
+// Local re-export so other helpers in this file can reference cycleIntervalMs
+// without an underscore. (The import alias keeps the import line readable.)
+const cycleIntervalMs = _cycleIntervalMs;
 
 // ── Main reset ───────────────────────────────────────────────────────────────
 async function runReset() {
@@ -132,6 +102,23 @@ async function runReset() {
 
     console.log(`\n🔄 Victoria Tracker Weekly Reset — ${dateStr}`);
     console.log('─'.repeat(50));
+
+    // ── Idempotency guard ────────────────────────────────────────────────────
+    // Reset is unattended and moves real money. If the job is re-triggered
+    // (manual workflow_dispatch, retry, local test) and lastWeeklyReset is
+    // already today, bail without paying anything. Set FORCE_RESET=1 to
+    // override (e.g. you reset a doc by hand and need to re-run).
+    try {
+        const stateDoc = await firestoreGet('system/reset_state');
+        const last     = fromDoc(stateDoc).lastWeeklyReset;
+        if (last && last === now.toDateString() && process.env.FORCE_RESET !== '1') {
+            console.log(`⚠️  Reset already ran today (${last}). Skipping.`);
+            console.log('   Set FORCE_RESET=1 to override.');
+            return;
+        }
+    } catch (e) {
+        // First run / no state doc — proceed normally.
+    }
 
     // ── Load habits ──────────────────────────────────────────────────────────
     console.log('📥 Loading habits from Firebase...');
@@ -188,57 +175,20 @@ async function runReset() {
         }
         if (h.excused) { reportLines.push(`${h.icon} ${h.name}: EXCUSED`); return; }
 
-        const hist  = (h.history || []).slice(0, 7);
-        const cur   = hist[6] !== undefined ? hist[6] : (hist[hist.length - 1] || 0);
-        const tier  = getTier(h, cur);
-        const protectedNow = periodProtectedH(h);
-        const cyclic = isCyclic(h);
-        const wkLate = cyclic ? weeksLate(h, nowTs) : 0;
-        let payout  = 0;
-        let lateReduction = 0;
+        // Single source of truth — see Core/habits.js computeWeeklyPayout.
+        const r = computeWeeklyPayout(h, { periodActive, now: nowTs });
+        totalMoney += r.total;
 
-        if (tier === 'punish') {
-            // Cyclic habits never take a weekly negative — punish weeks pay $0.
-            payout = cyclic ? 0 : (protectedNow ? 0 : (h.valPunish || 0));
-        }
-        else if (tier === 'low')   payout = h.valLow   || 0;
-        else if (tier === 'goal')  payout = h.valGoal  || 0;
-        else if (tier === 'bonus') payout = h.valBonus || 0;
-
-        // Cyclic late-completion reduction: when a positive payout lands after
-        // a late cycle, knock streakPenaltyPer × weeksLate off the top.
-        if (cyclic && wkLate > 0 && payout > 0 && (h.streakPenaltyPer || 0) > 0) {
-            const requested  = wkLate * h.streakPenaltyPer;
-            lateReduction    = Math.min(requested, payout); // floor at $0
-            payout          -= lateReduction;
-        }
-
-        // Streak payouts (positive) — applies to any goal/bonus week, cyclic or not.
-        if ((tier==='goal'||tier==='bonus') && (h.streakBonusPer||0)>0) {
-            const cap = h.streakCap ? parseFloat(h.streakCap) : Infinity;
-            payout += Math.min(h.streakBonusPer, cap);
-        }
-        // Bad-streak penalty (negative) — skipped for cyclic (no weekly negative)
-        // and for period-protected habits.
-        if (!cyclic && !protectedNow && (tier==='punish'||tier==='low') && (h.streakPenaltyPer||0)>0) {
-            const cap = h.streakCap ? parseFloat(h.streakCap) : Infinity;
-            payout -= Math.min(h.streakPenaltyPer, cap);
-        }
-
-        // Bounty payout (one-time, clears on reset)
-        const bountyTriggered = h.bountyActive && (tier === 'goal' || tier === 'bonus');
-        if (bountyTriggered && (h.bountyDollars || 0) > 0) payout += h.bountyDollars;
-
-        totalMoney += payout;
-        const tierLabel = { punish:'DEBT', low:'LOW', goal:'GOAL', bonus:'BONUS' }[tier];
-        const sign = payout < 0 ? '-$' : '+$';
+        const tierLabel = { punish:'DEBT', low:'LOW', goal:'GOAL', bonus:'BONUS' }[r.tier];
+        const sign = r.total < 0 ? '-$' : '+$';
+        const bountyTriggered = h.bountyActive && (r.tier === 'goal' || r.tier === 'bonus');
         const bountyParts = [];
-        if (bountyTriggered && (h.bountyDollars || 0) > 0) bountyParts.push(`+$${h.bountyDollars.toFixed(2)}`);
+        if (bountyTriggered && (h.bountyDollars || 0) > 0)      bountyParts.push(`+$${h.bountyDollars.toFixed(2)}`);
         if (bountyTriggered && (h.bountyExcuseTokens || 0) > 0) bountyParts.push(`🎫×${h.bountyExcuseTokens}`);
-        const bountyNote = bountyParts.length ? ` 🏆 ${bountyParts.join(' ')} bounty` : '';
-        const protectedNote = protectedNow ? ' 🩸 period-protected' : '';
-        const lateNote = lateReduction > 0 ? ` ⏰ ${wkLate}w late (-$${lateReduction.toFixed(2)})` : '';
-        reportLines.push(`${h.icon} ${h.name}: ${tierLabel} (${sign}${Math.abs(payout).toFixed(2)})${bountyNote}${protectedNote}${lateNote}`);
+        const bountyNote    = bountyParts.length ? ` 🏆 ${bountyParts.join(' ')} bounty` : '';
+        const protectedNote = r.periodProtected ? ' 🩸 period-protected' : '';
+        const lateNote      = r.lateReduction > 0 ? ` ⏰ ${r.weeksLate}w late (-$${r.lateReduction.toFixed(2)})` : '';
+        reportLines.push(`${h.icon} ${h.name}: ${tierLabel} (${sign}${Math.abs(r.total).toFixed(2)})${bountyNote}${protectedNote}${lateNote}`);
     });
 
     // ── Room payouts (each cleaned room earns min(streak+1, maxStreak)) ──────
@@ -383,16 +333,14 @@ async function runReset() {
         timestamp:    Date.now(),
         totalBalance: totalMoney,
         habits: habits.filter(h => !isDormant(h)).map(h => {
-            const hist  = (h.history || []).slice(0, 7);
-            const cur   = hist[6] !== undefined ? hist[6] : (hist[hist.length-1]||0);
-            const tier  = getTier(h, cur);
-            const protectedNow = periodProtectedH(h);
-            let payout  = 0;
-            if (tier==='punish')    payout = protectedNow ? 0 : (h.valPunish||0);
-            else if (tier==='low')  payout = h.valLow||0;
-            else if (tier==='goal') payout = h.valGoal||0;
-            else if (tier==='bonus')payout = h.valBonus||0;
-            return { id:h.id, name:h.name, icon:h.icon, cat:h.cat, tier, payout, history:hist,
+            const hist = (h.history || []).slice(0, 7);
+            // Use computeWeeklyPayout so the snapshot's per-habit payout matches
+            // what was actually paid out — in particular cyclic-punish records
+            // $0 (not valPunish), so the History tab's charts don't show
+            // phantom losses for habits that were just in their wait period.
+            const r = computeWeeklyPayout(h, { periodActive, now: nowTs });
+            return { id:h.id, name:h.name, icon:h.icon, cat:h.cat,
+                     tier: r.tier, payout: r.base, history: hist,
                      thresh:{ punish:h.punish||1, low:h.low||3, goal:h.goal||5, bonus:h.bonus||7 } };
         })
     };

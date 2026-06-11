@@ -1,4 +1,4 @@
-_Last updated 2026-06-01 by overnight automation (toolkit v1.0.0). Review before relying on it._
+_Last updated 2026-06-11 by overnight automation (toolkit v1.0.0). Review before relying on it._
 
 # VictoriaTracker — Owner's Guide
 
@@ -13,7 +13,8 @@ It's not a generic habit tracker. It has several interconnected systems:
 - **Weekly financial payouts** — real money, calculated automatically every Monday
 - **Interactive weekly report popup** — auto-shows after each reset; browse past weeks; accessible any time via Manage → View Report
 - **Star Shop** — earn stars for strong weeks, spend them on treats
-- **Streak bonuses and penalties** — long good streaks earn extra money; long bad streaks lose some
+- **Streak bonuses and penalties** — good streaks earn a flat bonus per week; bad streaks deduct a flat penalty per week
+- **Bounties** — one-time bonus payouts/stars set on a habit; they fire when she hits Goal or Bonus that week and then clear automatically
 - **Period protection** — sensitive habits automatically skip penalties during Victoria's period
 - **Room checks** — household room tidiness tracked with streak bonuses
 - **Seasonal events** — special date-range tasks like Spring Cleaning
@@ -32,28 +33,32 @@ index.html (entry point)
        │
        ▼
 Core/ modules (pure logic, no UI)
-   • config.js     — all keys, constants, Firestore paths
-   • state.js      — in-memory app state
-   • habits-data.js — reads/writes Firestore, triggers re-render on change
+   • config.js       — all keys, constants, Firestore paths
+   • state.js        — in-memory app state
+   • habits-data.js  — reads/writes Firestore, triggers re-render on change
+   • section-order.js — today-view section order, synced live
        │
        ▼
 web/ui/ modules (DOM rendering)
-   • render.js — rebuilds the screen after every data change
-   • manage-ui.js — settings panel + weekly report popup
+   • render.js     — rebuilds the screen after every data change
+   • manage-ui.js  — settings split-panel + weekly report popup + forecast
        │
        ▼
 Firebase Firestore (cloud database)
-   • 7 documents in the "system" collection
+   • 8 documents in the "system" collection
    • real-time sync: any change on one device appears on all others instantly
        │
 Every Monday 9:00 AM UTC (4 AM Central):
        │
        ▼
 GitHub Actions runs scripts/reset.js
-   • computes final tiers and payouts
-   • awards stars and applies streak bonuses
+   • computes final tiers and payouts (mirrors Core/habits.js exactly)
+   • awards stars, bounties, and excuse tokens
+   • applies streak bonuses/penalties; advances cycleNextDue for cyclic habits
    • saves a weekly snapshot to history
-   • resets all habit counters to zero
+   • resets all habit counters to zero; clears bounty fields that fired
+   • advances room check streaks; resets room marks
+   • advances seasonal event payout watermark
    • sends the weekly email report via EmailJS
    • the app detects the new reset on next open and shows the report popup
 ```
@@ -115,11 +120,11 @@ The report popup appears automatically the first time Victoria opens the app aft
 
 ### Add or edit a habit
 
-Open the app → tap the **History** tab → enter the passcode **1234** → go to **Manage**. From there you can add habits, edit thresholds and payouts, reorder, or delete.
+Open the app → tap the **History** tab → enter the passcode **1234** → select a habit from the left panel, or click **+ Add Habit**. From there you can edit thresholds, payouts, streak bonuses, cycle type, period sensitivity, and more.
 
-### Access the Manage panel
+### Reorder today-view sections
 
-Tap the **History** tab at the bottom, then tap **Manage** (it will ask for a passcode: **1234**).
+Open the Manage panel (passcode `1234`) → click **Layout** in the left nav → use the up/down arrows to rearrange categories, Seasonal Events, and Room Checks. The order syncs live across all devices.
 
 ### Change Firebase or EmailJS credentials
 
@@ -162,6 +167,12 @@ Edit `Core/config.js` — all keys are centralized there. If changing the GitHub
 
 **Fix:** Log in to EmailJS, verify the service/template IDs match `Core/config.js` and the GitHub Secrets.
 
+### 4. Payout shown in the app doesn't match the email report
+
+The app's "This Week's Balance" display mirrors the reset math in `scripts/reset.js`. If they diverge, it usually means payout logic was updated in one place but not the other.
+
+**Fix:** Compare `Core/habits.js` (`getStreakBonus`, `getStreakPenalty`, `getTotalPayout`) against the corresponding logic in `scripts/reset.js`. They must stay in sync.
+
 ---
 
 ## Glossary
@@ -171,13 +182,17 @@ Edit `Core/config.js` — all keys are centralized there. If changing the GitHub
 | **Tier** | Victoria's performance level for a habit in a given week: Debt (below minimum), Low, Goal, or Bonus |
 | **Payout** | The dollar amount earned (or deducted) for a habit's tier at the weekly reset |
 | **Streak** | Consecutive weeks at Goal or above; breaks on any Low/Debt week |
-| **Bad streak** | Consecutive weeks at Low or Debt; triggers a progressive penalty |
+| **Bad streak** | Consecutive weeks at Low or Debt; triggers a flat weekly penalty |
+| **Streak bonus/penalty** | Flat per-week dollar amount added (good streak) or deducted (bad streak); capped by `streakCap` |
+| **Bounty** | A one-time bonus (dollars, stars, and/or excuse tokens) set on a habit that fires when she hits Goal/Bonus that week, then clears automatically |
 | **Stars** | In-app currency earned for hitting Goal/Bonus tiers; spent in the Star Shop |
 | **Excuse token** | A star-shop item that freezes one habit for one week (no payout either direction) |
-| **Period protection** | When Victoria's period is active, period-sensitive habits skip negative payouts |
+| **Period protection** | When Victoria's period is active, period-sensitive habits skip negative payouts and streak penalties |
 | **Cyclic habit** | A habit on a schedule (e.g., monthly) that only appears on the Today tab when it's due |
-| **Room check** | A daily tidiness check for each room; checking in streaks earns bonus payouts |
+| **Late completion** | When a cyclic habit is completed after its due date; the positive payout is reduced by `weeksLate × streakPenaltyPer` |
+| **Room check** | A daily tidiness check for each room; checking in streaks earns bonus payouts at reset |
 | **Weekly reset** | The automated Monday job that scores the week, awards stars, saves history, and resets counters |
 | **Report popup** | The interactive summary card that auto-shows after each reset; navigable across past weeks |
 | **Manage panel** | The admin/settings section of the app, behind passcode `1234` |
+| **Section order** | The drag-reorderable order of categories, Seasonal Events, and Room Checks on the Today tab |
 | **PWA** | Progressive Web App — can be installed on a phone home screen and works offline |

@@ -4,7 +4,7 @@
 // ─────────────────────────────────────────────────────────────────────
 
 import { state, setSeasonalEvents } from './state.js';
-import { readDoc, writeDoc } from './firebase.js';
+import { readDoc, writeDoc, watchDoc } from './firebase.js';
 import { FIRESTORE_DOCS, SEASON_META } from './config.js';
 
 /**
@@ -16,6 +16,18 @@ export async function loadSeasonalEvents() {
         setSeasonalEvents(data?.events || []);
         state.eventsLoaded = true;
     } catch (e) { console.error('loadSeasonalEvents:', e); }
+}
+
+/**
+ * Subscribe to live seasonal_events updates so a +1 from another device
+ * reflects the unpaid balance immediately. Re-renders on update.
+ */
+export function watchSeasonalEvents() {
+    return watchDoc(FIRESTORE_DOCS.EVENTS, (data) => {
+        setSeasonalEvents(data?.events || []);
+        state.eventsLoaded = true;
+        window.render?.();
+    });
 }
 
 /**

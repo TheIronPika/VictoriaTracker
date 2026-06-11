@@ -77,7 +77,13 @@ export function renderSeasonalSection() {
                     `<div class="ev-pip ${i < ev.completions ? 'ev-pip-done' : ''}" style="${i < ev.completions ? 'background:'+meta.accent+';border-color:'+meta.accent : ''}"></div>`
                 ).join('');
                 const today2   = new Date();
-                const endDate  = new Date(today2.getFullYear(), ev.endMonth - 1, ev.endDay);
+                // For year-wrapping events (e.g. Dec 15 – Feb 15), if today is
+                // already past the end month, the actual end is next year.
+                let endYear = today2.getFullYear();
+                if (ev.endMonth < ev.startMonth && today2.getMonth() + 1 >= ev.startMonth) {
+                    endYear += 1;
+                }
+                const endDate  = new Date(endYear, ev.endMonth - 1, ev.endDay);
                 const daysLeft = Math.max(0, Math.ceil((endDate - today2) / 86400000));
                 html += `
                     <div class="ev-card" style="background:${meta.bg};border-color:${meta.border};${done ? 'opacity:0.6;' : ''}"

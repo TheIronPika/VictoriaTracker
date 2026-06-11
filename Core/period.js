@@ -6,7 +6,7 @@
 // ─────────────────────────────────────────────────────────────────────
 
 import { state } from './state.js';
-import { readDoc, writeDoc } from './firebase.js';
+import { readDoc, writeDoc, watchDoc } from './firebase.js';
 import { FIRESTORE_DOCS } from './config.js';
 
 /**
@@ -20,6 +20,19 @@ export async function loadPeriodData() {
         if (data) state.periodData = { ...state.periodData, ...data };
     } catch (e) { console.warn('period_data load failed:', e); }
     state.periodLoaded = true;
+}
+
+/**
+ * Subscribe to live period_data updates so a write from another tab/device
+ * is picked up here without a refresh. Re-renders on update. Returns the
+ * unsubscribe function.
+ */
+export function watchPeriodData() {
+    return watchDoc(FIRESTORE_DOCS.PERIOD, (data) => {
+        if (data) state.periodData = { ...state.periodData, ...data };
+        state.periodLoaded = true;
+        window.render?.();
+    });
 }
 
 /** Push current period state to Firestore. */

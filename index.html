@@ -32,9 +32,11 @@
         import { state } from './Core/state.js';
         import { EMAIL_CONFIG } from './Core/config.js';
         import { watchHabits } from './Core/habits-data.js';
-        import { loadStarData } from './Core/stars.js';
+        import { loadStarData, watchStarData } from './Core/stars.js';
         import { loadWeeklyHistory } from './Core/history.js';
-        import { loadPeriodData } from './Core/period.js';
+        import { loadPeriodData, watchPeriodData } from './Core/period.js';
+        import { watchSeasonalEvents } from './Core/events.js';
+        import { watchRoomsData } from './Core/rooms.js';
         import { loadSectionOrder, watchSectionOrder } from './Core/section-order.js';
 
         // ── UI (DOM rendering + window.* handler registration) ───────────────
@@ -77,10 +79,18 @@
             setInterval(applyTimeColor, 60000);
             initParticles();
             cleanupOldPerfectWeekKeys();
-            loadSeasonalEventsUI();
+            // All four of these are now live-watched (M4 from overnight review)
+            // so a write on her phone reflects on the desktop without a refresh
+            // and vice versa. The watchX calls also fire immediately with
+            // current data, replacing the prior one-shot loadX semantics.
+            loadSeasonalEventsUI();    // also renders the section
+            watchSeasonalEvents();
             loadStarData();
+            watchStarData();
             loadPeriodData().then(() => window.render?.()).catch(() => {});
+            watchPeriodData();
             loadRoomsDataUI();
+            watchRoomsData();
             // Section order: load once, then subscribe so other tabs/devices
             // see reorders live without a refresh.
             loadSectionOrder().then(() => { window.render?.(); watchSectionOrder(); }).catch(() => {});

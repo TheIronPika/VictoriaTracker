@@ -1,8 +1,15 @@
 // ─────────────────────────────────────────────────────────────────────
-// core/habits.js
-// Habit tier classification and base payout calculations.
-// Pure functions — no state, no Firebase, no DOM.
+// Core/habits.js
+// Single source of truth for per-habit weekly payout math.
+// Pure functions — no DOM, no Firebase, no state. Imported by:
+//   • web/ui/render.js       (live "This Week's Balance" headline)
+//   • web/ui/manage-ui.js    (Streak $ panel _thisWeekBreakdown)
+//   • scripts/reset.js       (Monday payout via Node — runs the same code)
+// If you change tier/payout math, change it HERE. The three callers above
+// consume the result; they should not re-implement the formula.
 // ─────────────────────────────────────────────────────────────────────
+
+import { isCyclic, weeksLate } from './cycles.js';
 
 /**
  * Classify a count into a tier based on the habit's thresholds.
@@ -16,20 +23,8 @@ export function getTier(habit, count) {
 }
 
 /**
- * Get the base payout for a given tier.
- * Does NOT include streak bonuses/penalties — see getStreakBonus/getStreakPenalty.
- */
-export function getBasePayout(habit, tier) {
-    if (tier === 'punish') return habit.valPunish || 0;
-    if (tier === 'low')    return habit.valLow    || 0;
-    if (tier === 'goal')   return habit.valGoal   || 0;
-    if (tier === 'bonus')  return habit.valBonus  || 0;
-    return 0;
-}
-
-/**
- * Get the current count for a habit — last day in the 7-day history.
- * Falls back to whatever's at the end of history if it's shorter than 7.
+ * Last day in the 7-day history (= today's running count). Falls back to
+ * whatever's at the end if history is shorter than 7.
  */
 export function getCurrentCount(habit) {
     const hist = (habit.history || []).slice(0, 7);
@@ -37,51 +32,83 @@ export function getCurrentCount(habit) {
 }
 
 /**
- * Calculate the positive streak bonus for a habit.
- * Flat per-week: applies the configured streakBonusPer once on every good
- * (goal/bonus) week. streakCap caps the per-week amount if set.
- * Note: currentStreak is no longer used in the formula but kept in the
- * signature so callers don't need to change.
+ * Compute the full per-habit weekly payout in one place.
+ *
+ * Inputs:
+ *   habit         — the habit document
+ *   opts.periodActive  — bool, is period currently active (for periodSensitive)
+ *   opts.now      — timestamp, defaults to Date.now() (only used for weeksLate)
+ *
+ * Returns a structured breakdown so callers can render component-by-component
+ * (Streak $ panel) or just take total (headline + reset). The semantics
+ * (cyclic suppresses weekly negatives, late completion reduces positive
+ *  payout, period protection zeroes punish + skips bad-streak penalty,
+ *  bounty pays once on goal/bonus) are all encoded here.
  */
-export function getStreakBonus(habit, tier, _currentStreak) {
-    if ((tier === 'goal' || tier === 'bonus') && (habit.streakBonusPer || 0) > 0) {
-        const cap = habit.streakCap ? parseFloat(habit.streakCap) : Infinity;
-        return Math.min(habit.streakBonusPer, cap);
-    }
-    return 0;
-}
+export function computeWeeklyPayout(habit, opts = {}) {
+    const periodActive    = !!opts.periodActive;
+    const now             = opts.now || Date.now();
+    const periodProtected = periodActive && !!habit.periodSensitive;
+    const cyclic          = isCyclic(habit);
+    const wkLate          = cyclic ? weeksLate(habit, now) : 0;
 
-/**
- * Calculate the negative streak penalty for a habit.
- * Flat per-week: applies the configured streakPenaltyPer once on every bad
- * (punish/low) week. streakCap caps the per-week amount if set. Returns a
- * positive number — caller subtracts.
- */
-export function getStreakPenalty(habit, tier, _currentBadStreak) {
-    if ((tier === 'punish' || tier === 'low') && (habit.streakPenaltyPer || 0) > 0) {
-        const cap = habit.streakCap ? parseFloat(habit.streakCap) : Infinity;
-        return Math.min(habit.streakPenaltyPer, cap);
-    }
-    return 0;
-}
-
-/**
- * Total payout for a habit including streak adjustments.
- * Excused habits return 0 regardless of tier.
- */
-export function getTotalPayout(habit) {
-    if (habit.excused) return 0;
     const cur  = getCurrentCount(habit);
     const tier = getTier(habit, cur);
-    let payout = getBasePayout(habit, tier);
-    payout += getStreakBonus(habit, tier, habit.streak || 0);
-    payout -= getStreakPenalty(habit, tier, habit.badStreak || 0);
-    return payout;
+    const cap  = habit.streakCap ? parseFloat(habit.streakCap) : Infinity;
+
+    let base = 0;
+    let lateReduction = 0;
+    let goodStreak = 0;
+    let badStreak  = 0;
+    let bounty     = 0;
+
+    if (!habit.excused) {
+        if (tier === 'punish') {
+            // Cyclic habits never take a weekly negative; non-cyclic take
+            // valPunish unless period-protected.
+            base = cyclic ? 0 : (periodProtected ? 0 : (habit.valPunish || 0));
+        }
+        else if (tier === 'low')   base = habit.valLow  || 0;
+        else if (tier === 'goal')  base = habit.valGoal || 0;
+        else if (tier === 'bonus') base = habit.valBonus|| 0;
+
+        // Cyclic late-completion reduction: when a positive payout lands after
+        // a late cycle, knock streakPenaltyPer × weeksLate off the top.
+        if (cyclic && wkLate > 0 && base > 0 && (habit.streakPenaltyPer || 0) > 0) {
+            const requested = wkLate * habit.streakPenaltyPer;
+            lateReduction = Math.min(requested, base);
+            base -= lateReduction;
+        }
+
+        // Flat per-week streak bonus on any goal/bonus week.
+        if ((tier === 'goal' || tier === 'bonus') && (habit.streakBonusPer || 0) > 0) {
+            goodStreak = Math.min(habit.streakBonusPer, cap);
+        }
+        // Flat per-week streak penalty on punish/low weeks — skipped for cyclic
+        // habits (no weekly negative) and period-protected habits.
+        if (!cyclic && !periodProtected && (tier === 'punish' || tier === 'low') && (habit.streakPenaltyPer || 0) > 0) {
+            badStreak = -Math.min(habit.streakPenaltyPer, cap);
+        }
+
+        // Bounty pays once on a goal/bonus week and clears at reset.
+        if (habit.bountyActive && (tier === 'goal' || tier === 'bonus') && (habit.bountyDollars || 0) > 0) {
+            bounty = habit.bountyDollars;
+        }
+    }
+
+    const total = base + goodStreak + badStreak + bounty;
+
+    return {
+        tier, base, lateReduction, goodStreak, badStreak, bounty, total,
+        cyclic, weeksLate: wkLate, periodProtected,
+        excused: !!habit.excused
+    };
 }
 
 /**
  * Stars earned by a habit on weekly reset, based on tier and streak.
- * Returns { earned, reasons[] }.
+ * Returns { earned, reasons[] }. Bounty stars are handled separately by the
+ * reset script (they require bounty active + clearing state).
  */
 export function getStarsEarned(habit) {
     if (habit.excused) return { earned: 0, reasons: [] };

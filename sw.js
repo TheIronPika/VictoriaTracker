@@ -1,4 +1,4 @@
-const CACHE = 'victoria-v12';
+const CACHE = 'victoria-v13';
 
 // App shell files to cache on install.
 // NOTE: Folder is `Core/` (capital C) on disk — GitHub Pages is case-sensitive,
@@ -86,7 +86,10 @@ self.addEventListener('fetch', e => {
           caches.open(CACHE).then(cache => cache.put(e.request, clone));
         }
         return response;
-      }).catch(() => cached); // Fallback to cache if offline
+      });
+      // No offline fallback — the cached branch above already covers shell
+      // files, and a `.catch(() => cached)` here would always resolve to
+      // null since `cached` was falsy to reach this point.
     })
   );
 });

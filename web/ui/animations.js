@@ -10,6 +10,7 @@ import { state } from '../../Core/state.js';
 import { getTier } from '../../Core/habits.js';
 import { getDayIdx } from '../../Core/utils.js';
 import { computeStreaksFromHistory } from '../../Core/streaks.js';
+import { isCycleDue } from '../../Core/cycles.js';
 import { WEATHER_CONFIG } from '../../Core/config.js';
 
 // ── Bubble pop sound ──────────────────────────────────────────────────
@@ -91,7 +92,12 @@ export function checkPerfectWeek() {
     if (!uiState.habits.length) return;
     const key = 'perfectWeek_' + new Date().toDateString();
     if (localStorage.getItem(key)) return;
-    const allGood = uiState.habits.every(h => {
+    // Only require habits that actually count this week — exclude excused and
+    // not-yet-due cyclic habits. Without this, a single excused or dormant
+    // habit made the celebration almost impossible to trigger.
+    const counting = uiState.habits.filter(h => !h.excused && isCycleDue(h));
+    if (!counting.length) return;
+    const allGood = counting.every(h => {
         const tier = getTier(h, h.history[getDayIdx(uiState.viewingDate)] || 0);
         return tier === 'goal' || tier === 'bonus';
     });

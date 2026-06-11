@@ -6,7 +6,7 @@
 // ─────────────────────────────────────────────────────────────────────
 
 import { state } from './state.js';
-import { readDoc, writeDoc } from './firebase.js';
+import { readDoc, writeDoc, watchDoc } from './firebase.js';
 import { FIRESTORE_DOCS, DEFAULT_ROOMS } from './config.js';
 
 /**
@@ -23,6 +23,18 @@ export async function loadRoomsData() {
         }
         state.roomsLoaded = true;
     } catch (e) { console.error('loadRoomsData:', e); }
+}
+
+/**
+ * Subscribe to live rooms_data updates so a "mark clean" from her phone
+ * reflects on the desktop without a refresh. Re-renders on update.
+ */
+export function watchRoomsData() {
+    return watchDoc(FIRESTORE_DOCS.ROOMS, (data) => {
+        if (data) state.roomsData = data.rooms || [];
+        state.roomsLoaded = true;
+        window.render?.();
+    });
 }
 
 /** Push current rooms state to Firestore. */
@@ -48,6 +60,9 @@ export async function toggleRoomCheck(id) {
 export function getRoomPayoutsTotal() {
     if (!state.roomsLoaded) return 0;
     return state.roomsData.reduce((sum, r) => {
-        return sum + (r.checked ? Math.min(r.streak + 1, r.maxStreak) : 0);
+        if (!r.checked) return sum;
+        // Mirror the reset script's NaN-safe guards so a malformed room
+        // never leaks NaN into the headline total.
+        return sum + Math.min((r.streak || 0) + 1, r.maxStreak || 0);
     }, 0);
 }
