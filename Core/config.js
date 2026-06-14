@@ -32,7 +32,24 @@ export const FIRESTORE_DOCS = {
     RESET:   ['system', 'reset_state'],
     PERIOD:  ['system', 'period_data'],
     ROOMS:   ['system', 'rooms_data'],
-    UI:      ['system', 'ui_config']
+    UI:      ['system', 'ui_config'],
+    // Weekly plan-ahead bubbles (Planning tab). One doc holds every week's
+    // plan, keyed by the week's Monday date ("YYYY-MM-DD").
+    PLANS:    ['system', 'weekly_plans'],
+    // Calendar events shown in the Planning agenda + used for conflict dots.
+    // Google-shaped events; populated by Google Calendar sync once enabled.
+    CALENDAR: ['system', 'calendar_events']
+};
+
+// Google Calendar OAuth. Leave clientId '' to keep the integration disabled
+// (the Planning agenda then reads whatever events live in the CALENDAR doc).
+export const GOOGLE_CALENDAR_CONFIG = {
+    // OAuth client ID from Google Cloud Console
+    // (ends in .apps.googleusercontent.com). Empty = integration off.
+    // NOTE: this must be a "Web application" OAuth client with
+    // https://theironpika.github.io listed as an authorized JavaScript
+    // origin, and the Google Calendar API enabled in the project.
+    clientId: '177502926746-oqmbou7n8h86hm81gp6rnfb497lbm06r.apps.googleusercontent.com'
 };
 
 // Special section IDs for the Today-view section ordering.

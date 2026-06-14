@@ -38,6 +38,8 @@
         import { watchSeasonalEvents } from './Core/events.js';
         import { watchRoomsData } from './Core/rooms.js';
         import { loadSectionOrder, watchSectionOrder } from './Core/section-order.js';
+        import { watchWeeklyPlans } from './Core/planning.js';
+        import { watchCalendarEvents } from './Core/calendar.js';
 
         // ── UI (DOM rendering + window.* handler registration) ───────────────
         import { uiState } from './web/ui/ui-state.js';
@@ -58,6 +60,8 @@
         import './web/ui/period-ui.js';
         import './web/ui/manage-ui.js';
         import './web/ui/rooms-ui.js';
+        import './web/ui/planning-ui.js';
+        import './web/ui/google-calendar.js';
 
         // ── EmailJS init ─────────────────────────────────────────────────────
         emailjs.init(EMAIL_CONFIG.publicKey);
@@ -96,6 +100,10 @@
             loadSectionOrder().then(() => { window.render?.(); watchSectionOrder(); }).catch(() => {});
             // Pre-load history so streak badges render immediately
             loadWeeklyHistory().then(() => { window.render?.(); window.maybeShowWeeklyReportAfterReset?.(); }).catch(() => {});
+            // Planning tab: live-watch the plan + calendar docs so a phone edit
+            // reflects on desktop and vice versa (re-renders only the Planning view).
+            watchWeeklyPlans(() => window.renderPlanning?.());
+            watchCalendarEvents(() => window.renderPlanning?.());
         });
 
     </script>
@@ -1278,6 +1286,7 @@
         <div class="tab" onclick="window.switchTab(1)">Priorities</div>
         <div class="tab" onclick="window.switchTab(2)">Weekly</div>
         <div class="tab" onclick="window.switchTab(3)">History</div>
+        <div class="tab" onclick="window.switchTab(4)">Planning</div>
     </nav>
 
     <div id="view-today" class="view active">
@@ -1536,6 +1545,10 @@
         <div id="historyRoot"></div>
     </div>
 
+    <div id="view-planning" class="view">
+        <div id="planningRoot"></div>
+    </div>
+
 
 
     <footer>Victoria Tracker</footer>
@@ -1582,6 +1595,108 @@
             <div id="defBountyDetails" style="font-family:'Montserrat',sans-serif;font-size:13px;color:#8a6a10;line-height:1.6;"></div>
         </div>
         <div id="defBody" style="font-family:'Montserrat',sans-serif;font-size:14px;line-height:1.7;color:#666;white-space:pre-wrap;"></div>
+    </div>
+</div>
+
+<style id="planning-styles">
+    /* ── Planning tab ─────────────────────────────────────────────── */
+    .plan-week-label { font-size: 13px; font-weight: 600; color: #999; margin: 4px 0 0 6px; }
+    .plan-actionbar { margin: 12px 0 4px; }
+    .plan-copy-btn { background: rgba(255,255,255,0.6); border: 1px solid rgba(0,0,0,0.10); border-radius: 8px; padding: 7px 12px; font-size: 12px; font-weight: 600; color: #6a5a6a; cursor: pointer; font-family: 'Montserrat', sans-serif; }
+    .plan-copy-btn:hover { background: #fff; }
+    .plan-empty { text-align: center; color: #999; font-size: 13px; padding: 30px 0; }
+
+    .plan-grid { background: rgba(255,255,255,0.6); backdrop-filter: blur(5px); border-radius: 16px; padding: 8px 10px; margin-top: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.03); }
+    .plan-row { display: flex; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(0,0,0,0.05); }
+    .plan-row:last-child { border-bottom: none; }
+    .plan-headrow { border-bottom: 1px solid rgba(0,0,0,0.08); }
+    .plan-taskinfo { width: 104px; flex-shrink: 0; padding-right: 6px; cursor: pointer; }
+    .plan-headrow .plan-taskinfo { cursor: default; }
+    .plan-taskhead { display: flex; align-items: center; gap: 5px; }
+    .plan-emoji { font-size: 15px; }
+    .plan-name { font-size: 12px; font-weight: 600; color: var(--text-main); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .plan-streak { font-size: 10px; color: #e67e22; font-weight: 700; flex-shrink: 0; }
+    .plan-goal { font-size: 10px; color: #aaa; margin: 3px 0 0 20px; }
+
+    .plan-bubbles { display: flex; flex: 1; }
+    .plan-col { flex: 1; display: flex; justify-content: center; align-items: center; }
+    .plan-dayhead { text-align: center; border-radius: 6px; padding: 3px 4px; min-width: 24px; }
+    .plan-dayhead.free { background: rgba(52,152,219,0.10); }
+    .plan-dayletter { font-size: 10px; font-weight: 700; color: #999; }
+    .plan-density { display: flex; gap: 1px; justify-content: center; height: 8px; margin-top: 4px; align-items: flex-end; }
+    .plan-dbar { width: 3px; height: 8px; border-radius: 1px; }
+    .plan-dbar.busy { background: #ffc107; }
+    .plan-dbar.verybusy { background: #e24b4a; }
+
+    .plan-bubble { position: relative; width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid rgba(0,0,0,0.18); background: rgba(255,255,255,0.5); cursor: pointer; transition: all 0.15s cubic-bezier(0.175,0.885,0.32,1.275); }
+    .plan-bubble:hover { transform: scale(1.12); }
+    .plan-bubble.planned { background: var(--grad-goal); border-color: var(--color-goal); }
+    .plan-bubble.conflict { border: 2.5px solid #e24b4a; }
+    .plan-conflict-dot { position: absolute; top: -3px; right: -3px; width: 6px; height: 6px; border-radius: 50%; background: #e24b4a; }
+
+    .plan-agenda { margin-top: 18px; background: rgba(255,255,255,0.6); border-radius: 16px; border-left: 3px solid #378add; overflow: hidden; }
+    .plan-agenda-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; cursor: pointer; }
+    .plan-agenda-title { font-family: 'Playfair Display', serif; font-size: 13px; font-weight: 700; color: #5a4a5a; letter-spacing: 0.5px; }
+    .plan-agenda-toggle { font-size: 10px; font-weight: 700; color: var(--header-pink); letter-spacing: 1px; }
+    .plan-agenda-headright { display: flex; align-items: center; gap: 10px; }
+    .plan-sync-btn { background: none; border: 1px solid var(--header-pink); color: var(--header-pink); border-radius: 14px; padding: 3px 10px; font-size: 11px; font-weight: 700; cursor: pointer; font-family: 'Montserrat', sans-serif; }
+    .plan-agenda-body { padding: 0 14px 12px; }
+    .plan-day-block { margin-bottom: 12px; }
+    .plan-day-header { font-size: 12px; font-weight: 700; color: var(--text-main); padding-bottom: 5px; margin-bottom: 6px; border-bottom: 1px solid rgba(0,0,0,0.08); }
+    .plan-noevents { font-size: 11px; color: #bbb; font-style: italic; }
+    .plan-event { background: rgba(255,255,255,0.85); border-left: 2px solid #ffc107; border-radius: 6px; padding: 7px; margin-bottom: 5px; }
+    .plan-event-time { font-size: 11px; font-weight: 700; color: var(--text-main); }
+    .plan-event-name { font-size: 11px; color: #777; margin-top: 1px; }
+    .plan-agenda-empty { text-align: center; padding: 16px; }
+    .plan-agenda-empty > div { font-size: 12px; color: #999; margin-bottom: 12px; }
+    .plan-connect-btn { border: 1.5px solid var(--header-pink); color: var(--header-pink); background: none; border-radius: 20px; padding: 8px 16px; font-size: 12px; font-weight: 700; cursor: pointer; font-family: 'Montserrat', sans-serif; }
+
+    /* Detail sheet */
+    #planTaskOverlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 16px; }
+    #planTaskSheet { background: #fff; border-radius: 22px; padding: 22px; width: 100%; max-width: 420px; max-height: 85vh; overflow-y: auto; box-shadow: 0 12px 48px rgba(0,0,0,0.22); font-family: 'Montserrat', sans-serif; }
+    .plan-modal-head { display: flex; justify-content: space-between; align-items: flex-start; }
+    .plan-modal-titlewrap { display: flex; align-items: center; gap: 10px; }
+    .plan-modal-emoji { font-size: 26px; }
+    .plan-modal-title { font-size: 18px; font-weight: 700; color: #2c1654; }
+    .plan-modal-sub { font-size: 12px; color: #888; margin-top: 2px; }
+    .plan-modal-close { background: none; border: none; font-size: 26px; line-height: 1; color: #bbb; cursor: pointer; }
+    .plan-time-box { background: #f6f3f8; border-radius: 12px; padding: 12px; margin-top: 16px; }
+    .plan-time-label { font-size: 11px; color: #999; font-weight: 600; margin-bottom: 8px; }
+    .plan-time-display { display: flex; align-items: center; justify-content: space-between; cursor: pointer; font-size: 15px; color: #4a3a4a; font-weight: 500; }
+    .plan-time-edithint { font-size: 11px; color: #b89; font-weight: 600; }
+    .plan-time-editrow { display: flex; gap: 8px; align-items: center; }
+    .plan-time-input { flex: 1; border: 1px solid #ddd; border-radius: 8px; padding: 8px 10px; font-size: 14px; font-family: 'Montserrat', sans-serif; }
+    .plan-time-input:focus { outline: none; border-color: var(--header-pink); }
+    .plan-time-save { background: var(--header-pink); color: #fff; border: none; border-radius: 8px; padding: 9px 14px; font-size: 13px; font-weight: 700; cursor: pointer; }
+    .plan-banner { background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 8px; padding: 10px; margin-top: 14px; }
+    .plan-banner-title { font-size: 12px; font-weight: 700; color: #856404; margin-bottom: 4px; }
+    .plan-banner-line { font-size: 12px; color: #7a5e0a; margin-top: 1px; }
+    .plan-section-label { font-size: 12px; color: #999; font-weight: 600; margin: 18px 0 10px; }
+    .plan-daygrid { display: flex; flex-wrap: wrap; gap: 8px; }
+    .plan-daybtn { width: calc(33.33% - 6px); border: 2px solid #e6e1e8; border-radius: 10px; padding: 10px 0; background: none; cursor: pointer; font-family: 'Montserrat', sans-serif; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+    .plan-daybtn-day { font-size: 13px; font-weight: 700; color: #4a3a4a; }
+    .plan-daybtn-status { font-size: 10px; color: #aaa; }
+    .plan-daybtn.busy { border-color: #e24b4a; background: rgba(226,75,74,0.08); }
+    .plan-daybtn.busy .plan-daybtn-status { color: #e24b4a; font-weight: 700; }
+    .plan-daybtn.sel { background: var(--header-pink); border-color: var(--header-pink); }
+    .plan-daybtn.sel .plan-daybtn-day, .plan-daybtn.sel .plan-daybtn-status { color: #fff; }
+    .plan-daybtn.sel.busy { background: #e24b4a; border-color: #c73533; }
+    .plan-progress { background: #f6f3f8; border-radius: 12px; padding: 12px; margin-top: 18px; }
+    .plan-progress-label { font-size: 12px; color: #888; margin-bottom: 8px; }
+    .plan-progress-steps { display: flex; gap: 4px; }
+    .plan-step { flex: 1; height: 5px; border-radius: 3px; background: #e0dae4; }
+    .plan-step.done { background: #27ae60; }
+    .plan-streak-stat { font-size: 13px; color: #888; margin-top: 14px; }
+    .plan-streak-stat span { color: #e67e22; font-weight: 700; }
+    .plan-modal-btns { display: flex; gap: 10px; margin-top: 20px; }
+    .plan-clear-btn { flex: 1; padding: 13px; border-radius: 10px; border: 1px solid #ddd; background: none; font-size: 14px; font-weight: 600; color: #888; cursor: pointer; font-family: 'Montserrat', sans-serif; }
+    .plan-done-btn { flex: 1; padding: 13px; border-radius: 10px; border: none; background: var(--header-pink); color: #fff; font-size: 14px; font-weight: 700; cursor: pointer; font-family: 'Montserrat', sans-serif; }
+</style>
+
+<!-- Planning task detail sheet -->
+<div id="planTaskOverlay" onclick="if(event.target===this)window.closePlanTask()">
+    <div id="planTaskSheet">
+        <div id="planTaskBody"></div>
     </div>
 </div>
 

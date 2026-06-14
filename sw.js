@@ -1,4 +1,4 @@
-const CACHE = 'victoria-v15';
+const CACHE = 'victoria-v16';
 
 // App shell files to cache on install.
 // NOTE: Folder is `Core/` (capital C) on disk — GitHub Pages is case-sensitive,
@@ -23,6 +23,8 @@ const SHELL = [
   '/VictoriaTracker/Core/period.js',
   '/VictoriaTracker/Core/rooms.js',
   '/VictoriaTracker/Core/section-order.js',
+  '/VictoriaTracker/Core/planning.js',
+  '/VictoriaTracker/Core/calendar.js',
   '/VictoriaTracker/Core/firebase.js',
   '/VictoriaTracker/web/ui/render.js',
   '/VictoriaTracker/web/ui/ui-state.js',
@@ -33,6 +35,8 @@ const SHELL = [
   '/VictoriaTracker/web/ui/history-ui.js',
   '/VictoriaTracker/web/ui/period-ui.js',
   '/VictoriaTracker/web/ui/rooms-ui.js',
+  '/VictoriaTracker/web/ui/planning-ui.js',
+  '/VictoriaTracker/web/ui/google-calendar.js',
   '/VictoriaTracker/web/ui/lucky-draw.js',
   '/VictoriaTracker/web/ui/animations.js',
 ];
@@ -69,6 +73,9 @@ self.addEventListener('fetch', e => {
     'cdnjs.cloudflare.com',
     'fonts.googleapis.com',
     'fonts.gstatic.com',
+    // Google Calendar sign-in (GIS) + Calendar API — never cache.
+    'accounts.google.com',
+    'www.googleapis.com',
   ];
 
   if (networkOnly.some(d => url.hostname.includes(d))) {

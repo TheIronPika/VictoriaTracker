@@ -44,6 +44,17 @@ export const state = {
     // natural order — so a fresh install / new category Just Works.
     sectionOrder: [],
     sectionOrderLoaded: false,
+
+    // Weekly plan-ahead bubbles (Planning tab). Map keyed by the week's
+    // Monday date ("YYYY-MM-DD"); each value is { [habitId]: [bool x7] }
+    // for Mon..Sun. Intent only — never touches habit.history.
+    weeklyPlans: {},
+    weeklyPlansLoaded: false,
+
+    // Calendar events for the Planning agenda + conflict dots.
+    // Each event: { id, title, startISO, endISO, allDay? }.
+    calendarEvents: [],
+    calendarLoaded: false,
 };
 
 // ─── Mutators ────────────────────────────────────────────────────────
@@ -59,3 +70,5 @@ export function setShopItems(list)     { state.shopItems = list; }
 export function setStarLog(list)       { state.starLog = list; }
 export function setExcuseTokens(n)     { state.excuseTokens = n; }
 export function setSectionOrder(list)  { state.sectionOrder = Array.isArray(list) ? list : []; }
+export function setWeeklyPlans(map)    { state.weeklyPlans = (map && typeof map === 'object') ? map : {}; }
+export function setCalendarEvents(list){ state.calendarEvents = Array.isArray(list) ? list : []; }
