@@ -32,6 +32,19 @@ export function getCurrentCount(habit) {
 }
 
 /**
+ * Raw per-tier base payout (the habit's valPunish/valLow/valGoal/valBonus).
+ * No streak/bounty/period adjustments — those live in computeWeeklyPayout.
+ * Used by history.js when recording a weekly snapshot's per-habit payout.
+ */
+export function getBasePayout(habit, tier) {
+    if (tier === 'punish') return habit.valPunish || 0;
+    if (tier === 'low')    return habit.valLow    || 0;
+    if (tier === 'goal')   return habit.valGoal   || 0;
+    if (tier === 'bonus')  return habit.valBonus  || 0;
+    return 0;
+}
+
+/**
  * Compute the full per-habit weekly payout in one place.
  *
  * Inputs:
