@@ -1,4 +1,4 @@
-const CACHE = 'victoria-v13';
+const CACHE = 'victoria-v14';
 
 // App shell files to cache on install.
 // NOTE: Folder is `Core/` (capital C) on disk — GitHub Pages is case-sensitive,
