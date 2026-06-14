@@ -78,13 +78,14 @@ export function renderPlanning() {
     habits.forEach(h => {
         const planned = getPlannedDays(date, h.id);
         const streak  = computeStreaksFromHistory(state.weeklyHistory, h.id).streak;
+        const dm      = h.dailyMax || 1;   // a planned day = doing it dailyMax times
         let bubbles = '';
         let planN = 0;  // running count of planned days → tier each bubble reaches
         for (let i = 0; i < 7; i++) {
             let planCls = '', tierStyle = '';
             if (planned[i]) {
                 planN++;
-                const tier = getTier(h, planN);   // same thresholds as the Today bubbles
+                const tier = getTier(h, planN * dm);   // count in completions, like the Today bubbles
                 planCls = 'planned';
                 tierStyle = ` style="background:var(--grad-${tier});border-color:var(--color-${tier})"`;
             }
@@ -191,9 +192,11 @@ function renderPlanTaskModal() {
     const planned = getPlannedDays(date, h.id);
     const busy    = busyDays(date);
     const byDay   = eventsByDay(date);
-    const goal    = h.goal || 7;
-    const count   = planned.filter(Boolean).length;
-    const streak  = computeStreaksFromHistory(state.weeklyHistory, h.id).streak;
+    const goal     = h.goal || 7;
+    const dm       = h.dailyMax || 1;                    // a planned day = dailyMax completions
+    const goalDays = Math.max(1, Math.ceil(goal / dm));  // days needed to hit goal
+    const count    = planned.filter(Boolean).length;
+    const streak   = computeStreaksFromHistory(state.weeklyHistory, h.id).streak;
 
     // Conflicts = events on days this habit is planned.
     const conflictLines = [];
@@ -215,7 +218,7 @@ function renderPlanTaskModal() {
     }
 
     let steps = '';
-    for (let i = 0; i < goal; i++) steps += `<div class="plan-step ${i < count ? 'done' : ''}"></div>`;
+    for (let i = 0; i < goalDays; i++) steps += `<div class="plan-step ${i < count ? 'done' : ''}"></div>`;
 
     const timeSection = timeEditing
         ? `<div class="plan-time-editrow">
@@ -233,7 +236,7 @@ function renderPlanTaskModal() {
                 <span class="plan-modal-emoji">${h.icon || '✨'}</span>
                 <div>
                     <div class="plan-modal-title">${escapeHtml(h.name)}</div>
-                    <div class="plan-modal-sub">Goal: ${goal}× per week</div>
+                    <div class="plan-modal-sub">Goal: ${goal}× per week${dm > 1 ? ` · ${dm}×/day` : ''}</div>
                 </div>
             </div>
             <button class="plan-modal-close" onclick="window.closePlanTask()">×</button>
@@ -254,7 +257,7 @@ function renderPlanTaskModal() {
         <div class="plan-daygrid">${dayBtns}</div>
 
         <div class="plan-progress">
-            <div class="plan-progress-label">Weekly goal: ${count}/${goal} days</div>
+            <div class="plan-progress-label">Weekly goal: ${count}/${goalDays} days</div>
             <div class="plan-progress-steps">${steps}</div>
         </div>
 
