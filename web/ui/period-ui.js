@@ -5,9 +5,17 @@
 // ─────────────────────────────────────────────────────────────────────
 
 import { state } from '../../Core/state.js';
+import { uiState } from './ui-state.js';
 import {
     isPeriodActive, periodDayCount, syncPeriodData
 } from '../../Core/period.js';
+
+// Same calendar day? (ignores time-of-day)
+function sameDay(a, b) {
+    return a.getFullYear() === b.getFullYear()
+        && a.getMonth()    === b.getMonth()
+        && a.getDate()     === b.getDate();
+}
 
 // ── Modal ─────────────────────────────────────────────────────────────
 
@@ -18,12 +26,20 @@ window.openPeriodModal = () => {
     overlay.id        = 'periodModalOverlay';
     overlay.className = 'period-modal-overlay';
     const days = periodDayCount();
+
+    // Start day = the day selected in the top date strip (uiState.viewingDate).
+    const sel          = uiState.viewingDate || new Date();
+    const startIsToday = sameDay(sel, new Date());
+    const dayLabel     = sel.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+
     overlay.innerHTML = `
         <div class="period-modal-sheet">
-            <div class="period-modal-title">${isActive ? '🩸 End period' : '🩸 Start period'}</div>
+            <div class="period-modal-title">${isActive ? '🩸 End period' : (startIsToday ? '🩸 Start period' : `🩸 Start period on ${dayLabel}`)}</div>
             <div class="period-modal-sub">${isActive
                 ? `Period has been active for ${days} day${days !== 1 ? 's' : ''}. Marking it as ended will restore normal payout and streak rules going forward.`
-                : "Period-sensitive habits will still earn positive payouts as normal, but won't be penalized or lose streaks while your period is active."
+                : (startIsToday
+                    ? "Period-sensitive habits will still earn positive payouts as normal, but won't be penalized or lose streaks while your period is active."
+                    : `Backdating the start to ${dayLabel}. Period-sensitive habits won't be penalized or lose streaks from that day onward.`)
             }</div>
             <div class="period-modal-btns">
                 <button class="period-modal-btn cancel" onclick="document.getElementById('periodModalOverlay').remove()">Cancel</button>
@@ -39,13 +55,16 @@ window.openPeriodModal = () => {
 
 window.startPeriod = async () => {
     document.getElementById('periodModalOverlay')?.remove();
-    const now = Date.now();
     // dynamic import avoids a top-level circular dep if utils ever changes
     const { getDayIdx } = await import('../../Core/utils.js');
+    // Backdate to the selected day in the date strip; keep the exact
+    // timestamp when it's today so the day count stays precise.
+    const sel     = uiState.viewingDate || new Date();
+    const startTs = sameDay(sel, new Date()) ? Date.now() : sel.getTime();
     state.periodData = {
         active: true,
-        startTs: now,
-        startDayIdx: getDayIdx(new Date()),
+        startTs,
+        startDayIdx: getDayIdx(new Date(startTs)),
         history: state.periodData.history || [],
         periodWasThisWeek: true
     };
