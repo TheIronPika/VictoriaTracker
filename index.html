@@ -1630,8 +1630,8 @@
 
     .plan-bubble { position: relative; width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid rgba(0,0,0,0.18); background: rgba(255,255,255,0.5); cursor: pointer; transition: all 0.15s cubic-bezier(0.175,0.885,0.32,1.275); }
     .plan-bubble:hover { transform: scale(1.12); }
-    .plan-bubble.planned { background: var(--grad-goal); border-color: var(--color-goal); }
-    .plan-bubble.conflict { border: 2.5px solid #e24b4a; }
+    /* planned fill + border-color are set inline per tier (red/yellow/green/purple). */
+    .plan-bubble.conflict { border: 2.5px solid #e24b4a !important; }
     .plan-conflict-dot { position: absolute; top: -3px; right: -3px; width: 6px; height: 6px; border-radius: 50%; background: #e24b4a; }
 
     .plan-agenda { margin-top: 18px; background: rgba(255,255,255,0.6); border-radius: 16px; border-left: 3px solid #378add; overflow: hidden; }

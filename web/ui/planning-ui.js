@@ -13,6 +13,7 @@ import { state } from '../../Core/state.js';
 import { escapeHtml, weekDates } from '../../Core/utils.js';
 import { computeStreaksFromHistory } from '../../Core/streaks.js';
 import { isCycleDue } from '../../Core/cycles.js';
+import { getTier } from '../../Core/habits.js';
 import { syncHabits } from '../../Core/habits-data.js';
 import { GOOGLE_CALENDAR_CONFIG } from '../../Core/config.js';
 import {
@@ -78,13 +79,20 @@ export function renderPlanning() {
         const planned = getPlannedDays(date, h.id);
         const streak  = computeStreaksFromHistory(state.weeklyHistory, h.id).streak;
         let bubbles = '';
+        let planN = 0;  // running count of planned days → tier each bubble reaches
         for (let i = 0; i < 7; i++) {
-            const planCls = planned[i] ? 'planned' : '';
+            let planCls = '', tierStyle = '';
+            if (planned[i]) {
+                planN++;
+                const tier = getTier(h, planN);   // same thresholds as the Today bubbles
+                planCls = 'planned';
+                tierStyle = ` style="background:var(--grad-${tier});border-color:var(--color-${tier})"`;
+            }
             const confCls = busy[i] ? 'conflict' : '';
             const dot     = busy[i] ? '<div class="plan-conflict-dot"></div>' : '';
             bubbles += `
                 <div class="plan-col">
-                    <div class="plan-bubble ${planCls} ${confCls}" onclick="window.planToggle('${h.id}',${i})">${dot}</div>
+                    <div class="plan-bubble ${planCls} ${confCls}"${tierStyle} onclick="window.planToggle('${h.id}',${i})">${dot}</div>
                 </div>`;
         }
         rows += `
