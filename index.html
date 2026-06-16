@@ -1286,7 +1286,6 @@
         <div class="tab" onclick="window.switchTab(1)">Priorities</div>
         <div class="tab" onclick="window.switchTab(2)">Weekly</div>
         <div class="tab" onclick="window.switchTab(3)">History</div>
-        <div class="tab" onclick="window.switchTab(4)">Plan</div>
     </nav>
 
     <div id="view-today" class="view active">
@@ -1313,7 +1312,13 @@
     </div>
 
     <div id="view-weekly" class="view">
+        <!-- Sub-tabs: Overview (existing weekly grid) vs. Plan (planning UI) -->
+        <div class="pmode-toggle" id="weeklySubTabs" style="margin-bottom:8px;">
+            <button class="pmode-btn pmode-active" data-weekly-sub="overview" onclick="window.switchWeeklySub('overview')">Overview</button>
+            <button class="pmode-btn" data-weekly-sub="plan" onclick="window.switchWeeklySub('plan')">Plan</button>
+        </div>
         <div id="weeklyRoot"></div>
+        <div id="planningRoot" style="display:none;"></div>
     </div>
 
     <div id="view-history" class="view">
@@ -1544,12 +1549,6 @@
         </div>
         <div id="historyRoot"></div>
     </div>
-
-    <div id="view-planning" class="view">
-        <div id="planningRoot"></div>
-    </div>
-
-
 
     <footer>Victoria Tracker</footer>
 

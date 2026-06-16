@@ -520,9 +520,30 @@ window.toggleManageSection = (id) => {
 window.switchTab = (idx) => {
     document.querySelectorAll('.tab').forEach((t, i)  => t.classList.toggle('active', i === idx));
     document.querySelectorAll('.view').forEach((v, i) => v.classList.toggle('active', i === idx));
-    if (idx === 3) renderHistory();
-    else if (idx === 4) window.renderPlanning?.();
+    if (idx === 3)      renderHistory();
+    else if (idx === 2) {
+        // Weekly tab: render whichever sub-tab is active.
+        render();
+        if (_weeklySub === 'plan') window.renderPlanning?.();
+    }
     else render();
+};
+
+// ── Weekly sub-tab (Overview vs. Plan) ────────────────────────────────
+// The Plan view was originally a top-level tab but didn't fit the bar.
+// It now lives inside Weekly as a sub-toggle, mirroring the Priorities tab's
+// Goal/Bonus pmode-toggle styling so it reads as the same kind of control.
+let _weeklySub = 'overview';
+window.switchWeeklySub = (which) => {
+    _weeklySub = which === 'plan' ? 'plan' : 'overview';
+    document.querySelectorAll('#weeklySubTabs .pmode-btn').forEach(b => {
+        b.classList.toggle('pmode-active', b.dataset.weeklySub === _weeklySub);
+    });
+    const weeklyRoot   = document.getElementById('weeklyRoot');
+    const planningRoot = document.getElementById('planningRoot');
+    if (weeklyRoot)   weeklyRoot.style.display   = (_weeklySub === 'overview') ? '' : 'none';
+    if (planningRoot) planningRoot.style.display = (_weeklySub === 'plan')     ? '' : 'none';
+    if (_weeklySub === 'plan') window.renderPlanning?.();
 };
 
 window.handleManageClick = () => {
