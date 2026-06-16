@@ -1,4 +1,4 @@
-_Last updated 2026-06-11 by overnight automation (toolkit v1.0.0). Review before relying on it._
+_Last updated 2026-06-15 by overnight automation (toolkit v1.0.0). Review before relying on it._
 
 # VictoriaTracker — Owner's Guide
 
@@ -19,6 +19,7 @@ It's not a generic habit tracker. It has several interconnected systems:
 - **Room checks** — household room tidiness tracked with streak bonuses
 - **Seasonal events** — special date-range tasks like Spring Cleaning
 - **Cyclic habits** — habits that only appear on schedule (monthly deep cleans, annual tasks, etc.)
+- **Planning tab** — a weekly grid for pre-planning which days to tackle each habit, with a Google Calendar agenda alongside
 
 ---
 
@@ -33,19 +34,23 @@ index.html (entry point)
        │
        ▼
 Core/ modules (pure logic, no UI)
-   • config.js       — all keys, constants, Firestore paths
-   • state.js        — in-memory app state
-   • habits-data.js  — reads/writes Firestore, triggers re-render on change
+   • config.js        — all keys, constants, Firestore paths
+   • state.js         — in-memory app state
+   • habits-data.js   — reads/writes Firestore, triggers re-render on change
+   • planning.js      — weekly plan-ahead data (intent only, never touches history)
+   • calendar.js      — calendar events synced from Google Calendar → Firestore
    • section-order.js — today-view section order, synced live
        │
        ▼
 web/ui/ modules (DOM rendering)
-   • render.js     — rebuilds the screen after every data change
-   • manage-ui.js  — settings split-panel + weekly report popup + forecast
+   • render.js        — rebuilds the screen after every data change
+   • planning-ui.js   — Planning tab: habit grid + calendar agenda
+   • manage-ui.js     — settings split-panel + weekly report popup + forecast
+   • google-calendar.js — Google Calendar OAuth sync
        │
        ▼
 Firebase Firestore (cloud database)
-   • 8 documents in the "system" collection
+   • 10 documents in the "system" collection
    • real-time sync: any change on one device appears on all others instantly
        │
 Every Monday 9:00 AM UTC (4 AM Central):
@@ -114,13 +119,25 @@ npm install
 node reset.js
 ```
 
+Add `FORCE_RESET=1` to the environment if you need to re-run a reset that already ran today.
+
 ### View the weekly report
 
-The report popup appears automatically the first time Victoria opens the app after each Monday reset. She can navigate between past weeks using the arrow buttons. To see it again later (or any time), open the app → tap **History** → enter passcode **1234** → click **View Report** in the left panel.
+The report popup appears automatically the first time Victoria opens the app after each Monday reset. She can navigate between past weeks using the arrow buttons. To see it again later (or any time), open the app → tap **Manage** → enter passcode **1234** → click **View Report** in the left panel.
 
 ### Add or edit a habit
 
-Open the app → tap the **History** tab → enter the passcode **1234** → select a habit from the left panel, or click **+ Add Habit**. From there you can edit thresholds, payouts, streak bonuses, cycle type, period sensitivity, and more.
+Open the app → tap the **Manage** tab → enter the passcode **1234** → select a habit from the left panel, or click **+ Add Habit**. From there you can edit thresholds, payouts, streak bonuses, cycle type, period sensitivity, and more.
+
+### Use the Planning tab
+
+Tap the **Planning** tab to see the week's habit grid. Each row is a habit; each column is a day (Mon–Sun). Tap a bubble to mark that you're planning to do the habit on that day. Bubbles are colored by which performance tier the planned-day running count would reach on each day. Tap a habit name to open a detail sheet where you can set a time estimate and toggle individual days. Use **Copy Last Week** to carry over last week's plan.
+
+If Google Calendar is connected, the week's events appear below the grid as a scrollable agenda, and days with events show density bars under their column headers.
+
+### Connect Google Calendar
+
+Open the **Planning** tab → tap **Connect Google Calendar** (visible when `GOOGLE_CALENDAR_CONFIG.clientId` is set in `Core/config.js`). You'll be prompted to sign in with Google. The app fetches a 4-week window of events from your primary calendar and stores them in Firestore so they're visible cross-device. The connection token is browser-session only — you'll need to reconnect after closing the tab.
 
 ### Reorder today-view sections
 
@@ -169,9 +186,19 @@ Edit `Core/config.js` — all keys are centralized there. If changing the GitHub
 
 ### 4. Payout shown in the app doesn't match the email report
 
-The app's "This Week's Balance" display mirrors the reset math in `scripts/reset.js`. If they diverge, it usually means payout logic was updated in one place but not the other.
+The app's "This Week's Balance" display and the reset script both call `computeWeeklyPayout()` from `Core/habits.js`. If they diverge after a code change, it means the logic in `habits.js` was changed but `reset.js` still calls it correctly (or vice versa). The architecture is designed so they share a single function — divergence only happens if someone moved logic out of `habits.js` without updating the callers.
 
-**Fix:** Compare `Core/habits.js` (`getStreakBonus`, `getStreakPenalty`, `getTotalPayout`) against the corresponding logic in `scripts/reset.js`. They must stay in sync.
+**Fix:** Check `Core/habits.js` `computeWeeklyPayout()` and verify all three callers (`render.js`, `manage-ui.js`, `reset.js`) are using the same function with the same arguments.
+
+### 5. Google Calendar events not showing in the Planning tab
+
+**Common causes:**
+- `GOOGLE_CALENDAR_CONFIG.clientId` is empty in `Core/config.js` — integration is disabled
+- The OAuth client in Google Cloud Console doesn't have `https://theironpika.github.io` as an authorized JavaScript origin
+- The Google Calendar API is not enabled in the Google Cloud project
+- The user's browser session expired — reconnect by tapping "Connect Google Calendar" again
+
+**Fix:** Check the browser console for OAuth errors. Verify the client ID and authorized origins in Google Cloud Console.
 
 ---
 
@@ -195,4 +222,7 @@ The app's "This Week's Balance" display mirrors the reset math in `scripts/reset
 | **Report popup** | The interactive summary card that auto-shows after each reset; navigable across past weeks |
 | **Manage panel** | The admin/settings section of the app, behind passcode `1234` |
 | **Section order** | The drag-reorderable order of categories, Seasonal Events, and Room Checks on the Today tab |
+| **Planning tab** | A weekly intent grid where Victoria marks which days she plans to do each habit; purely visual, never affects payouts or streaks |
+| **Calendar events** | Events fetched from Google Calendar (or stored manually) and shown in the Planning agenda; synced to Firestore so they're visible across devices |
+| **GIS** | Google Identity Services — the OAuth library used for browser-based Google Calendar sign-in |
 | **PWA** | Progressive Web App — can be installed on a phone home screen and works offline |

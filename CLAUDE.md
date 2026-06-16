@@ -1,4 +1,4 @@
-_Last updated 2026-06-11 by overnight automation (toolkit v1.0.0). Review before relying on it._
+_Last updated 2026-06-15 by overnight automation (toolkit v1.0.0). Review before relying on it._
 
 # VictoriaTracker — Claude Code Guidelines
 
@@ -51,6 +51,7 @@ git push
 | Charts | Chart.js 4.4.1 (CDN) |
 | Drag-reorder | SortableJS 1.15.2 (CDN) |
 | Animations | canvas-confetti 1.9.3 (CDN) |
+| Calendar OAuth | Google Identity Services (GIS, loaded at runtime) |
 
 **No build step.** Modules are loaded directly by the browser via `<script type="module">`. Deployment is `git push` to `main`.
 
@@ -81,15 +82,17 @@ node reset.js
 
 ```
 VictoriaTracker/
-├── index.html            ← ENTRY POINT — loads all modules, inits EmailJS, starts Firestore listener,
+├── index.html            ← ENTRY POINT — loads all modules, inits EmailJS, starts Firestore listeners,
 │                           registers window.maybeShowWeeklyReportAfterReset for the post-reset popup
 ├── manifest.json         ← PWA metadata (installable on iOS/Android)
 ├── sw.js                 ← Service worker — offline caching, app-shell strategy
 ├── background.jpg        ← App background image
 │
 ├── Core/                 ← Pure logic modules (NO DOM access)
-│   ├── config.js         ← All keys/IDs/constants (Firebase, EmailJS, Weather, passcode, Firestore paths)
-│   ├── state.js          ← In-memory app state (habits array, stars, history, section order, etc.)
+│   ├── config.js         ← All keys/IDs/constants (Firebase, EmailJS, Weather, Google Calendar,
+│   │                       passcode, Firestore paths, season metadata, tier colors)
+│   ├── state.js          ← In-memory app state (habits, stars, history, plans, calendar events,
+│   │                       section order, etc.) — single source of truth for the UI render loop
 │   ├── utils.js          ← Pure helpers (date math, money formatting, HTML escaping)
 │   ├── firebase.js       ← readDoc / writeDoc / watchDoc wrappers around Firestore SDK v10.7.1
 │   ├── habits.js         ← Tier classification and payout calculation logic (including streak bonuses)
@@ -101,7 +104,9 @@ VictoriaTracker/
 │   ├── period.js         ← Period tracking + protection logic (skips penalties)
 │   ├── rooms.js          ← Household room check streaks
 │   ├── history.js        ← Weekly snapshot loading and saving
-│   └── section-order.js  ← Today-view section ordering (persisted to system/ui_config)
+│   ├── section-order.js  ← Today-view section ordering (persisted to system/ui_config)
+│   ├── planning.js       ← Weekly plan-ahead data layer (Firestore CRUD + onSnapshot for PLANS doc)
+│   └── calendar.js       ← Calendar events data layer (Firestore CRUD + onSnapshot for CALENDAR doc)
 │
 ├── web/ui/               ← DOM/browser modules (import Core, never the reverse)
 │   ├── render.js         ← Main render loop, tab navigation
@@ -114,7 +119,9 @@ VictoriaTracker/
 │   ├── history-ui.js     ← History charts & weekly breakdowns (4 chart types, collapsible week entries)
 │   ├── manage-ui.js      ← Settings split-panel (behind passcode 1234) + weekly report preview + forecast
 │   ├── animations.js     ← Time-of-day colors, weather, greeting, particles
-│   └── lucky-draw.js     ← Clover popup + lucky draw animation effects
+│   ├── lucky-draw.js     ← Clover popup + lucky draw animation effects
+│   ├── planning-ui.js    ← Planning tab: habit grid × 7-day bubbles, calendar agenda, copy-previous-week
+│   └── google-calendar.js ← Google Calendar read-only sync (GIS token flow → writes events to Firestore)
 │
 ├── scripts/
 │   ├── reset.js          ← Node.js weekly reset job (runs in GitHub Actions)
@@ -130,7 +137,7 @@ VictoriaTracker/
 └── icons/                ← PWA icons (192px, 512px)
 ```
 
-**Most important entry point:** `index.html` — it wires everything together: imports all Core and UI modules, initializes EmailJS, starts the Firestore `watchHabits()` listener, and kicks off animations/weather. Also loads `section-order.js` for the draggable Today-view layout.
+**Most important entry point:** `index.html` — it wires everything together: imports all Core and UI modules, initializes EmailJS, starts the Firestore `watchHabits()` listener, kicks off animations/weather, and subscribes to live updates for plans and calendar events. Also loads `section-order.js` for the draggable Today-view layout.
 
 ---
 
@@ -148,6 +155,8 @@ All data lives in **Firebase Firestore**, project `victoria-tracker-1d2ab`, coll
 | `rooms_data` | `{ rooms: Room[] }` |
 | `reset_state` | `{ lastWeeklyReset }` |
 | `ui_config` | `{ sectionOrder: string[] }` |
+| `weekly_plans` | `{ plans: { "YYYY-MM-DD": { [habitId]: [bool x7] } } }` (max 16 weeks retained) |
+| `calendar_events` | `{ events: CalendarEvent[] }` where each event is `{ id, title, startISO, endISO, allDay? }` |
 
 **Habit object (critical fields):**
 ```js
@@ -168,7 +177,7 @@ All data lives in **Firebase Firestore**, project `victoria-tracker-1d2ab`, coll
 }
 ```
 
-**In-memory state** lives in `Core/state.js`. It is populated from Firestore on every `onSnapshot` callback and is the single source of truth for the UI render loop. Also holds `sectionOrder[]` for the today-view layout.
+**In-memory state** lives in `Core/state.js`. It is populated from Firestore on every `onSnapshot` callback and is the single source of truth for the UI render loop. Also holds `sectionOrder[]`, `weeklyPlans{}`, and `calendarEvents[]`.
 
 **UI-only state** (collapsed sections, sort lock, priority mode, filter mode, etc.) lives in `web/ui/ui-state.js` and is backed by `localStorage`. It is lost on cache clear but has no effect on data integrity.
 
@@ -181,11 +190,13 @@ All data lives in **Firebase Firestore**, project `victoria-tracker-1d2ab`, coll
 | Service | What it does | How it's configured |
 |---|---|---|
 | **Firebase Firestore** | Primary database; real-time sync via `onSnapshot` | `FIREBASE_CONFIG` in `Core/config.js`; project `victoria-tracker-1d2ab`. Browser SDK uses public API key directly (no auth). |
-| **GitHub Pages** | Static hosting; serves the app at `https://theireonpika.github.io/VictoriaTracker/` | Enabled in repo Settings → Pages; publishes `main` branch |
+| **GitHub Pages** | Static hosting; serves the app at `https://theironpika.github.io/VictoriaTracker/` | Enabled in repo Settings → Pages; publishes `main` branch |
 | **GitHub Actions** | Runs `scripts/reset.js` every Monday 09:00 UTC | `.github/workflows/weekly-reset.yml`; secrets set in repo Settings → Secrets |
 | **EmailJS** | Sends weekly summary email to Drew | `EMAIL_CONFIG` in `Core/config.js`; secrets also in GitHub Actions. Browser SDK initialized in `index.html`. |
 | **OpenWeatherMap** | Current temperature and conditions shown in header | `WEATHER_CONFIG.openWeatherKey` in `Core/config.js` |
 | **OpenUV** | UV index shown in header | `WEATHER_CONFIG.openUVKey` in `Core/config.js` |
+| **Google Calendar API** | Fetches calendar events for the Planning tab agenda and conflict dots | `GOOGLE_CALENDAR_CONFIG.clientId` in `Core/config.js`; requires a "Web application" OAuth client in Google Cloud Console with `https://theironpika.github.io` as an authorized origin and the Calendar API enabled. Leave `clientId` empty to disable — the agenda still shows whatever events are in the CALENDAR Firestore doc. |
+| **Google Identity Services (GIS)** | Browser OAuth token flow for Google Calendar (no redirect, no secret) | Loaded from `accounts.google.com/gsi/client` at runtime by `web/ui/google-calendar.js` |
 | **Firebase SDK CDN** | Loaded from `gstatic.com` at runtime | Version 10.7.1 via ES module imports in `Core/firebase.js` |
 | **Chart.js, SortableJS, canvas-confetti, EmailJS browser SDK** | Loaded from `cdn.jsdelivr.net` | `<script>` tags in `index.html` |
 
@@ -205,7 +216,7 @@ All data lives in **Firebase Firestore**, project `victoria-tracker-1d2ab`, coll
 
 3. **Firestore paths use a two-element tuple `[collection, docId]`.** Always use `FIRESTORE_DOCS.*` constants from `config.js` — never hard-code path strings.
 
-4. **`Core/habits.js` `computeWeeklyPayout()` is the single source of truth for per-habit money math.** The live header (`web/ui/render.js`), the Streak $ panel (`web/ui/manage-ui.js` `_thisWeekBreakdown`), and the Monday reset (`scripts/reset.js`) all import and call it — there is no longer a "browser copy vs. Node copy" to keep in sync. If you change tier / cycle / late / period / bounty / streak math, change it there and the three callers automatically follow. `scripts/reset.js` also imports `getTier`, `isCyclic`, `isCycleDue`, and `cycleIntervalMs` from `Core/` for the same reason. (Streak counter updates, idempotency, history-snapshot shape, and the email report still live in `reset.js` because they're reset-only concerns.)
+4. **`Core/habits.js` `computeWeeklyPayout()` is the single source of truth for per-habit money math.** The live header (`web/ui/render.js`), the Streak $ panel (`web/ui/manage-ui.js` `_thisWeekBreakdown`), and the Monday reset (`scripts/reset.js`) all import and call it — there is no "browser copy vs. Node copy" to keep in sync. If you change tier / cycle / late / period / bounty / streak math, change it there and the three callers automatically follow. `scripts/reset.js` also imports `getTier`, `isCyclic`, `isCycleDue`, and `cycleIntervalMs` from `Core/` for the same reason. (Streak counter updates, idempotency, history-snapshot shape, and the email report still live in `reset.js` because they're reset-only concerns.)
 
 5. **`scripts/reset.js` is idempotent.** It reads `system/reset_state.lastWeeklyReset` at the top and bails (no payouts, no history snapshot, no star awards, no cycle advance) if it's already today, unless `FORCE_RESET=1` is set. Use that env var if you need to re-run after fixing data by hand.
 
@@ -217,16 +228,22 @@ All data lives in **Firebase Firestore**, project `victoria-tracker-1d2ab`, coll
 
 9. **Section order is persisted to `system/ui_config`.** The Today tab's section order (categories + Seasonal + Rooms cards) is reorderable from Manage → Layout. Order is synced live across tabs/devices via `watchSectionOrder()`. New categories not in the stored order are appended at the end automatically.
 
-9. **`Core/` modules must never import from `web/ui/`.** The dependency arrow is one-way: UI imports Core, never the reverse. This keeps Core testable outside a browser.
+10. **`Core/` modules must never import from `web/ui/`.** The dependency arrow is one-way: UI imports Core, never the reverse. This keeps Core testable outside a browser.
 
-10. **Manage panel passcode is `1234`** (see `MANAGE_PASSCODE` in `config.js`). It's intentionally public since this is a single-user personal app.
+11. **Manage panel passcode is `1234`** (see `MANAGE_PASSCODE` in `config.js`). It's intentionally public since this is a single-user personal app.
 
-11. **Service worker caches the app shell only.** Firestore, CDN libraries, and API calls always go network-first. The app shows stale UI when offline but won't lose data.
+12. **Service worker caches the app shell only.** Firestore, CDN libraries, and API calls always go network-first. The app shows stale UI when offline but won't lose data.
 
-12. **History chart rendering is deferred.** Chart.js canvases are only built when the History tab is visible, to avoid expensive re-renders on every Firestore update.
+13. **History chart rendering is deferred.** Chart.js canvases are only built when the History tab is visible, to avoid expensive re-renders on every Firestore update.
 
-13. **`HISTORY_MAX_WEEKS = 52` and `STAR_LOG_MAX = 200`** are enforced on write. Oldest entries are pruned automatically.
+14. **`HISTORY_MAX_WEEKS = 52` and `STAR_LOG_MAX = 200`** are enforced on write. Oldest entries are pruned automatically.
 
-14. **The interactive weekly report popup auto-shows once per device after each reset.** It is gated by a `localStorage` key derived from the reset date, so it fires exactly once per device per week. Victoria (or Drew) can dismiss it or click "Don't show on this device" to permanently mute it per device. The same report is accessible any time via the **View Report** button inside the Manage panel.
+15. **The interactive weekly report popup auto-shows once per device after each reset.** It is gated by a `localStorage` key derived from the reset date, so it fires exactly once per device per week. Victoria (or Drew) can dismiss it or click "Don't show on this device" to permanently mute it per device. The same report is accessible any time via the **View Report** button inside the Manage panel.
 
-15. **Streak bonus/penalty are flat per-week (not escalating).** `streakBonusPer` is added once per good week; `streakPenaltyPer` is deducted once per bad week. `streakCap` caps the per-week amount. The streak counter itself still grows/resets each week.
+16. **Streak bonus/penalty are flat per-week (not escalating).** `streakBonusPer` is added once per good week; `streakPenaltyPer` is deducted once per bad week. `streakCap` caps the per-week amount. The streak counter itself still grows/resets each week.
+
+17. **The Planning tab stores intent, not history.** `Core/planning.js` and `web/ui/planning-ui.js` let Victoria pre-fill which days she plans to do each habit. This data lives in `system/weekly_plans` and **never touches `habit.history`**. It is purely visual — the Planning tab has no effect on payouts or streaks. Only the last 16 weeks of plans are retained in Firestore to prevent unbounded growth.
+
+18. **Calendar events are cached in Firestore.** `web/ui/google-calendar.js` fetches events from Google Calendar (4-week window) using the GIS token flow and writes them to `system/calendar_events`. Because that doc is live-watched, events appear on the Planning agenda cross-device without a refresh. If `GOOGLE_CALENDAR_CONFIG.clientId` is empty string, the sync button is hidden but the agenda still renders whatever events are already in the doc.
+
+19. **Planning bubble colors reflect the tier that planned-day-count-so-far would reach.** Each planning bubble is colored by the performance tier the running planned count would land on for that day of the week, giving a visual preview of the week's expected outcome.
