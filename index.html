@@ -522,6 +522,19 @@
             letter-spacing: 0;
         }
         .bubble.day-bub:not(.filled) { color: transparent; }
+
+        /* Expand the tappable area beyond the visible 24px circle so a finger
+           tap doesn't accidentally land on the neighboring bubble. With gap=8px
+           between bubble centers (32px apart), a 30px hit area leaves only ~2px
+           between neighbors instead of 8px — much harder to mis-tap, and we
+           extend vertically further since there's no vertical neighbor.
+           overflow:visible on .bubbles keeps the pseudo-elements clickable. */
+        .bubbles { overflow: visible; }
+        .bubble.day-bub::after {
+            content: '';
+            position: absolute;
+            inset: -10px -3px;
+        }
         .day-cnt {
             position: absolute;
             top: -4px;
