@@ -165,9 +165,18 @@ function _paintHistory(root) {
                 ).join('');
                 const pC = h.payout < 0 ? '#d9534f' : '#27ae60';
                 const pS = (h.payout < 0 ? '-$' : '+$') + Math.abs(h.payout).toFixed(2);
-                body += '<div class="hist-habit-row">'
+                // Pills surface why the row paid what it did. Snapshots from
+                // before this feature shipped don't have these flags — those
+                // rows simply render untagged (no visual regression).
+                const hExcused        = !!h.excused;
+                const hPeriodProtected = !!h.periodProtected;
+                const flagClasses     = (hExcused ? ' is-excused' : '') + (hPeriodProtected ? ' is-period-protected' : '');
+                const flagPills       =
+                    (hExcused         ? '<span class="flag-pill excused">✦ Excused</span>'   : '') +
+                    (hPeriodProtected ? '<span class="flag-pill period">🩸 Protected</span>' : '');
+                body += '<div class="hist-habit-row' + flagClasses + '">'
                       + '<span class="hist-habit-icon">' + h.icon + '</span>'
-                      + '<span class="hist-habit-name">' + escapeHtml(h.name) + '</span>'
+                      + '<span class="hist-habit-name">' + escapeHtml(h.name) + flagPills + '</span>'
                       + '<div class="hist-dots-row">' + dots + '</div>'
                       + '<span class="hist-tier-badge" style="color:' + TC[h.tier] + ';">' + TL[h.tier] + '</span>'
                       + '<span class="hist-payout" style="color:' + pC + ';">' + pS + '</span></div>';

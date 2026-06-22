@@ -232,9 +232,19 @@ export function render() {
                     : `<div class="weekly-dot-container"><div class="weekly-dot" style="background:#eee"></div></div>`;
             }).join('');
 
+            // Surface excused / period-protected status in the Weekly row so
+            // it doesn't read as "she failed" when she was actually excused or
+            // protected. Pills mirror the badges on the Today card.
+            const wkExcused        = !!h.excused;
+            const wkPeriodProtected = isPeriodActive() && !!h.periodSensitive;
+            const wkFlagClasses    = (wkExcused ? ' is-excused' : '') + (wkPeriodProtected ? ' is-period-protected' : '');
+            const wkFlagPills      =
+                (wkExcused        ? '<span class="flag-pill excused">✦ Excused</span>'   : '') +
+                (wkPeriodProtected ? '<span class="flag-pill period">🩸 Protected</span>' : '');
+
             weekSectionHtml += `
-                <div class="weekly-row">
-                    <span class="weekly-task-name">${escapeHtml(h.name)}</span>
+                <div class="weekly-row${wkFlagClasses}">
+                    <span class="weekly-task-name">${escapeHtml(h.name)}${wkFlagPills}</span>
                     <div class="weekly-dots-row">${weeklyDotsHtml}</div>
                 </div>`;
 

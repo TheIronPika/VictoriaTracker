@@ -341,7 +341,13 @@ async function runReset() {
             const r = computeWeeklyPayout(h, { periodActive, now: nowTs });
             return { id:h.id, name:h.name, icon:h.icon, cat:h.cat,
                      tier: r.tier, payout: r.base, history: hist,
-                     thresh:{ punish:h.punish||1, low:h.low||3, goal:h.goal||5, bonus:h.bonus||7 } };
+                     thresh:{ punish:h.punish||1, low:h.low||3, goal:h.goal||5, bonus:h.bonus||7 },
+                     // Record why this row paid what it did so the History tab
+                     // can distinguish "she failed" from "she was excused" or
+                     // "period-protected". (Past snapshots without these flags
+                     // simply render as untagged.)
+                     excused: !!h.excused,
+                     periodProtected: r.periodProtected };
         })
     };
     let weeks = [entry, ...(histDoc.weeks||[])].slice(0, 52);

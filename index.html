@@ -523,6 +523,28 @@
         }
         .bubble.day-bub:not(.filled) { color: transparent; }
 
+        /* Status pills (used in Weekly + History rows to mark excused / period-
+           protected weeks so they don't read as "she failed"). */
+        .flag-pill {
+            display: inline-block;
+            font-size: 9px;
+            font-weight: 700;
+            padding: 1px 7px;
+            border-radius: 9px;
+            margin-left: 6px;
+            vertical-align: middle;
+            letter-spacing: 0.3px;
+            white-space: nowrap;
+        }
+        .flag-pill.excused { background: rgba(180,170,200,0.22); color: #7a7390; }
+        .flag-pill.period  { background: rgba(212,163,163,0.22); color: #c47a7a; }
+        /* Dim the row (dots + tier badge + payout) so it reads as "not graded"
+           rather than competing visually with real success/failure. */
+        .weekly-row.is-excused,
+        .hist-habit-row.is-excused      { opacity: 0.55; }
+        .weekly-row.is-period-protected .weekly-dot,
+        .hist-habit-row.is-period-protected .hist-dot { box-shadow: inset 0 0 0 1px rgba(212,163,163,0.5); }
+
         /* Expand the tappable area beyond the visible 24px circle so a finger
            tap doesn't accidentally land on the neighboring bubble. With gap=8px
            between bubble centers (32px apart), a 30px hit area leaves only ~2px
