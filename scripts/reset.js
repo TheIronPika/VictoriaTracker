@@ -299,6 +299,10 @@ async function runReset() {
     // a punish/low week during a wait does NOT zero the streak and badStreak
     // stays at 0 — there are no weekly negatives for cyclic habits.
     console.log('🔥 Updating streaks...');
+    // A streak-reset token used this week (h.badStreakResetTs within the past
+    // 7 days) keeps badStreak at 0 even if she didn't hit goal — and the flag
+    // is then cleared so next week ticks normally.
+    const tokenResetCutoff = nowTs - 7 * 86400000;
     habits = habits.map(h => {
         if (isDormant(h))   return { ...h };
         if (h.excused)      return { ...h };
@@ -307,8 +311,14 @@ async function runReset() {
         const cur     = hist[6] !== undefined ? hist[6] : (hist[hist.length-1]||0);
         const tier    = getTier(h, cur);
         const isGood    = tier === 'goal' || tier === 'bonus';
+        const tokenResetThisWeek = !!h.badStreakResetTs && h.badStreakResetTs >= tokenResetCutoff;
         let streak, badStreak;
         if (isCyclic(h)) {
+            streak    = isGood ? (h.streak || 0) + 1 : (h.streak || 0);
+            badStreak = 0;
+        } else if (tokenResetThisWeek) {
+            // Token was used this week — preserve good streak progression but
+            // hold badStreak at 0 regardless of tier.
             streak    = isGood ? (h.streak || 0) + 1 : (h.streak || 0);
             badStreak = 0;
         } else {
@@ -316,7 +326,10 @@ async function runReset() {
             badStreak = !isGood ? (h.badStreak || 0) + 1 : 0;
         }
         const best = Math.max(streak, h.bestStreak||0);
-        return { ...h, streak, badStreak, bestStreak: best };
+        const updated = { ...h, streak, badStreak, bestStreak: best };
+        // Consume the flag once it's been honored.
+        if (updated.badStreakResetTs) delete updated.badStreakResetTs;
+        return updated;
     });
 
     // ── Save history snapshot ────────────────────────────────────────────────

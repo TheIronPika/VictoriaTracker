@@ -22,7 +22,8 @@ export const state = {
     starsSpent:    0,
     shopItems:     [],
     starLog:       [],
-    excuseTokens:  0,
+    excuseTokens:      0,
+    streakResetTokens: 0,
     shopLoaded:    false,
 
     // Bookkeeping
@@ -68,7 +69,8 @@ export function setStarBalance(n)      { state.starBalance = n; }
 export function setStarsSpent(n)       { state.starsSpent = n; }
 export function setShopItems(list)     { state.shopItems = list; }
 export function setStarLog(list)       { state.starLog = list; }
-export function setExcuseTokens(n)     { state.excuseTokens = n; }
+export function setExcuseTokens(n)        { state.excuseTokens = n; }
+export function setStreakResetTokens(n)   { state.streakResetTokens = n; }
 export function setSectionOrder(list)  { state.sectionOrder = Array.isArray(list) ? list : []; }
 export function setWeeklyPlans(map)    { state.weeklyPlans = (map && typeof map === 'object') ? map : {}; }
 export function setCalendarEvents(list){ state.calendarEvents = Array.isArray(list) ? list : []; }

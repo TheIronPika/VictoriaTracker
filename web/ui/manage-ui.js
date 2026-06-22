@@ -586,7 +586,7 @@ window.maybeShowWeeklyReportAfterReset = () => {
 function _streakModel(habitsArr, hist) {
     let topStreak = null, topSlump = null, topBonus = null, topPenalty = null, totalBonus = 0, totalPenalty = 0;
     habitsArr.filter(h => !h.excused).forEach(h => {
-        const { streak, badStreak } = computeStreaksFromHistory(hist, h.id);
+        const { streak, badStreak } = computeStreaksFromHistory(hist, h.id, { badStreakResetTs: h.badStreakResetTs });
         const cap     = h.streakCap ? parseFloat(h.streakCap) : Infinity;
         const bonus   = (streak    >= 1 && (h.streakBonusPer   || 0) > 0) ? Math.min(h.streakBonusPer,   cap) : 0;
         const penalty = (badStreak >= 1 && (h.streakPenaltyPer || 0) > 0) ? Math.min(h.streakPenaltyPer, cap) : 0;

@@ -14,7 +14,10 @@ import {
     deleteShopItem  as coreDeleteShopItem,
     addExcuseToken,
     grantExcuseTokens,
-    useExcuseToken
+    useExcuseToken,
+    addStreakResetToken,
+    grantStreakResetTokens,
+    useStreakResetToken
 } from '../../Core/stars.js';
 
 // ── Display helpers ───────────────────────────────────────────────────
@@ -72,18 +75,23 @@ export function renderShopSheet() {
 export function renderShopManage() {
     const root = document.getElementById('shopManageRoot');
     if (!root) return;
-    const countEl = document.getElementById('excuseTokenCount');
-    if (countEl) countEl.innerText = state.excuseTokens || 0;
+    const countEl  = document.getElementById('excuseTokenCount');
+    if (countEl)  countEl.innerText  = state.excuseTokens      || 0;
+    const srCount = document.getElementById('streakResetTokenCount');
+    if (srCount) srCount.innerText   = state.streakResetTokens || 0;
     if (!state.shopItems.length) {
         root.innerHTML = '<div style="font-size:12px;color:#aaa;padding:4px 0;">No items yet.</div>';
         return;
     }
     root.innerHTML = state.shopItems.map(it =>
-        '<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.1)">'
+        '<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.1);flex-wrap:wrap;">'
         + '<span style="font-size:18px;">' + it.icon + '</span>'
-        + '<span style="flex:1;font-size:12px;font-weight:600;color:#e8e3f5;">' + escapeHtml(it.name) + '</span>'
+        + '<span style="flex:1;min-width:120px;font-size:12px;font-weight:600;color:#e8e3f5;">' + escapeHtml(it.name) + '</span>'
         + '<label style="display:flex;align-items:center;gap:4px;font-size:10px;color:#c8942a;cursor:pointer;white-space:nowrap;" title="Grants an excuse token when redeemed">'
-        + '<input type="checkbox" ' + (it.isExcuseToken ? 'checked' : '') + ' style="accent-color:#c8942a;" onchange="window.toggleShopItemExcuseToken(\'' + it.id + '\',this.checked)"> excuse token'
+        + '<input type="checkbox" ' + (it.isExcuseToken ? 'checked' : '') + ' style="accent-color:#c8942a;" onchange="window.toggleShopItemExcuseToken(\'' + it.id + '\',this.checked)"> excuse'
+        + '</label>'
+        + '<label style="display:flex;align-items:center;gap:4px;font-size:10px;color:#7ab5c9;cursor:pointer;white-space:nowrap;" title="Grants a streak reset token when redeemed">'
+        + '<input type="checkbox" ' + (it.isStreakResetToken ? 'checked' : '') + ' style="accent-color:#7ab5c9;" onchange="window.toggleShopItemStreakResetToken(\'' + it.id + '\',this.checked)"> 🌧️ reset'
         + '</label>'
         + '<span style="font-size:11px;color:#c8942a;font-weight:700;">✨ ' + it.cost + '</span>'
         + '<button class="btn-delete" style="padding:3px 8px;font-size:9px;" onclick="window.deleteShopItem(\'' + it.id + '\')">DEL</button>'
@@ -126,7 +134,8 @@ window.doRedeem = async () => {
     if (!uiState.pendingRedeem) return;
     const item = uiState.pendingRedeem;
     await spendStars(item.cost, 'Redeemed: ' + item.name);
-    if (item.isExcuseToken) await addExcuseToken();
+    if (item.isExcuseToken)      await addExcuseToken();
+    if (item.isStreakResetToken) await addStreakResetToken();
     uiState.pendingRedeem = null;
     updateStarDisplay();
     document.getElementById('shopConfirmView').style.display = 'none';
@@ -146,16 +155,19 @@ window.awardStars = async () => {
 };
 
 window.addShopItem = async () => {
-    const icon          = document.getElementById('shopItemIcon')?.value.trim() || '✨';
-    const name          = document.getElementById('shopItemName')?.value.trim();
-    const cost          = parseInt(document.getElementById('shopItemCost')?.value) || 0;
-    const isExcuseToken = document.getElementById('shopItemIsExcuse')?.checked || false;
+    const icon               = document.getElementById('shopItemIcon')?.value.trim() || '✨';
+    const name               = document.getElementById('shopItemName')?.value.trim();
+    const cost               = parseInt(document.getElementById('shopItemCost')?.value) || 0;
+    const isExcuseToken      = document.getElementById('shopItemIsExcuse')?.checked || false;
+    const isStreakResetToken = document.getElementById('shopItemIsStreakReset')?.checked || false;
     if (!name || cost <= 0) { alert('Please enter a name and star cost.'); return; }
-    await coreAddShopItem({ icon, name, cost, isExcuseToken });
+    await coreAddShopItem({ icon, name, cost, isExcuseToken, isStreakResetToken });
     document.getElementById('shopItemIcon').value     = '';
     document.getElementById('shopItemName').value     = '';
     document.getElementById('shopItemCost').value     = '';
     document.getElementById('shopItemIsExcuse').checked = false;
+    const srCheck = document.getElementById('shopItemIsStreakReset');
+    if (srCheck) srCheck.checked = false;
     renderShopManage();
 };
 
@@ -169,6 +181,15 @@ window.toggleShopItemExcuseToken = async (id, checked) => {
     if (!item) return;
     if (checked) item.isExcuseToken = true;
     else delete item.isExcuseToken;
+    await syncStarData();
+    renderShopManage();
+};
+
+window.toggleShopItemStreakResetToken = async (id, checked) => {
+    const item = state.shopItems.find(it => it.id === id);
+    if (!item) return;
+    if (checked) item.isStreakResetToken = true;
+    else delete item.isStreakResetToken;
     await syncStarData();
     renderShopManage();
 };
@@ -192,4 +213,24 @@ window.revokeExcuseToken = async () => {
 function renderExcuseTokenCount() {
     const el = document.getElementById('excuseTokenCount');
     if (el) el.innerText = state.excuseTokens;
+}
+
+window.grantStreakResetToken = async () => {
+    const amt = parseInt(document.getElementById('grantStreakResetAmt')?.value) || 1;
+    if (amt <= 0) return;
+    await grantStreakResetTokens(amt);
+    document.getElementById('grantStreakResetAmt').value = '';
+    renderStreakResetTokenCount();
+    alert('🌧️ ' + amt + ' streak reset token' + (amt !== 1 ? 's' : '') + ' granted!');
+};
+
+window.revokeStreakResetToken = async () => {
+    if (state.streakResetTokens <= 0) { alert('No tokens to revoke.'); return; }
+    await useStreakResetToken();
+    renderStreakResetTokenCount();
+};
+
+function renderStreakResetTokenCount() {
+    const el = document.getElementById('streakResetTokenCount');
+    if (el) el.innerText = state.streakResetTokens;
 }

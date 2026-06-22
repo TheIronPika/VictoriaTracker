@@ -4,7 +4,7 @@
 // All Firebase persistence for stars lives here.
 // ─────────────────────────────────────────────────────────────────────
 
-import { state, setStarBalance, setStarsSpent, setShopItems, setStarLog, setExcuseTokens } from './state.js';
+import { state, setStarBalance, setStarsSpent, setShopItems, setStarLog, setExcuseTokens, setStreakResetTokens } from './state.js';
 import { readDoc, writeDoc, watchDoc } from './firebase.js';
 import { FIRESTORE_DOCS, STAR_LOG_MAX } from './config.js';
 
@@ -15,11 +15,12 @@ export async function loadStarData() {
     try {
         const data = await readDoc(FIRESTORE_DOCS.STARS);
         if (data) {
-            setStarBalance  (data.balance       || 0);
-            setStarsSpent   (data.spent         || 0);
-            setShopItems    (data.items         || []);
-            setStarLog      (data.log           || []);
-            setExcuseTokens (data.excuseTokens  || 0);
+            setStarBalance      (data.balance           || 0);
+            setStarsSpent       (data.spent             || 0);
+            setShopItems        (data.items             || []);
+            setStarLog          (data.log               || []);
+            setExcuseTokens     (data.excuseTokens      || 0);
+            setStreakResetTokens(data.streakResetTokens || 0);
         }
         state.shopLoaded = true;
     } catch (e) { console.error('loadStarData:', e); }
@@ -32,11 +33,12 @@ export async function loadStarData() {
 export function watchStarData() {
     return watchDoc(FIRESTORE_DOCS.STARS, (data) => {
         if (data) {
-            setStarBalance  (data.balance      || 0);
-            setStarsSpent   (data.spent        || 0);
-            setShopItems    (data.items        || []);
-            setStarLog      (data.log          || []);
-            setExcuseTokens (data.excuseTokens || 0);
+            setStarBalance      (data.balance           || 0);
+            setStarsSpent       (data.spent             || 0);
+            setShopItems        (data.items             || []);
+            setStarLog          (data.log               || []);
+            setExcuseTokens     (data.excuseTokens      || 0);
+            setStreakResetTokens(data.streakResetTokens || 0);
         }
         state.shopLoaded = true;
         window.render?.();
@@ -52,11 +54,12 @@ export async function syncStarData() {
         setStarLog(state.starLog.slice(0, STAR_LOG_MAX));
     }
     await writeDoc(FIRESTORE_DOCS.STARS, {
-        balance:       state.starBalance,
-        spent:         state.starsSpent,
-        items:         state.shopItems,
-        log:           state.starLog,
-        excuseTokens:  state.excuseTokens
+        balance:           state.starBalance,
+        spent:             state.starsSpent,
+        items:             state.shopItems,
+        log:               state.starLog,
+        excuseTokens:      state.excuseTokens,
+        streakResetTokens: state.streakResetTokens
     });
 }
 
@@ -92,12 +95,13 @@ export async function spendStars(amount, reason) {
 /**
  * Add a new shop item.
  */
-export async function addShopItem({ icon = '✨', name, cost, isExcuseToken = false }) {
+export async function addShopItem({ icon = '✨', name, cost, isExcuseToken = false, isStreakResetToken = false }) {
     if (!name || !cost || cost <= 0) throw new Error('Shop item requires name and positive cost');
     state.shopItems.push({
         id: Date.now().toString(),
         icon, name, cost,
-        ...(isExcuseToken && { isExcuseToken: true })
+        ...(isExcuseToken      && { isExcuseToken: true }),
+        ...(isStreakResetToken && { isStreakResetToken: true })
     });
     await syncStarData();
 }
@@ -130,6 +134,42 @@ export async function useExcuseToken() {
     if (state.excuseTokens <= 0) return false;
     setExcuseTokens(state.excuseTokens - 1);
     addStarLog('excuseToken', -1, 'Excuse token used');
+    await syncStarData();
+    return true;
+}
+
+// ── Streak Reset Tokens ───────────────────────────────────────────────
+// Parallel to excuse tokens, but used to zero a habit's bad streak (🌧️)
+// without requiring her to hit goal that week. Each token clears one
+// habit's accumulated bad streak.
+
+/**
+ * Grant one streak reset token (shop redemption hook).
+ */
+export async function addStreakResetToken() {
+    setStreakResetTokens(state.streakResetTokens + 1);
+    addStarLog('streakResetToken', 1, 'Streak reset token added');
+    await syncStarData();
+}
+
+/**
+ * Grant N streak reset tokens in a single sync.
+ */
+export async function grantStreakResetTokens(count) {
+    const n = parseInt(count, 10);
+    if (!Number.isFinite(n) || n <= 0) return;
+    setStreakResetTokens(state.streakResetTokens + n);
+    addStarLog('streakResetToken', n, n === 1 ? 'Streak reset token added' : `${n} streak reset tokens added`);
+    await syncStarData();
+}
+
+/**
+ * Consume one streak reset token. Returns false if balance is 0.
+ */
+export async function useStreakResetToken() {
+    if (state.streakResetTokens <= 0) return false;
+    setStreakResetTokens(state.streakResetTokens - 1);
+    addStarLog('streakResetToken', -1, 'Streak reset token used');
     await syncStarData();
     return true;
 }

@@ -153,7 +153,7 @@ export function render() {
             const isArriving    = h.id === uiState.lastActedId;
 
             // Cache streak computation (called twice per habit otherwise)
-            const streaks = computeStreaksFromHistory(state.weeklyHistory, h.id);
+            const streaks = computeStreaksFromHistory(state.weeklyHistory, h.id, { badStreakResetTs: h.badStreakResetTs });
             const glowClass = streaks.streak >= 14 ? 'glow-intense'
                             : streaks.streak >=  4 ? 'glow-bright'
                             : streaks.streak >=  2 ? 'glow-medium'
@@ -203,7 +203,7 @@ export function render() {
                         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                             <p style="margin:0; font-weight:600;">${escapeHtml(h.name)}</p>
                             ${streaks.streak >= 1 ? `<span class="streak-badge">🔥 ${streaks.streak}</span>` : ''}
-                            ${streaks.badStreak >= 1 ? `<span class="bad-streak-badge">🌧️ ${streaks.badStreak}</span>` : ''}
+                            ${streaks.badStreak >= 1 ? `<span class="bad-streak-badge" onclick="event.stopPropagation();window.resetBadStreak('${h.id}')" style="cursor:pointer" title="Click to use a streak reset token">🌧️ ${streaks.badStreak}</span>` : ''}
                             ${cycleLabel(h) ? `<span class="cycle-badge">🔄 ${cycleLabel(h)}</span>` : ''}
                             ${wkLate > 0 ? `<span class="cycle-badge" style="background:rgba(217,83,79,0.15);color:#d9534f;border-color:rgba(217,83,79,0.3);" title="Late completion will reduce payout">⏰ ${wkLate}w late</span>` : ''}
                             ${h.bountyActive ? `<span class="bounty-badge">🏆 Bounty</span>` : ''}

@@ -10,7 +10,7 @@ import { state } from '../../Core/state.js';
 import { getDayIdx, escapeHtml } from '../../Core/utils.js';
 import { getTier } from '../../Core/habits.js';
 import { syncHabits, toggleExcused as coreToggleExcused, deleteHabit as coreDeleteHabit } from '../../Core/habits-data.js';
-import { syncStarData, addStarLog, useExcuseToken } from '../../Core/stars.js';
+import { syncStarData, addStarLog, useExcuseToken, useStreakResetToken } from '../../Core/stars.js';
 import { playBubblePop, triggerFanfare, checkPerfectWeek, checkStreakMilestones } from './animations.js';
 import { showCloverPopup, showLuckyDrawToast } from './lucky-draw.js';
 
@@ -203,6 +203,58 @@ window.toggleExcused = async (id) => {
                 await coreToggleExcused(id);
                 window.render?.();
             }
+        });
+    }
+};
+
+// ── Streak reset token ────────────────────────────────────────────────
+// Spend one streak reset token to zero a habit's bad streak (🌧️) without
+// requiring a goal week. Sets h.badStreak = 0 immediately, stamps
+// h.badStreakResetTs so future history scans + the upcoming Monday reset
+// honor the wipe.
+
+window.resetBadStreak = async (id) => {
+    const h = uiState.habits.find(x => x.id === id);
+    if (!h) return;
+    const tokens = state.streakResetTokens || 0;
+
+    const overlay = document.createElement('div');
+    overlay.id        = 'streakResetConfirmOverlay';
+    overlay.className = 'period-modal-overlay';
+    overlay.innerHTML = tokens > 0
+        ? `<div class="period-modal-sheet">
+               <div class="period-modal-title">🌧️ Reset bad streak?</div>
+               <div class="period-modal-sub">
+                   This clears <strong>${escapeHtml(h.name)}</strong>'s 🌧️ counter without requiring a goal week.<br><br>
+                   You have <strong>${tokens} streak reset token${tokens !== 1 ? 's' : ''}</strong>. You'll have ${tokens - 1} after this.
+               </div>
+               <div class="period-modal-btns">
+                   <button class="period-modal-btn cancel" onclick="document.getElementById('streakResetConfirmOverlay').remove()">Cancel</button>
+                   <button class="period-modal-btn confirm" id="streakResetConfirmBtn">Use token</button>
+               </div>
+           </div>`
+        : `<div class="period-modal-sheet">
+               <div class="period-modal-title">No streak reset tokens</div>
+               <div class="period-modal-sub">
+                   You don't have any streak reset tokens. Buy one from the star shop!<br><br>
+                   Current balance: <strong>✨ ${state.starBalance} stars</strong>
+               </div>
+               <div class="period-modal-btns">
+                   <button class="period-modal-btn cancel" onclick="document.getElementById('streakResetConfirmOverlay').remove()">OK</button>
+               </div>
+           </div>`;
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+
+    if (tokens > 0) {
+        document.getElementById('streakResetConfirmBtn').addEventListener('click', async () => {
+            overlay.remove();
+            const ok = await useStreakResetToken();
+            if (!ok) return;
+            h.badStreak       = 0;
+            h.badStreakResetTs = Date.now();
+            await syncHabits();
+            window.render?.();
         });
     }
 };

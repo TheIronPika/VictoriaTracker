@@ -36,10 +36,14 @@ export function sortedOldestFirst(weeklyHistory) {
  *
  * If the habit doesn't appear in a week, streak counting stops there.
  */
-export function computeStreaksFromHistory(weeklyHistory, habitId) {
+export function computeStreaksFromHistory(weeklyHistory, habitId, opts = {}) {
     if (!weeklyHistory.length) return { streak: 0, badStreak: 0 };
 
     const sorted = sortedNewestFirst(weeklyHistory);
+    // opts.badStreakResetTs: if set, weeks ending before this timestamp don't
+    // count toward the bad-streak total. Lets the "🌧️ Reset" shop token clear
+    // an accumulated streak without rewriting history.
+    const badResetTs = opts.badStreakResetTs || 0;
     let streak = 0, badStreak = 0;
 
     // Count consecutive good weeks from most recent.
@@ -52,6 +56,7 @@ export function computeStreaksFromHistory(weeklyHistory, habitId) {
 
     // Count consecutive bad weeks from most recent.
     for (const wk of sorted) {
+        if (badResetTs && wk.timestamp < badResetTs) break;
         const h = (wk.habits || []).find(x => x.id === habitId);
         if (!h) break;
         const bad = h.tier === 'punish' || h.tier === 'low';
