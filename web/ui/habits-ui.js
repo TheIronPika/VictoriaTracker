@@ -16,6 +16,30 @@ import { showCloverPopup, showLuckyDrawToast } from './lucky-draw.js';
 
 // ── CRUD ──────────────────────────────────────────────────────────────
 
+window.populateNewCatSelect = () => {
+    const sel = document.getElementById('newCatSelect');
+    if (!sel) return;
+    const cats = [...new Set((state.habits || []).map(h => h.cat))].filter(Boolean).sort();
+    sel.innerHTML = '<option value="">Select category…</option>'
+        + cats.map(c => `<option value="${c.replace(/"/g, '&quot;')}">${escapeHtml(c)}</option>`).join('')
+        + '<option value="__new__">✚ Add new…</option>';
+    const input = document.getElementById('newCat');
+    if (input) { input.value = ''; input.style.display = 'none'; }
+};
+
+window.handleNewCatSelect = (sel) => {
+    const input = document.getElementById('newCat');
+    if (!input) return;
+    if (sel.value === '__new__') {
+        input.value = '';
+        input.style.display = '';
+        input.focus();
+    } else {
+        input.value = sel.value;
+        input.style.display = 'none';
+    }
+};
+
 window.addTask = async () => {
     const name = document.getElementById('newName').value.trim();
     const cat  = document.getElementById('newCat').value.trim();
@@ -73,10 +97,11 @@ window.addTask = async () => {
     uiState.habits.push(newH);
     await syncHabits();
 
-    ['newName','newCat','newNote','newStarGoal','newStarBonus','newStarStreak',
+    ['newName','newNote','newStarGoal','newStarBonus','newStarStreak',
      'newStreakBonusPer','newStreakPenaltyPer','newStreakCap'].forEach(id => {
         const el = document.getElementById(id); if (el) el.value = '';
     });
+    window.populateNewCatSelect();
     document.getElementById('newIcon').value              = '';
     document.getElementById('newPeriodSensitive').checked = false;
     document.getElementById('newCycleType').value         = 'none';

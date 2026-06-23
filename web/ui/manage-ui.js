@@ -35,6 +35,7 @@ window.switchManageSection = (section) => {
         if (panel) panel.style.display = s === section ? '' : 'none';
     });
     if (section === 'habits' && currentManageHabitId) window.showManageDetail(currentManageHabitId);
+    if (section === 'add')           window.populateNewCatSelect?.();
     if (section === 'stars')         renderShopManage();
     if (section === 'events')        renderEventsManage();
     if (section === 'period')        renderPeriodHistory();
