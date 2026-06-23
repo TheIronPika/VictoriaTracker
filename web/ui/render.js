@@ -178,14 +178,19 @@ export function render() {
                 for (let d = 0; d < 7; d++) { if ((hist[d] || 0) >= i) return _DS[d]; }
                 return '';
             }
+            const markOffCount = h.markOffDays?.[dIdx] || 0;
+            const realCount    = Math.max(0, cur - markOffCount);
             let bubblesHtml = '';
             for (let i = 1; i <= (h.max || 7); i++) {
-                const stepTier  = getTier(h, i);
-                const isFilled  = i <= cur;
-                const dayLetter = isFilled ? dayForBubble(h.history, i) : '';
-                const isPaused  = !isFilled && (isPeriodActive() || state.periodData.periodWasThisWeek) && !!h.periodSensitive && dIdx >= pStartIdx;
-                bubblesHtml += `<div class="bubble day-bub ${isFilled ? 'filled ' + stepTier : ''} ${isPaused ? 'period-paused' : ''}"
-                    style="border-color:var(--color-${stepTier})"
+                const stepTier   = getTier(h, i);
+                const isFilled   = i <= cur;
+                const isSynthetic = isFilled && i > realCount;
+                const dayLetter  = isFilled ? dayForBubble(h.history, i) : '';
+                const isPaused   = !isFilled && (isPeriodActive() || state.periodData.periodWasThisWeek) && !!h.periodSensitive && dIdx >= pStartIdx;
+                const bubbleClass = `bubble day-bub ${isFilled ? ('filled ' + (isSynthetic ? 'mark-off' : stepTier)) : ''} ${isPaused ? 'period-paused' : ''}`;
+                const borderColor = isSynthetic ? '#aaa' : `var(--color-${stepTier})`;
+                bubblesHtml += `<div class="${bubbleClass}"
+                    style="border-color:${borderColor}"
                     onclick="window.toggleBubble('${h.id}',${i})">${dayLetter}</div>`;
             }
 

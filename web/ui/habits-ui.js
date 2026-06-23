@@ -10,7 +10,7 @@ import { state } from '../../Core/state.js';
 import { getDayIdx, escapeHtml } from '../../Core/utils.js';
 import { getTier } from '../../Core/habits.js';
 import { syncHabits, toggleExcused as coreToggleExcused, deleteHabit as coreDeleteHabit } from '../../Core/habits-data.js';
-import { syncStarData, addStarLog, useExcuseToken, useStreakResetToken, useMarkOffToken } from '../../Core/stars.js';
+import { syncStarData, addStarLog, useExcuseToken, useStreakResetToken, useMarkOffToken, grantMarkOffTokens } from '../../Core/stars.js';
 import { playBubblePop, triggerFanfare, checkPerfectWeek, checkStreakMilestones } from './animations.js';
 import { showCloverPopup, showLuckyDrawToast } from './lucky-draw.js';
 
@@ -345,6 +345,8 @@ window.useMarkOffBubble = async (id) => {
             const ok = await useMarkOffToken();
             if (!ok) return;
             const newVal = cur + 1;
+            h.markOffDays = h.markOffDays || {};
+            h.markOffDays[dIdx] = (h.markOffDays[dIdx] || 0) + 1;
             for (let i = dIdx; i < 7; i++) h.history[i] = newVal;
             await syncHabits();
             window.render?.();
@@ -386,6 +388,20 @@ window.toggleBubble = async (id, val) => {
 
     uiState.lastActedId = willMove ? id : null;
 
+    // Refund mark-off tokens for any synthetic completions that are removed
+    let tokenRefund = 0;
+    if (newVal < oldQty) {
+        const markOff = h.markOffDays?.[dIdx] || 0;
+        if (markOff > 0) {
+            const real       = oldQty - markOff;
+            const newMarkOff = Math.max(0, Math.min(markOff, newVal - real));
+            tokenRefund      = markOff - newMarkOff;
+            h.markOffDays    = h.markOffDays || {};
+            if (newMarkOff === 0) delete h.markOffDays[dIdx];
+            else h.markOffDays[dIdx] = newMarkOff;
+        }
+    }
+
     // Propagate value to all remaining days this week
     for (let i = dIdx; i < 7; i++) h.history[i] = newVal;
 
@@ -393,6 +409,10 @@ window.toggleBubble = async (id, val) => {
     window.render?.();
 
     await syncHabits();
+    if (tokenRefund > 0) {
+        await grantMarkOffTokens(tokenRefund);
+        window.render?.();
+    }
 
     if (newVal > oldQty && newTier !== 'punish' && newTier !== oldTier) {
         triggerFanfare(newTier);
