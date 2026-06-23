@@ -4,7 +4,7 @@
 // All Firebase persistence for stars lives here.
 // ─────────────────────────────────────────────────────────────────────
 
-import { state, setStarBalance, setStarsSpent, setShopItems, setStarLog, setExcuseTokens, setStreakResetTokens } from './state.js';
+import { state, setStarBalance, setStarsSpent, setShopItems, setStarLog, setExcuseTokens, setStreakResetTokens, setMarkOffTokens } from './state.js';
 import { readDoc, writeDoc, watchDoc } from './firebase.js';
 import { FIRESTORE_DOCS, STAR_LOG_MAX } from './config.js';
 
@@ -21,6 +21,7 @@ export async function loadStarData() {
             setStarLog          (data.log               || []);
             setExcuseTokens     (data.excuseTokens      || 0);
             setStreakResetTokens(data.streakResetTokens || 0);
+            setMarkOffTokens    (data.markOffTokens     || 0);
         }
         state.shopLoaded = true;
     } catch (e) { console.error('loadStarData:', e); }
@@ -39,6 +40,7 @@ export function watchStarData() {
             setStarLog          (data.log               || []);
             setExcuseTokens     (data.excuseTokens      || 0);
             setStreakResetTokens(data.streakResetTokens || 0);
+            setMarkOffTokens    (data.markOffTokens     || 0);
         }
         state.shopLoaded = true;
         window.render?.();
@@ -59,7 +61,8 @@ export async function syncStarData() {
         items:             state.shopItems,
         log:               state.starLog,
         excuseTokens:      state.excuseTokens,
-        streakResetTokens: state.streakResetTokens
+        streakResetTokens: state.streakResetTokens,
+        markOffTokens:     state.markOffTokens
     });
 }
 
@@ -95,13 +98,14 @@ export async function spendStars(amount, reason) {
 /**
  * Add a new shop item.
  */
-export async function addShopItem({ icon = '✨', name, cost, isExcuseToken = false, isStreakResetToken = false }) {
+export async function addShopItem({ icon = '✨', name, cost, isExcuseToken = false, isStreakResetToken = false, isMarkOffToken = false }) {
     if (!name || !cost || cost <= 0) throw new Error('Shop item requires name and positive cost');
     state.shopItems.push({
         id: Date.now().toString(),
         icon, name, cost,
         ...(isExcuseToken      && { isExcuseToken: true }),
-        ...(isStreakResetToken && { isStreakResetToken: true })
+        ...(isStreakResetToken && { isStreakResetToken: true }),
+        ...(isMarkOffToken     && { isMarkOffToken: true })
     });
     await syncStarData();
 }
@@ -170,6 +174,41 @@ export async function useStreakResetToken() {
     if (state.streakResetTokens <= 0) return false;
     setStreakResetTokens(state.streakResetTokens - 1);
     addStarLog('streakResetToken', -1, 'Streak reset token used');
+    await syncStarData();
+    return true;
+}
+
+// ── Mark-Off Tokens ───────────────────────────────────────────────────
+// Parallel to excuse tokens, but used to synthetically add one completion
+// to a habit for the current day — as if she actually did it.
+
+/**
+ * Grant one mark-off token (shop redemption hook).
+ */
+export async function addMarkOffToken() {
+    setMarkOffTokens(state.markOffTokens + 1);
+    addStarLog('markOffToken', 1, 'Mark-off token added');
+    await syncStarData();
+}
+
+/**
+ * Grant N mark-off tokens in a single sync.
+ */
+export async function grantMarkOffTokens(count) {
+    const n = parseInt(count, 10);
+    if (!Number.isFinite(n) || n <= 0) return;
+    setMarkOffTokens(state.markOffTokens + n);
+    addStarLog('markOffToken', n, n === 1 ? 'Mark-off token added' : `${n} mark-off tokens added`);
+    await syncStarData();
+}
+
+/**
+ * Consume one mark-off token. Returns false if balance is 0.
+ */
+export async function useMarkOffToken() {
+    if (state.markOffTokens <= 0) return false;
+    setMarkOffTokens(state.markOffTokens - 1);
+    addStarLog('markOffToken', -1, 'Mark-off token used');
     await syncStarData();
     return true;
 }

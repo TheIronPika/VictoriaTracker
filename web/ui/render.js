@@ -209,6 +209,7 @@ export function render() {
                             ${h.bountyActive ? `<span class="bounty-badge">🏆 Bounty</span>` : ''}
                             ${forecastBadgeSpan}
                             <button class="excuse-btn ${h.excused ? 'excuse-on' : ''}" onclick="event.stopPropagation();window.toggleExcused('${h.id}')">${h.excused ? 'Unexcuse' : 'Excuse'}</button>
+                            <button class="mark-btn" onclick="event.stopPropagation();window.useMarkOffBubble('${h.id}')" title="Use a mark-off token to count one extra completion">📝 +1</button>
                         </div>
                         ${forecastDetailDiv}
                         <div class="bubbles">${bubblesHtml}</div>

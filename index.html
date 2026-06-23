@@ -600,6 +600,19 @@
             color: #888;
             border-color: #bbb;
         }
+        .mark-btn {
+            font-size: 9px;
+            font-weight: 700;
+            font-family: 'Montserrat', sans-serif;
+            letter-spacing: 0.5px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            border: 1px solid rgba(76,175,119,0.4);
+            background: transparent;
+            color: #4caf77;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
         .habit-card:has(.excuse-on) {
             opacity: 0.6;
         }
@@ -1533,6 +1546,16 @@
                       <div style="font-size:10px;color:#7a7390;margin-top:8px;line-height:1.4;">A token zeroes a habit's 🌧️ bad-streak counter. Click the 🌧️ badge on any habit card to spend one.</div>
                     </div>
                     <div class="msp-section">
+                      <div class="msp-section-title">📝 Mark-Off Tokens</div>
+                      <div style="font-size:12px;color:#ccc8e0;margin-bottom:10px;">Current balance: <strong id="markOffTokenCount" style="color:#4caf77;">0</strong> tokens</div>
+                      <div style="display:flex;gap:10px;align-items:flex-end;">
+                        <div class="msp-field-row" style="width:80px"><span class="msp-field-label">Amount</span><input type="number" id="grantMarkOffAmt" placeholder="1" min="1" value="1" style="width:100%;padding:9px 10px;border:1px solid rgba(255,255,255,0.14);border-radius:8px;background:#362f52;color:#e8e3f5;font-size:16px;font-weight:700;text-align:center;box-sizing:border-box;"></div>
+                        <button onclick="window.grantMarkOffToken()" style="padding:10px 18px;background:var(--header-pink);color:white;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px;white-space:nowrap;">📝 Grant</button>
+                        <button onclick="window.revokeMarkOffToken()" style="padding:10px 18px;background:none;border:1px solid rgba(217,83,79,0.4);color:#d9534f;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px;white-space:nowrap;">Revoke</button>
+                      </div>
+                      <div style="font-size:10px;color:#7a7390;margin-top:8px;line-height:1.4;">A token adds +1 completion to any habit for the current day. Tap <strong>📝 +1</strong> on any habit card to spend one.</div>
+                    </div>
+                    <div class="msp-section">
                       <div class="msp-section-title">Award Stars to Victoria</div>
                       <div style="display:flex;gap:10px;align-items:flex-end;">
                         <div class="msp-field-row" style="width:90px"><span class="msp-field-label">Amount</span><input type="number" id="awardAmt" placeholder="10" min="1" style="width:100%;padding:9px 10px;border:1px solid rgba(255,255,255,0.14);border-radius:8px;background:#362f52;color:#e8e3f5;font-size:16px;font-weight:700;text-align:center;box-sizing:border-box;"></div>
@@ -1551,9 +1574,13 @@
                         <input type="checkbox" id="shopItemIsExcuse" style="width:15px;height:15px;accent-color:var(--header-pink);">
                         <span>Grants an excuse token when redeemed</span>
                       </label>
-                      <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#ccc8e0;cursor:pointer;margin-bottom:14px;">
+                      <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#ccc8e0;cursor:pointer;margin-bottom:6px;">
                         <input type="checkbox" id="shopItemIsStreakReset" style="width:15px;height:15px;accent-color:#7ab5c9;">
                         <span>Grants a 🌧️ streak reset token when redeemed</span>
+                      </label>
+                      <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#ccc8e0;cursor:pointer;margin-bottom:14px;">
+                        <input type="checkbox" id="shopItemIsMarkOff" style="width:15px;height:15px;accent-color:#4caf77;">
+                        <span>Grants a 📝 mark-off token when redeemed</span>
                       </label>
                       <button onclick="window.addShopItem()" style="padding:10px 24px;background:var(--header-pink);color:white;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px;">Add Item</button>
                     </div>

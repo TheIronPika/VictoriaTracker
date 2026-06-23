@@ -17,7 +17,10 @@ import {
     useExcuseToken,
     addStreakResetToken,
     grantStreakResetTokens,
-    useStreakResetToken
+    useStreakResetToken,
+    addMarkOffToken,
+    grantMarkOffTokens,
+    useMarkOffToken
 } from '../../Core/stars.js';
 
 // ── Display helpers ───────────────────────────────────────────────────
@@ -79,6 +82,8 @@ export function renderShopManage() {
     if (countEl)  countEl.innerText  = state.excuseTokens      || 0;
     const srCount = document.getElementById('streakResetTokenCount');
     if (srCount) srCount.innerText   = state.streakResetTokens || 0;
+    const moCount = document.getElementById('markOffTokenCount');
+    if (moCount)  moCount.innerText  = state.markOffTokens     || 0;
     if (!state.shopItems.length) {
         root.innerHTML = '<div style="font-size:12px;color:#aaa;padding:4px 0;">No items yet.</div>';
         return;
@@ -92,6 +97,9 @@ export function renderShopManage() {
         + '</label>'
         + '<label style="display:flex;align-items:center;gap:4px;font-size:10px;color:#7ab5c9;cursor:pointer;white-space:nowrap;" title="Grants a streak reset token when redeemed">'
         + '<input type="checkbox" ' + (it.isStreakResetToken ? 'checked' : '') + ' style="accent-color:#7ab5c9;" onchange="window.toggleShopItemStreakResetToken(\'' + it.id + '\',this.checked)"> 🌧️ reset'
+        + '</label>'
+        + '<label style="display:flex;align-items:center;gap:4px;font-size:10px;color:#4caf77;cursor:pointer;white-space:nowrap;" title="Grants a mark-off token when redeemed">'
+        + '<input type="checkbox" ' + (it.isMarkOffToken ? 'checked' : '') + ' style="accent-color:#4caf77;" onchange="window.toggleShopItemMarkOffToken(\'' + it.id + '\',this.checked)"> 📝 mark'
         + '</label>'
         + '<span style="font-size:11px;color:#c8942a;font-weight:700;">✨ ' + it.cost + '</span>'
         + '<button class="btn-delete" style="padding:3px 8px;font-size:9px;" onclick="window.deleteShopItem(\'' + it.id + '\')">DEL</button>'
@@ -136,6 +144,7 @@ window.doRedeem = async () => {
     await spendStars(item.cost, 'Redeemed: ' + item.name);
     if (item.isExcuseToken)      await addExcuseToken();
     if (item.isStreakResetToken) await addStreakResetToken();
+    if (item.isMarkOffToken)     await addMarkOffToken();
     uiState.pendingRedeem = null;
     updateStarDisplay();
     document.getElementById('shopConfirmView').style.display = 'none';
@@ -160,14 +169,17 @@ window.addShopItem = async () => {
     const cost               = parseInt(document.getElementById('shopItemCost')?.value) || 0;
     const isExcuseToken      = document.getElementById('shopItemIsExcuse')?.checked || false;
     const isStreakResetToken = document.getElementById('shopItemIsStreakReset')?.checked || false;
+    const isMarkOffToken     = document.getElementById('shopItemIsMarkOff')?.checked || false;
     if (!name || cost <= 0) { alert('Please enter a name and star cost.'); return; }
-    await coreAddShopItem({ icon, name, cost, isExcuseToken, isStreakResetToken });
+    await coreAddShopItem({ icon, name, cost, isExcuseToken, isStreakResetToken, isMarkOffToken });
     document.getElementById('shopItemIcon').value     = '';
     document.getElementById('shopItemName').value     = '';
     document.getElementById('shopItemCost').value     = '';
     document.getElementById('shopItemIsExcuse').checked = false;
     const srCheck = document.getElementById('shopItemIsStreakReset');
     if (srCheck) srCheck.checked = false;
+    const moCheck = document.getElementById('shopItemIsMarkOff');
+    if (moCheck) moCheck.checked = false;
     renderShopManage();
 };
 
@@ -233,4 +245,33 @@ window.revokeStreakResetToken = async () => {
 function renderStreakResetTokenCount() {
     const el = document.getElementById('streakResetTokenCount');
     if (el) el.innerText = state.streakResetTokens;
+}
+
+window.toggleShopItemMarkOffToken = async (id, checked) => {
+    const item = state.shopItems.find(it => it.id === id);
+    if (!item) return;
+    if (checked) item.isMarkOffToken = true;
+    else delete item.isMarkOffToken;
+    await syncStarData();
+    renderShopManage();
+};
+
+window.grantMarkOffToken = async () => {
+    const amt = parseInt(document.getElementById('grantMarkOffAmt')?.value) || 1;
+    if (amt <= 0) return;
+    await grantMarkOffTokens(amt);
+    document.getElementById('grantMarkOffAmt').value = '';
+    renderMarkOffTokenCount();
+    alert('📝 ' + amt + ' mark-off token' + (amt !== 1 ? 's' : '') + ' granted!');
+};
+
+window.revokeMarkOffToken = async () => {
+    if (state.markOffTokens <= 0) { alert('No tokens to revoke.'); return; }
+    await useMarkOffToken();
+    renderMarkOffTokenCount();
+};
+
+function renderMarkOffTokenCount() {
+    const el = document.getElementById('markOffTokenCount');
+    if (el) el.innerText = state.markOffTokens;
 }

@@ -10,7 +10,7 @@ import { state } from '../../Core/state.js';
 import { getDayIdx, escapeHtml } from '../../Core/utils.js';
 import { getTier } from '../../Core/habits.js';
 import { syncHabits, toggleExcused as coreToggleExcused, deleteHabit as coreDeleteHabit } from '../../Core/habits-data.js';
-import { syncStarData, addStarLog, useExcuseToken, useStreakResetToken } from '../../Core/stars.js';
+import { syncStarData, addStarLog, useExcuseToken, useStreakResetToken, useMarkOffToken } from '../../Core/stars.js';
 import { playBubblePop, triggerFanfare, checkPerfectWeek, checkStreakMilestones } from './animations.js';
 import { showCloverPopup, showLuckyDrawToast } from './lucky-draw.js';
 
@@ -253,6 +253,74 @@ window.resetBadStreak = async (id) => {
             if (!ok) return;
             h.badStreak       = 0;
             h.badStreakResetTs = Date.now();
+            await syncHabits();
+            window.render?.();
+        });
+    }
+};
+
+// ── Mark-off token ────────────────────────────────────────────────────
+// Spend one mark-off token to synthetically add +1 completion to a habit
+// for the current viewing day, as if she actually did it.
+
+window.useMarkOffBubble = async (id) => {
+    const h = uiState.habits.find(x => x.id === id);
+    if (!h) return;
+
+    const dIdx   = getDayIdx(uiState.viewingDate);
+    const cur    = h.history[dIdx] || 0;
+    const max    = h.max || 7;
+    const tokens = state.markOffTokens || 0;
+
+    const overlay = document.createElement('div');
+    overlay.id        = 'markOffConfirmOverlay';
+    overlay.className = 'period-modal-overlay';
+
+    if (cur >= max) {
+        overlay.innerHTML = `<div class="period-modal-sheet">
+               <div class="period-modal-title">Already at maximum</div>
+               <div class="period-modal-sub">
+                   <strong>${escapeHtml(h.name)}</strong> is already at the maximum level for this week — no more completions can be added.
+               </div>
+               <div class="period-modal-btns">
+                   <button class="period-modal-btn cancel" onclick="document.getElementById('markOffConfirmOverlay').remove()">OK</button>
+               </div>
+           </div>`;
+    } else if (tokens > 0) {
+        overlay.innerHTML = `<div class="period-modal-sheet">
+               <div class="period-modal-title">📝 Use a mark-off token?</div>
+               <div class="period-modal-sub">
+                   This will count one extra completion for <strong>${escapeHtml(h.name)}</strong> today (${cur} → ${cur + 1}).<br><br>
+                   You have <strong>${tokens} mark-off token${tokens !== 1 ? 's' : ''}</strong>. You'll have ${tokens - 1} after this.
+               </div>
+               <div class="period-modal-btns">
+                   <button class="period-modal-btn cancel" onclick="document.getElementById('markOffConfirmOverlay').remove()">Cancel</button>
+                   <button class="period-modal-btn confirm" id="markOffConfirmBtn">Use token</button>
+               </div>
+           </div>`;
+    } else {
+        overlay.innerHTML = `<div class="period-modal-sheet">
+               <div class="period-modal-title">No mark-off tokens</div>
+               <div class="period-modal-sub">
+                   You don't have any mark-off tokens. Buy one from the star shop!<br><br>
+                   Current balance: <strong>✨ ${state.starBalance} stars</strong>
+               </div>
+               <div class="period-modal-btns">
+                   <button class="period-modal-btn cancel" onclick="document.getElementById('markOffConfirmOverlay').remove()">OK</button>
+               </div>
+           </div>`;
+    }
+
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+
+    if (tokens > 0 && cur < max) {
+        document.getElementById('markOffConfirmBtn').addEventListener('click', async () => {
+            overlay.remove();
+            const ok = await useMarkOffToken();
+            if (!ok) return;
+            const newVal = cur + 1;
+            for (let i = dIdx; i < 7; i++) h.history[i] = newVal;
             await syncHabits();
             window.render?.();
         });
