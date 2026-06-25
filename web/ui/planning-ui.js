@@ -15,7 +15,6 @@ import { computeStreaksFromHistory } from '../../Core/streaks.js';
 import { isCycleDue } from '../../Core/cycles.js';
 import { getTier } from '../../Core/habits.js';
 import { syncHabits } from '../../Core/habits-data.js';
-import { GOOGLE_CALENDAR_CONFIG } from '../../Core/config.js';
 import {
     getPlannedDays, setPlannedDay, clearPlannedDays, copyPreviousWeek,
 } from '../../Core/planning.js';
@@ -136,14 +135,11 @@ function agendaHtml(date) {
     const byDay = eventsByDay(date);
     const dates = weekDates(date);
     const total = byDay.reduce((n, b) => n + b.length, 0);
-    const googleOn = !!GOOGLE_CALENDAR_CONFIG.clientId;
-
     let body = '';
     if (total === 0) {
         body = `
             <div class="plan-agenda-empty">
-                <div>${googleOn ? 'No events synced for this week yet.' : 'No calendar events yet.'}</div>
-                ${googleOn ? `<button class="plan-connect-btn" onclick="window.planConnectCalendar()">Connect Google Calendar</button>` : ''}
+                <div>No calendar events yet.</div>
             </div>`;
     } else {
         for (let i = 0; i < 7; i++) {
@@ -161,16 +157,11 @@ function agendaHtml(date) {
         }
     }
 
-    const syncBtn = googleOn
-        ? `<button class="plan-sync-btn" onclick="event.stopPropagation();window.planConnectCalendar()">↻ Sync</button>`
-        : '';
-
     return `
         <div class="plan-agenda">
             <div class="plan-agenda-head" onclick="window.planAgendaToggle()">
                 <span class="plan-agenda-title">📅 This week</span>
                 <span class="plan-agenda-headright">
-                    ${syncBtn}
                     <span class="plan-agenda-toggle">${agendaOpen ? 'HIDE ✧' : 'SHOW ✦'}</span>
                 </span>
             </div>
@@ -342,13 +333,3 @@ window.planAgendaToggle = () => {
     renderPlanning();
 };
 
-window.planConnectCalendar = () => {
-    if (typeof window.connectGoogleCalendar === 'function') {
-        window.connectGoogleCalendar();
-    } else {
-        alert(
-            "Google Calendar sync isn't available. Set GOOGLE_CALENDAR_CONFIG.clientId " +
-            "in Core/config.js and make sure google-calendar.js is loaded."
-        );
-    }
-};
