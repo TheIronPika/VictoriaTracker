@@ -211,7 +211,28 @@ export function initParticles() {
 // ── Time-based color shift ────────────────────────────────────────────
 // Morning (5–10): warm pink → Night (20+): deep purple
 
+export function hslToHex(h, s, l) {
+    s /= 100; l /= 100;
+    const a = s * Math.min(l, 1 - l);
+    const f = n => {
+        const k = (n + h / 30) % 12;
+        const c = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+        return Math.round(255 * c).toString(16).padStart(2, '0');
+    };
+    return '#' + f(0) + f(8) + f(4);
+}
+
 export function applyTimeColor() {
+    // Manual vibe override takes priority over time-based shift
+    const overrideHue = localStorage.getItem('vt_vibeHue');
+    if (overrideHue !== null) {
+        const hue = parseInt(overrideHue);
+        const sat = parseInt(localStorage.getItem('vt_vibeSat') || '37');
+        document.documentElement.style.setProperty('--header-pink', hslToHex(hue, sat, 73));
+        document.documentElement.style.setProperty('--soft-rose',   hslToHex(hue, Math.round(sat * 0.55), 95));
+        return;
+    }
+
     const h = new Date().getHours() + new Date().getMinutes() / 60;
     const stops = [
         [0,  '#8c75b8', '#e8e0f2'],

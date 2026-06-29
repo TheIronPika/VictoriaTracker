@@ -10,6 +10,7 @@ import { loadWeeklyHistory } from '../../Core/history.js';
 import { MANAGE_PASSCODE } from '../../Core/config.js';
 import { sortedOldestFirst } from '../../Core/streaks.js';
 import { escapeHtml } from '../../Core/utils.js';
+import { applyTimeColor, hslToHex } from './animations.js';
 
 // ── Chart lifecycle ───────────────────────────────────────────────────
 
@@ -52,10 +53,13 @@ function _paintHistory(root) {
 
     if (!weeklyHistory.length) {
         root.innerHTML = MANAGE_BTN
-            + '<div style="text-align:center;padding:50px 20px;color:#bbb;">'
+            + '<div style="text-align:center;padding:40px 20px 24px;color:#bbb;">'
             + '<div style="font-size:32px;margin-bottom:12px;">&#128197;</div>'
             + '<div style="font-family:\'Playfair Display\';font-size:16px;color:#c0a0a0;margin-bottom:8px;">No history yet</div>'
-            + '<div style="font-size:12px;">Complete your first weekly reset<br>to start seeing trends here.</div></div>';
+            + '<div style="font-size:12px;">Complete your first weekly reset<br>to start seeing trends here.</div></div>'
+            + _buildSettingsPanel(false);
+        const sp = document.getElementById('hpanel-settings');
+        if (sp) sp.style.display = '';
         return;
     }
 
@@ -80,8 +84,8 @@ function _paintHistory(root) {
           + '<div class="hist-stat-val">' + profW + ' / ' + wks.length + '</div></div></div>';
 
     // Tab bar
-    const chartTabs   = ['balance', 'heatmap', 'earners', 'category'];
-    const chartLabels = ['Balance', 'Heatmap', 'Top Earners', 'By Category'];
+    const chartTabs   = ['balance', 'heatmap', 'earners', 'category', 'settings'];
+    const chartLabels = ['Balance', 'Heatmap', 'Top Earners', 'By Category', '⚙'];
     html += '<div class="hist-tab-bar">'
           + chartTabs.map((t, i) =>
                 '<button class="hist-tab-btn' + (i === 0 ? ' hist-tab-active' : '') + '" '
@@ -144,6 +148,9 @@ function _paintHistory(root) {
     html += '<div id="hpanel-category" class="hist-chart-panel history-card" style="display:none;">'
           + '<div class="history-section-title">Average payout per category per week</div>'
           + '<div style="position:relative;height:200px;"><canvas id="hchart-category" role="img" aria-label="Average payout by category">Category payouts.</canvas></div></div>';
+
+    // Settings panel
+    html += _buildSettingsPanel(true);
 
     // Past weeks list
     html += '<h3 class="history-section-title" style="margin:16px 4px 10px;">Past Weeks</h3>';
@@ -318,7 +325,7 @@ function _drawCategoryChart() {
 
 window.switchHistoryTab = (id) => {
     destroyHistoryCharts();
-    ['balance', 'heatmap', 'earners', 'category'].forEach(t => {
+    ['balance', 'heatmap', 'earners', 'category', 'settings'].forEach(t => {
         const p = document.getElementById('hpanel-' + t);
         const b = document.getElementById('htab-' + t);
         if (p) p.style.display = t === id ? '' : 'none';
@@ -339,3 +346,136 @@ window.toggleHistoryWeek = (id) => {
     b.style.display = open ? 'block' : 'none';
     if (c) c.style.transform = open ? 'rotate(90deg)' : '';
 };
+
+// ── Settings panel ────────────────────────────────────────────────────
+
+function _buildSettingsPanel(hasHistory) {
+    const vibeHue        = localStorage.getItem('vt_vibeHue') ?? '0';
+    const vibeSat        = localStorage.getItem('vt_vibeSat') ?? '37';
+    const reminderOn     = localStorage.getItem('vt_reminderEnabled') === '1';
+    const reminderTime   = localStorage.getItem('vt_reminderTime') || '09:00';
+    const chk = reminderOn ? ' checked' : '';
+
+    return '<div id="hpanel-settings" class="hist-chart-panel history-card" style="display:none;">'
+        + '<div class="history-section-title">Settings</div>'
+
+        // ── Weekly Report
+        + '<div style="margin-bottom:20px;padding-bottom:18px;border-bottom:1px solid rgba(0,0,0,0.06);">'
+        +   '<div style="font-size:10px;font-weight:700;color:#aaa;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">&#128203; Weekly Report</div>'
+        +   '<button onclick="window.openHistoryReportFromSettings()" '
+        +     'style="padding:10px 20px;background:var(--header-pink);color:white;border:none;border-radius:10px;'
+        +     'font-size:12px;font-weight:700;cursor:pointer;font-family:\'Montserrat\',sans-serif;">'
+        +     'View Report'
+        +   '</button>'
+        +   (!hasHistory ? '<div style="font-size:10px;color:#bbb;margin-top:6px;">No weekly history yet — shows current week preview</div>' : '')
+        + '</div>'
+
+        // ── Customize the Vibe
+        + '<div style="margin-bottom:20px;padding-bottom:18px;border-bottom:1px solid rgba(0,0,0,0.06);">'
+        +   '<div style="font-size:10px;font-weight:700;color:#aaa;text-transform:uppercase;letter-spacing:1px;margin-bottom:14px;">&#127912; Customize the Vibe</div>'
+        +   '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">'
+        +     '<span style="font-size:11px;color:#888;width:64px;flex-shrink:0;">Color</span>'
+        +     '<input type="range" id="vibeHueSlider" min="0" max="360" value="' + vibeHue + '" style="flex:1;accent-color:var(--header-pink);" '
+        +       'oninput="window.applyVibeOverride(this.value,document.getElementById(\'vibeSatSlider\').value)">'
+        +     '<div id="vibeColorPreview" style="width:22px;height:22px;border-radius:50%;background:var(--header-pink);border:2px solid rgba(0,0,0,0.08);flex-shrink:0;"></div>'
+        +   '</div>'
+        +   '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">'
+        +     '<span style="font-size:11px;color:#888;width:64px;flex-shrink:0;">Intensity</span>'
+        +     '<input type="range" id="vibeSatSlider" min="10" max="65" value="' + vibeSat + '" style="flex:1;accent-color:var(--header-pink);" '
+        +       'oninput="window.applyVibeOverride(document.getElementById(\'vibeHueSlider\').value,this.value)">'
+        +   '</div>'
+        +   '<button onclick="window.resetVibeToAuto()" '
+        +     'style="padding:6px 14px;background:none;border:1px solid rgba(0,0,0,0.15);color:#888;'
+        +     'border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;font-family:\'Montserrat\',sans-serif;">Reset to Auto</button>'
+        + '</div>'
+
+        // ── Daily Reminder
+        + '<div>'
+        +   '<div style="font-size:10px;font-weight:700;color:#aaa;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">&#9200; Daily Reminder</div>'
+        +   '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:12px;">'
+        +     '<input type="checkbox" id="reminderToggle"' + chk + ' style="width:16px;height:16px;accent-color:var(--header-pink);" onchange="window.toggleDailyReminder(this.checked)">'
+        +     '<span style="font-size:12px;color:#666;">Enable daily reminder</span>'
+        +   '</label>'
+        +   '<div style="display:flex;align-items:center;gap:10px;">'
+        +     '<span style="font-size:11px;color:#888;width:64px;flex-shrink:0;">Time</span>'
+        +     '<input type="time" id="reminderTimeInput" value="' + reminderTime + '" '
+        +       'style="padding:6px 10px;border:1px solid rgba(0,0,0,0.12);border-radius:8px;font-family:\'Montserrat\',sans-serif;font-size:12px;color:#555;" '
+        +       'onchange="window.saveDailyReminderTime(this.value)">'
+        +   '</div>'
+        +   '<div style="font-size:10px;color:#bbb;margin-top:8px;line-height:1.5;">Reminder fires while the app is open in your browser.</div>'
+        + '</div>'
+        + '</div>';
+}
+
+window.openHistoryReportFromSettings = () => {
+    if ((state.weeklyHistory || []).length) {
+        window.openWeeklyReportPopup?.();
+    } else {
+        window.sendVictoriaTestReport?.();
+    }
+};
+
+window.applyVibeOverride = (hue, sat) => {
+    const h = parseInt(hue), s = parseInt(sat);
+    localStorage.setItem('vt_vibeHue', h);
+    localStorage.setItem('vt_vibeSat', s);
+    const pink = hslToHex(h, s, 73);
+    const rose = hslToHex(h, Math.round(s * 0.55), 95);
+    document.documentElement.style.setProperty('--header-pink', pink);
+    document.documentElement.style.setProperty('--soft-rose',   rose);
+    const preview = document.getElementById('vibeColorPreview');
+    if (preview) preview.style.background = pink;
+};
+
+window.resetVibeToAuto = () => {
+    localStorage.removeItem('vt_vibeHue');
+    localStorage.removeItem('vt_vibeSat');
+    applyTimeColor();
+    const hSlider = document.getElementById('vibeHueSlider');
+    const sSlider = document.getElementById('vibeSatSlider');
+    if (hSlider) hSlider.value = '0';
+    if (sSlider) sSlider.value = '37';
+    const preview = document.getElementById('vibeColorPreview');
+    if (preview) preview.style.background = 'var(--header-pink)';
+};
+
+window.toggleDailyReminder = async (enabled) => {
+    if (enabled && Notification.permission !== 'granted') {
+        const perm = await Notification.requestPermission();
+        if (perm !== 'granted') {
+            const toggle = document.getElementById('reminderToggle');
+            if (toggle) toggle.checked = false;
+            return;
+        }
+    }
+    localStorage.setItem('vt_reminderEnabled', enabled ? '1' : '0');
+};
+
+window.saveDailyReminderTime = (time) => {
+    localStorage.setItem('vt_reminderTime', time);
+};
+
+// Fires a notification when the app is open and it's the stored reminder time.
+let _reminderCheckId = null;
+(function _initDailyReminder() {
+    if (_reminderCheckId) return;
+    _reminderCheckId = setInterval(() => {
+        if (localStorage.getItem('vt_reminderEnabled') !== '1') return;
+        const time = localStorage.getItem('vt_reminderTime') || '';
+        if (!time) return;
+        const now = new Date();
+        const [hh, mm] = time.split(':').map(Number);
+        if (now.getHours() === hh && now.getMinutes() === mm) {
+            const key = 'vt_reminderFired_' + now.toDateString();
+            if (!localStorage.getItem(key)) {
+                localStorage.setItem(key, '1');
+                if (Notification.permission === 'granted') {
+                    new Notification('Victoria Tracker', {
+                        body: "Time to check in on your habits! 💕",
+                        icon: '/VictoriaTracker/icons/icon-192.png'
+                    });
+                }
+            }
+        }
+    }, 60000);
+}());
