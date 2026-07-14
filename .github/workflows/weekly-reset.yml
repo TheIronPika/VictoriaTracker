@@ -2,14 +2,26 @@ name: Weekly Habit Reset
 
 on:
   schedule:
-    # Every Monday at 4:00 AM Central Time (9:00 AM UTC)
-    # UTC is 5 hours ahead of Central (CDT) or 6 hours ahead (CST)
-    # Using 9:00 UTC = 4:00 AM CDT (summer) / 3:00 AM CST (winter)
-    # Adjust the hour here if needed: "0 9 * * 1" = 9:00 UTC Monday
+    # Monday 4:00 AM Central — PROPOSE: compute nothing, just flag the week
+    # as ready and let the native app prompt Victoria to approve or snooze.
+    # 9:00 UTC = 4:00 AM CDT (summer) / 3:00 AM CST (winter)
     - cron: '0 9 * * 1'
+    # Monday 7:00 PM Central — FORCE: if she never approved, run the actual
+    # reset anyway so payouts/history can't stall indefinitely.
+    # 00:00 UTC Tue = 7:00 PM CDT (summer) / 6:00 PM CST (winter)
+    - cron: '0 0 * * 2'
 
   # Allow manual trigger from GitHub Actions tab for testing
   workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Reset mode'
+        required: true
+        default: propose
+        type: choice
+        options:
+          - propose
+          - force
 
 jobs:
   reset:
@@ -27,13 +39,22 @@ jobs:
         run: npm install
         working-directory: scripts
 
+      - name: Determine reset mode
+        id: mode
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "value=${{ inputs.mode }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.schedule }}" = "0 9 * * 1" ]; then
+            echo "value=propose" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=force" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Run weekly reset
         env:
           FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
           FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
           FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
-          EMAILJS_SERVICE_ID: ${{ secrets.EMAILJS_SERVICE_ID }}
-          EMAILJS_TEMPLATE_ID: ${{ secrets.EMAILJS_TEMPLATE_ID }}
-          EMAILJS_PUBLIC_KEY: ${{ secrets.EMAILJS_PUBLIC_KEY }}
+          RESET_MODE: ${{ steps.mode.outputs.value }}
         run: node reset.js
         working-directory: scripts
