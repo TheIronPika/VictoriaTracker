@@ -32,11 +32,15 @@ window.openPeriodModal = () => {
     const startIsToday = sameDay(sel, new Date());
     const dayLabel     = sel.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
 
+    const endIsToday = sameDay(sel, new Date());
+
     overlay.innerHTML = `
         <div class="period-modal-sheet">
-            <div class="period-modal-title">${isActive ? '🩸 End period' : (startIsToday ? '🩸 Start period' : `🩸 Start period on ${dayLabel}`)}</div>
+            <div class="period-modal-title">${isActive ? (endIsToday ? '🩸 End period' : `🩸 End period on ${dayLabel}`) : (startIsToday ? '🩸 Start period' : `🩸 Start period on ${dayLabel}`)}</div>
             <div class="period-modal-sub">${isActive
-                ? `Period has been active for ${days} day${days !== 1 ? 's' : ''}. Marking it as ended will restore normal payout and streak rules going forward.`
+                ? (endIsToday
+                    ? `Period has been active for ${days} day${days !== 1 ? 's' : ''}. Marking it as ended will restore normal payout and streak rules going forward.`
+                    : `Backdating the end to ${dayLabel}. Normal payout and streak rules will be restored from that day onward.`)
                 : (startIsToday
                     ? "Period-sensitive habits will still earn positive payouts as normal, but won't be penalized or lose streaks while your period is active."
                     : `Backdating the start to ${dayLabel}. Period-sensitive habits won't be penalized or lose streaks from that day onward.`)
@@ -75,7 +79,12 @@ window.startPeriod = async () => {
 window.endPeriod = async () => {
     document.getElementById('periodModalOverlay')?.remove();
     if (state.periodData.active && state.periodData.startTs) {
-        const endTs    = Date.now();
+        const sel    = uiState.viewingDate || new Date();
+        const endTs  = sameDay(sel, new Date()) ? Date.now() : (() => {
+            const d = new Date(sel);
+            d.setHours(23, 59, 59, 999);
+            return d.getTime();
+        })();
         const duration = Math.ceil((endTs - state.periodData.startTs) / 86400000);
         const entry    = {
             id:        state.periodData.startTs.toString(),

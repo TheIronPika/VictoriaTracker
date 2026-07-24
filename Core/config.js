@@ -75,6 +75,14 @@ export const TIER_COLORS = {
     bonus:  '#8e44ad'
 };
 
+// Lucky draw odds (% chance per completion), keyed by the tier the completion lands in.
+export const LUCKY_DRAW_ODDS = {
+    punish: 2,
+    low:    5,
+    goal:   7,
+    bonus:  10
+};
+
 export const TIER_LABELS = {
     punish: 'DEBT',
     low:    'LOW',

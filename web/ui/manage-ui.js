@@ -8,7 +8,7 @@ import { uiState } from './ui-state.js';
 import { state } from '../../Core/state.js';
 import { cycleDueLabel } from '../../Core/cycles.js';
 import { computeStreaksFromHistory, sortedNewestFirst, sortedOldestFirst } from '../../Core/streaks.js';
-import { getTier, computeWeeklyPayout } from '../../Core/habits.js';
+import { getTier, computeWeeklyPayout, toCumulative } from '../../Core/habits.js';
 import { getDayIdx, escapeHtml } from '../../Core/utils.js';
 import { loadWeeklyHistory } from '../../Core/history.js';
 import { renderPeriodHistory } from './period-ui.js';
@@ -276,11 +276,13 @@ export function computeForecast(h) {
     const lastWk   = sorted[0];
     const lastHab  = (lastWk.habits || []).find(x => x.id === h.id);
     if (!lastHab || !lastHab.history) return null;
+    // Snapshots are cumulative, so history[6] is last week's total. The live
+    // habit is per-day, so derive its running total for "bubbles so far".
     const lastWeekTotal = lastHab.history[6] || 0;
-    if (lastWeekTotal === 0 && (h.history[getDayIdx(uiState.viewingDate)] || 0) === 0) return null;
     const dIdx        = getDayIdx(uiState.viewingDate);
+    const bubblesNow  = toCumulative(h.history)[dIdx] || 0;
+    if (lastWeekTotal === 0 && bubblesNow === 0) return null;
     const daysElapsed = dIdx + 1;
-    const bubblesNow  = h.history[dIdx] || 0;
     const dailyRate   = bubblesNow / daysElapsed;
     const projected   = Math.min(Math.round(dailyRate * 7 * 10) / 10, h.max || 7);
     if (projected > lastWeekTotal) return { dir: 'up',   pace: projected, lastWeek: lastWeekTotal };

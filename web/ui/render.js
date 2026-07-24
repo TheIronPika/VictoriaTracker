@@ -9,10 +9,10 @@
 import { uiState, saveCollapsedState } from './ui-state.js';
 import { state } from '../../Core/state.js';
 import { getDayIdx, escapeHtml } from '../../Core/utils.js';
-import { getTier, computeWeeklyPayout } from '../../Core/habits.js';
+import { getTier, computeWeeklyPayout, toCumulative } from '../../Core/habits.js';
 import { isCycleDue, cycleLabel, cycleDueLabel } from '../../Core/cycles.js';
 import { computeStreaksFromHistory } from '../../Core/streaks.js';
-import { MANAGE_PASSCODE } from '../../Core/config.js';
+import { MANAGE_PASSCODE, TIER_COLORS } from '../../Core/config.js';
 import { animateMoneyDisplay } from './animations.js';
 import { renderSeasonalSection, renderEventsManage } from './events-ui.js';
 import { getEventPayoutsTotal } from '../../Core/events.js';
@@ -87,8 +87,8 @@ export function render() {
 
         if (!uiState.sortLocked) {
             items.sort((a, b) => {
-                const aP = a.history[dIdx] > 0;
-                const bP = b.history[dIdx] > 0;
+                const aP = (toCumulative(a.history)[dIdx] || 0) > 0;
+                const bP = (toCumulative(b.history)[dIdx] || 0) > 0;
                 if (aP && !bP) return 1;
                 if (!aP && bP) return -1;
                 return 0;
@@ -97,7 +97,7 @@ export function render() {
 
         const miniDotsHtml = items.map(h => {
             if (h.excused) return `<div class="mini-dot" style="background:#c8c8c8;opacity:0.5;"></div>`;
-            const t = getTier(h, h.history[dIdx]);
+            const t = getTier(h, toCumulative(h.history)[dIdx] || 0);
             return `<div class="mini-dot" style="background:var(--grad-${t})"></div>`;
         }).join('');
 
@@ -144,7 +144,10 @@ export function render() {
                 if (tier === 'punish' && h.valPunish < 0) { counts.punish++; }
                 else if (tier !== 'punish') { counts[tier]++; }
             }
-            const cur = h.history[dIdx];
+            // history stores PER-DAY counts; derive the cumulative view the
+            // bubble UI renders so the display is byte-for-byte unchanged.
+            const cum = toCumulative(h.history);
+            const cur = cum[dIdx] || 0;
 
             const daysRemaining = 7 - dIdx;
             const modeThresh    = uiState.priorityMode === 'bonus' ? h.bonus : h.goal;
@@ -173,25 +176,52 @@ export function render() {
             const periodProtectedCard = isPeriodActive() && !!h.periodSensitive;
             const pStartIdx = periodStartDayIdx(getDayIdx);
 
+            function hexToRgba(hex, alpha) {
+                const n = parseInt(hex.slice(1), 16);
+                return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
+            }
             const _DS = ['M', 'T', 'W', 'Th', 'F', 'S', 'Su'];
-            function dayForBubble(hist, i) {
-                for (let d = 0; d < 7; d++) { if ((hist[d] || 0) >= i) return _DS[d]; }
+            function dayForBubble(hist, i, fromIdx = 0) {
+                for (let d = fromIdx; d < 7; d++) { if ((hist[d] || 0) >= i) return _DS[d]; }
                 return '';
             }
             const markOffCount = h.markOffDays?.[dIdx] || 0;
             const realCount    = Math.max(0, cur - markOffCount);
+            const todayIdx     = getDayIdx(new Date());
+            // How far a later REAL day (already happened, up through today) has
+            // reached, so backdating shows those bubbles as already-claimed
+            // (dashed) instead of empty. Bounded at todayIdx — days after today
+            // are just a placeholder mirror of today, not marks she's actually
+            // earned, so they never get a dashed indicator.
+            const futureFloor = Math.max(0, ...cum.slice(dIdx + 1, todayIdx + 1));
+            // A day after today has no independent identity yet (it just
+            // mirrors today), so editing it would silently redirect to
+            // today with no visual cue — confusing (see feedback
+            // 2026-07-21). Lock those days from editing instead.
+            const isFutureDay = dIdx > todayIdx;
             let bubblesHtml = '';
             for (let i = 1; i <= (h.max || 7); i++) {
                 const stepTier   = getTier(h, i);
                 const isFilled   = i <= cur;
                 const isSynthetic = isFilled && i > realCount;
-                const dayLetter  = isFilled ? dayForBubble(h.history, i) : '';
-                const isPaused   = !isFilled && (isPeriodActive() || state.periodData.periodWasThisWeek) && !!h.periodSensitive && dIdx >= pStartIdx;
-                const bubbleClass = `bubble day-bub ${isFilled ? ('filled ' + (isSynthetic ? 'mark-off' : stepTier)) : ''} ${isPaused ? 'period-paused' : ''}`;
+                const isFuture   = !isFilled && i <= futureFloor;
+                // Which day each completion actually belongs to — the
+                // delta-shift mutation keeps every day's own contribution
+                // distinct, so this correctly attributes bubble N to
+                // whichever day the running total first reached N (e.g.
+                // bubble 1 = Monday, bubble 2 = Tuesday, if that's the day
+                // each one was really added on).
+                const dayLetter  = isFilled ? dayForBubble(cum, i)
+                                 : isFuture ? dayForBubble(cum, i, dIdx + 1)
+                                 : '';
+                const isPaused   = !isFilled && !isFuture && (isPeriodActive() || state.periodData.periodWasThisWeek) && !!h.periodSensitive && dIdx >= pStartIdx;
+                const bubbleClass = `bubble day-bub ${isFilled ? ('filled ' + (isSynthetic ? 'mark-off' : stepTier)) : ''} ${isFuture ? 'future' : ''} ${isPaused ? 'period-paused' : ''}`;
                 const borderColor = isSynthetic ? '#aaa' : `var(--color-${stepTier})`;
+                const extraStyle  = isFuture ? `background:${hexToRgba(TIER_COLORS[stepTier], 0.15)};color:${TIER_COLORS[stepTier]};` : '';
+                const onclickAttr = isFutureDay ? '' : `onclick="window.toggleBubble('${h.id}',${i})"`;
                 bubblesHtml += `<div class="${bubbleClass}"
-                    style="border-color:${borderColor}"
-                    onclick="window.toggleBubble('${h.id}',${i})">${dayLetter}</div>`;
+                    style="border-color:${borderColor};${extraStyle}"
+                    ${onclickAttr}>${dayLetter}</div>`;
             }
 
             const cardHtml = `
@@ -214,10 +244,10 @@ export function render() {
                             ${h.bountyActive ? `<span class="bounty-badge">🏆 Bounty</span>` : ''}
                             ${forecastBadgeSpan}
                             ${(h.excused || state.excuseTokens > 0) ? `<button class="excuse-btn ${h.excused ? 'excuse-on' : ''}" onclick="event.stopPropagation();window.toggleExcused('${h.id}')">${h.excused ? 'Unexcuse' : 'Excuse'}</button>` : ''}
-                            ${state.markOffTokens > 0 ? `<button class="mark-btn" onclick="event.stopPropagation();window.useMarkOffBubble('${h.id}')" title="Use a mark-off token to count one extra completion">📝 +1</button>` : ''}
+                            ${(!isFutureDay && state.markOffTokens > 0) ? `<button class="mark-btn" onclick="event.stopPropagation();window.useMarkOffBubble('${h.id}')" title="Use a mark-off token to count one extra completion">📝 +1</button>` : ''}
                         </div>
                         ${forecastDetailDiv}
-                        <div class="bubbles">${bubblesHtml}</div>
+                        <div class="bubbles" style="${isFutureDay ? 'opacity:0.45;pointer-events:none;' : ''}">${bubblesHtml}</div>
                     </div>
                 </div>`;
 
@@ -230,10 +260,11 @@ export function render() {
 
             if (isUrgent) priorityHtml += cardHtml;
 
-            const weeklyDotsHtml = h.history.map((c, i) => {
-                const isActionDay = (i === 0 && c > 0) || (i > 0 && c !== h.history[i - 1]);
-                const dayTier     = getTier(h, c);
-                return isActionDay && c > 0
+            const weeklyDotsHtml = h.history.slice(0, 7).map((c, i) => {
+                // c is this day's own count; color by the cumulative tier
+                // reached through this day (unchanged look).
+                const dayTier = getTier(h, cum[i]);
+                return c > 0
                     ? `<div class="weekly-dot-container"><div class="weekly-dot" style="background:var(--grad-${dayTier})"></div></div>`
                     : `<div class="weekly-dot-container"><div class="weekly-dot" style="background:#eee"></div></div>`;
             }).join('');

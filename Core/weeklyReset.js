@@ -24,7 +24,7 @@
 //     the unattended force-fallback if she never does.
 // ─────────────────────────────────────────────────────────────────────
 
-import { getTier, computeWeeklyPayout } from './habits.js';
+import { getTier, computeWeeklyPayout, weekTotal, toCumulative } from './habits.js';
 import { isCycleDue, isCyclic, cycleIntervalMs } from './cycles.js';
 import { FIRESTORE_DOCS, HISTORY_MAX_WEEKS } from './config.js';
 
@@ -127,7 +127,7 @@ export async function executeWeeklyReset(io, now = new Date()) {
     habits.forEach(h => {
         if (isDormant(h) || h.excused) return;
         const hist = (h.history || []).slice(0, 7);
-        const cur  = hist[6] !== undefined ? hist[6] : (hist[hist.length - 1] || 0);
+        const cur  = weekTotal(hist);
         const tier = getTier(h, cur);
         const newStreak = (tier === 'goal' || tier === 'bonus') ? (h.streak || 0) + 1 : 0;
         let earned = 0, reasons = [];
@@ -165,7 +165,7 @@ export async function executeWeeklyReset(io, now = new Date()) {
     habits = habits.map(h => {
         if (isDormant(h) || h.excused || streakFrozenH(h)) return { ...h };
         const hist = (h.history || []).slice(0, 7);
-        const cur  = hist[6] !== undefined ? hist[6] : (hist[hist.length - 1] || 0);
+        const cur  = weekTotal(hist);
         const tier = getTier(h, cur);
         const isGood = tier === 'goal' || tier === 'bonus';
         const tokenResetThisWeek = !!h.badStreakResetTs && h.badStreakResetTs >= tokenResetCutoff;
@@ -202,7 +202,7 @@ export async function executeWeeklyReset(io, now = new Date()) {
             const hist = (h.history || []).slice(0, 7);
             const r = computeWeeklyPayout(h, { periodActive, now: nowTs });
             return { id: h.id, name: h.name, icon: h.icon, cat: h.cat,
-                     tier: r.tier, payout: r.base, history: hist,
+                     tier: r.tier, payout: r.base, history: toCumulative(hist),
                      thresh: { punish: h.punish || 1, low: h.low || 3, goal: h.goal || 5, bonus: h.bonus || 7 },
                      excused: !!h.excused,
                      periodProtected: r.periodProtected };
@@ -217,7 +217,7 @@ export async function executeWeeklyReset(io, now = new Date()) {
         if (isDormant(h)) return { ...h, history: [0, 0, 0, 0, 0, 0, 0], excused: false };
 
         const hist3 = (h.history || []).slice(0, 7);
-        const cur3  = hist3[6] !== undefined ? hist3[6] : (hist3[hist3.length - 1] || 0);
+        const cur3  = weekTotal(hist3);
         const tier3 = getTier(h, cur3);
         const bountyTriggered3 = h.bountyActive && (tier3 === 'goal' || tier3 === 'bonus');
 

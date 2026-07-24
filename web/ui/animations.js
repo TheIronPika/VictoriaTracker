@@ -7,7 +7,7 @@
 
 import { uiState } from './ui-state.js';
 import { state } from '../../Core/state.js';
-import { getTier } from '../../Core/habits.js';
+import { getTier, toCumulative } from '../../Core/habits.js';
 import { getDayIdx } from '../../Core/utils.js';
 import { computeStreaksFromHistory } from '../../Core/streaks.js';
 import { isCycleDue } from '../../Core/cycles.js';
@@ -98,7 +98,7 @@ export function checkPerfectWeek() {
     const counting = uiState.habits.filter(h => !h.excused && isCycleDue(h));
     if (!counting.length) return;
     const allGood = counting.every(h => {
-        const tier = getTier(h, h.history[getDayIdx(uiState.viewingDate)] || 0);
+        const tier = getTier(h, toCumulative(h.history)[getDayIdx(uiState.viewingDate)] || 0);
         return tier === 'goal' || tier === 'bonus';
     });
     if (allGood) { localStorage.setItem(key, '1'); triggerPerfectWeek(); }

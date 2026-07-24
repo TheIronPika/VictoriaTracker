@@ -75,7 +75,11 @@ export async function updateHabitField(id, field, value) {
             if (y && m && d) h.cycleNextDue = new Date(y, m - 1, d).getTime();
         }
     } else if (field.startsWith('val')) {
-        h[field] = parseFloat(value);
+        // A cleared/non-numeric input parses to NaN — never write that to
+        // Firestore (it propagates into every payout total as "$NaN").
+        // Keep the previous value instead so a mis-tap can't zero a payout.
+        const f = parseFloat(value);
+        h[field] = Number.isFinite(f) ? f : (Number.isFinite(h[field]) ? h[field] : 0);
     } else if (field.startsWith('star')) {
         h[field] = parseInt(value) || 0;
     } else if (field === 'streakBonusPer' || field === 'streakPenaltyPer' || field === 'streakCap') {

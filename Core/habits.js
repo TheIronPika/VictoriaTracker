@@ -22,13 +22,41 @@ export function getTier(habit, count) {
     return 'punish';
 }
 
+// ── History representation ────────────────────────────────────────────
+// As of the 2026-07 per-day refactor, habit.history stores a PER-DAY count
+// (history[i] = completions logged ON day i alone), NOT a running weekly
+// total. This makes each day independent, so editing/backdating one day can
+// never overwrite or corrupt another. The bubble UI still shows a cumulative
+// progress bar — callers derive that view on the fly via toCumulative().
+
+/** Sum of a 7-day per-day array — the week's total completions. */
+export function weekTotal(history) {
+    const hist = (history || []).slice(0, 7);
+    let sum = 0;
+    for (let i = 0; i < 7; i++) sum += hist[i] || 0;
+    return sum;
+}
+
 /**
- * Last day in the 7-day history (= today's running count). Falls back to
- * whatever's at the end if history is shorter than 7.
+ * Convert a per-day array into the cumulative running-total array the bubble
+ * UI renders (cum[i] = completions Monday through day i). Display code feeds
+ * this to the same logic that used to read the raw (cumulative) history, so
+ * the on-screen bubbles are unchanged.
+ */
+export function toCumulative(history) {
+    const hist = (history || []).slice(0, 7);
+    const cum = new Array(7).fill(0);
+    let run = 0;
+    for (let i = 0; i < 7; i++) { run += hist[i] || 0; cum[i] = run; }
+    return cum;
+}
+
+/**
+ * The week's total completions. With per-day storage this is the sum of the
+ * array (previously it was the last/cumulative element). Drives tier/payout.
  */
 export function getCurrentCount(habit) {
-    const hist = (habit.history || []).slice(0, 7);
-    return hist[6] !== undefined ? hist[6] : (hist[hist.length - 1] || 0);
+    return weekTotal(habit && habit.history);
 }
 
 /**

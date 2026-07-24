@@ -7,7 +7,7 @@
 import { state, setWeeklyHistory } from './state.js';
 import { readDoc, writeDoc } from './firebase.js';
 import { FIRESTORE_DOCS, HISTORY_MAX_WEEKS } from './config.js';
-import { getTier, getBasePayout, getCurrentCount } from './habits.js';
+import { getTier, getBasePayout, getCurrentCount, toCumulative } from './habits.js';
 
 /**
  * Load weekly history into state.
@@ -43,7 +43,8 @@ export async function saveWeekSnapshot(habits, totalBalance, dateStr) {
                     cat: h.cat,
                     tier,
                     payout: getBasePayout(h, tier),
-                    history: (h.history || []).slice(0, 7),
+                    // Snapshots stay cumulative so the history view is unchanged.
+                    history: toCumulative(h.history),
                     thresh: {
                         punish: h.punish || 1,
                         low:    h.low    || 3,

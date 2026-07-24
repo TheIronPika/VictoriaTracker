@@ -8,7 +8,8 @@
 import { uiState, saveCollapsedState } from './ui-state.js';
 import { state } from '../../Core/state.js';
 import { getDayIdx, escapeHtml } from '../../Core/utils.js';
-import { getTier } from '../../Core/habits.js';
+import { getTier, toCumulative, weekTotal } from '../../Core/habits.js';
+import { LUCKY_DRAW_ODDS } from '../../Core/config.js';
 import { syncHabits, toggleExcused as coreToggleExcused, deleteHabit as coreDeleteHabit } from '../../Core/habits-data.js';
 import { syncStarData, addStarLog, useExcuseToken, useStreakResetToken, useMarkOffToken, grantMarkOffTokens } from '../../Core/stars.js';
 import { playBubblePop, triggerFanfare, checkPerfectWeek, checkStreakMilestones } from './animations.js';
@@ -291,17 +292,21 @@ window.resetBadStreak = async (id) => {
 window.useMarkOffBubble = async (id) => {
     const h = uiState.habits.find(x => x.id === id);
     if (!h) return;
+    // A day after today has no independent identity yet — editing it isn't
+    // meaningful (see toggleBubble below).
+    if (getDayIdx(uiState.viewingDate) > getDayIdx(new Date())) return;
 
     const dIdx   = getDayIdx(uiState.viewingDate);
-    const cur    = h.history[dIdx] || 0;
+    const cur    = toCumulative(h.history)[dIdx] || 0; // cumulative through viewed day (for the message)
     const max    = h.max || 7;
+    const atMax  = weekTotal(h.history) >= max;
     const tokens = state.markOffTokens || 0;
 
     const overlay = document.createElement('div');
     overlay.id        = 'markOffConfirmOverlay';
     overlay.className = 'period-modal-overlay';
 
-    if (cur >= max) {
+    if (atMax) {
         overlay.innerHTML = `<div class="period-modal-sheet">
                <div class="period-modal-title">Already at maximum</div>
                <div class="period-modal-sub">
@@ -339,15 +344,15 @@ window.useMarkOffBubble = async (id) => {
     overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
     document.body.appendChild(overlay);
 
-    if (tokens > 0 && cur < max) {
+    if (tokens > 0 && !atMax) {
         document.getElementById('markOffConfirmBtn').addEventListener('click', async () => {
             overlay.remove();
             const ok = await useMarkOffToken();
             if (!ok) return;
-            const newVal = cur + 1;
             h.markOffDays = h.markOffDays || {};
             h.markOffDays[dIdx] = (h.markOffDays[dIdx] || 0) + 1;
-            for (let i = dIdx; i < 7; i++) h.history[i] = newVal;
+            // Add one completion to THIS day's own count only.
+            h.history[dIdx] = Math.min(h.max || 7, (h.history[dIdx] || 0) + 1);
             await syncHabits();
             window.render?.();
         });
@@ -359,6 +364,11 @@ window.useMarkOffBubble = async (id) => {
 window.toggleBubble = async (id, val) => {
     const h = uiState.habits.find(x => x.id === id);
     if (!h) return;
+    // A day after today has no independent identity yet (it just mirrors
+    // today) — editing it would silently redirect to today with no visual
+    // cue, which is confusing. render.js already omits the onclick for
+    // these bubbles; this is a defense-in-depth guard against stale DOM.
+    if (getDayIdx(uiState.viewingDate) > getDayIdx(new Date())) return;
 
     // Auto-expand this habit's category, collapse all others
     if (h.cat) {
@@ -368,15 +378,30 @@ window.toggleBubble = async (id, val) => {
         saveCollapsedState();
     }
 
-    const dIdx   = getDayIdx(uiState.viewingDate);
-    const oldQty = h.history[dIdx];
-    const newVal = (oldQty === val) ? val - 1 : val;
+    const dIdx     = getDayIdx(uiState.viewingDate);
+    const todayIdx = getDayIdx(new Date());
+    // history stores PER-DAY counts. Preserve the exact on-screen tap feel,
+    // expressed on the cumulative view: today jumps straight to the tapped
+    // bubble; a past day moves by exactly one (tap an empty bubble to add,
+    // the top to remove) so tapping past the dashed preview bubbles can't
+    // overshoot. Then translate that target back into THIS day's own count —
+    // the only cell we write, so no other day can ever be corrupted.
+    const cum      = toCumulative(h.history);
+    const cur      = cum[dIdx] || 0;
+    const base     = dIdx > 0 ? (cum[dIdx - 1] || 0) : 0;
+    const ownCount = h.history[dIdx] || 0;
+    const maxPer   = h.max || 7;
+    const newCum   = (dIdx === todayIdx || val <= cur)
+        ? (cur === val ? val - 1 : val)
+        : cur + 1;
+    const ownNew   = Math.max(0, Math.min(maxPer, newCum - base));
+    if (ownNew === ownCount) return; // tapped an inherited bubble → no change
+    const isUp     = ownNew > ownCount;
 
-    const oldTier  = getTier(h, oldQty);
-    const newTier  = getTier(h, newVal);
-    const willMove = (oldQty === 0 && newVal > 0) || (newVal === 0 && oldQty > 0);
+    const oldTier  = getTier(h, weekTotal(h.history));
+    const willMove = (cur === 0 && newCum > 0) || (newCum === 0 && cur > 0);
 
-    playBubblePop(newVal >= oldQty);
+    playBubblePop(isUp);
 
     if (willMove) {
         const cardEl = document.querySelector(`.habit-card[data-habit-id="${id}"]`);
@@ -388,13 +413,13 @@ window.toggleBubble = async (id, val) => {
 
     uiState.lastActedId = willMove ? id : null;
 
-    // Refund mark-off tokens for any synthetic completions that are removed
+    // Refund mark-off tokens for any synthetic completions removed from this day
     let tokenRefund = 0;
-    if (newVal < oldQty) {
+    if (ownNew < ownCount) {
         const markOff = h.markOffDays?.[dIdx] || 0;
         if (markOff > 0) {
-            const real       = oldQty - markOff;
-            const newMarkOff = Math.max(0, Math.min(markOff, newVal - real));
+            const real       = ownCount - markOff;
+            const newMarkOff = Math.max(0, Math.min(markOff, ownNew - real));
             tokenRefund      = markOff - newMarkOff;
             h.markOffDays    = h.markOffDays || {};
             if (newMarkOff === 0) delete h.markOffDays[dIdx];
@@ -402,8 +427,9 @@ window.toggleBubble = async (id, val) => {
         }
     }
 
-    // Propagate value to all remaining days this week
-    for (let i = dIdx; i < 7; i++) h.history[i] = newVal;
+    // The entire mutation: set just this day's own count. No propagation.
+    h.history[dIdx] = ownNew;
+    const newTier = getTier(h, weekTotal(h.history));
 
     // Optimistic render — show the result immediately, don't wait for Firebase
     window.render?.();
@@ -414,14 +440,14 @@ window.toggleBubble = async (id, val) => {
         window.render?.();
     }
 
-    if (newVal > oldQty && newTier !== 'punish' && newTier !== oldTier) {
+    if (isUp && newTier !== 'punish' && newTier !== oldTier) {
         triggerFanfare(newTier);
     }
 
-    // ── Lucky draw (2% chance per completion, max once per habit per day) ──
-    if (newVal > oldQty) {
+    // ── Lucky draw (odds scale with tier, max once per habit per day) ──
+    if (isUp) {
         const today = new Date().toISOString().split('T')[0];
-        if (h.lastLuckyDrawDate !== today && Math.random() * 100 < 2) {
+        if (h.lastLuckyDrawDate !== today && Math.random() * 100 < LUCKY_DRAW_ODDS[newTier]) {
             state.starBalance += 1;
             h.lastLuckyDrawDate = today;
             addStarLog('luckyDraw', 1, 'Lucky draw! 🍀');

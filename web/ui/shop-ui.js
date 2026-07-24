@@ -141,14 +141,15 @@ window.cancelConfirm = () => {
 window.doRedeem = async () => {
     if (!uiState.pendingRedeem) return;
     const item = uiState.pendingRedeem;
-    await spendStars(item.cost, 'Redeemed: ' + item.name);
+    const ok = await spendStars(item.cost, 'Redeemed: ' + item.name);
+    uiState.pendingRedeem = null;
+    document.getElementById('shopConfirmView').style.display = 'none';
+    document.getElementById('shopItemsView').style.display   = '';
+    if (!ok) { updateStarDisplay(); renderShopSheet(); return; }
     if (item.isExcuseToken)      await addExcuseToken();
     if (item.isStreakResetToken) await addStreakResetToken();
     if (item.isMarkOffToken)     await addMarkOffToken();
-    uiState.pendingRedeem = null;
     updateStarDisplay();
-    document.getElementById('shopConfirmView').style.display = 'none';
-    document.getElementById('shopItemsView').style.display   = '';
     renderShopSheet();
 };
 

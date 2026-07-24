@@ -1,8 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────
 // web/ui/lucky-draw.js
 // Lucky-draw effects: clover popup over the bubble + toast notification
-// with clover/star confetti. Triggered with 2% chance per habit completion
-// (max once per habit per day). Called from habits-ui.js toggleBubble.
+// with clover/star confetti. Odds scale by tier (see Core/config.js
+// LUCKY_DRAW_ODDS), max once per habit per day. Called from
+// habits-ui.js toggleBubble.
 // ─────────────────────────────────────────────────────────────────────
 
 export function showCloverPopup(bubbleElement) {
