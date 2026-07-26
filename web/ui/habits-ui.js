@@ -380,26 +380,38 @@ window.toggleBubble = async (id, val) => {
 
     const dIdx     = getDayIdx(uiState.viewingDate);
     const todayIdx = getDayIdx(new Date());
-    // history stores PER-DAY counts. Preserve the exact on-screen tap feel,
-    // expressed on the cumulative view: today jumps straight to the tapped
-    // bubble; a past day moves by exactly one (tap an empty bubble to add,
-    // the top to remove) so tapping past the dashed preview bubbles can't
-    // overshoot. Then translate that target back into THIS day's own count —
-    // the only cell we write, so no other day can ever be corrupted.
+    // history stores PER-DAY counts. A tap either pops a filled bubble
+    // (remove) or fills an empty one (add):
+    //   • Filled bubble (val <= cur): remove one completion from whichever
+    //     day owns that bubble — so a mark can be popped from ANY day's card,
+    //     not just the day it was logged on.
+    //   • Empty bubble (val > cur): add to the day being viewed — today jumps
+    //     straight to the tapped bubble; a past day moves by exactly one so
+    //     tapping past the dashed preview bubbles can't overshoot.
+    // Either way we write exactly one day's own cell, so no other day is
+    // touched and the array can never be corrupted.
     const cum      = toCumulative(h.history);
     const cur      = cum[dIdx] || 0;
     const base     = dIdx > 0 ? (cum[dIdx - 1] || 0) : 0;
-    const ownCount = h.history[dIdx] || 0;
     const maxPer   = h.max || 7;
-    const newCum   = (dIdx === todayIdx || val <= cur)
-        ? (cur === val ? val - 1 : val)
-        : cur + 1;
-    const ownNew   = Math.max(0, Math.min(maxPer, newCum - base));
-    if (ownNew === ownCount) return; // tapped an inherited bubble → no change
-    const isUp     = ownNew > ownCount;
+    let targetDay, targetNew;
+    if (val <= cur) {
+        targetDay = -1;
+        for (let d = 0; d < 7; d++) { if ((cum[d] || 0) >= val) { targetDay = d; break; } }
+        targetNew = targetDay < 0 ? 0 : Math.max(0, (h.history[targetDay] || 0) - 1);
+    } else {
+        targetDay = dIdx;
+        const newCum = (dIdx === todayIdx) ? val : cur + 1;
+        targetNew = Math.max(0, Math.min(maxPer, newCum - base));
+    }
+    if (targetDay < 0) return;
+    const targetOld = h.history[targetDay] || 0;
+    if (targetNew === targetOld) return; // no change
+    const isUp     = targetNew > targetOld;
+    const newCur   = cur + (targetNew - targetOld); // viewed day's cumulative after
 
     const oldTier  = getTier(h, weekTotal(h.history));
-    const willMove = (cur === 0 && newCum > 0) || (newCum === 0 && cur > 0);
+    const willMove = (cur === 0 && newCur > 0) || (newCur === 0 && cur > 0);
 
     playBubblePop(isUp);
 
@@ -413,22 +425,23 @@ window.toggleBubble = async (id, val) => {
 
     uiState.lastActedId = willMove ? id : null;
 
-    // Refund mark-off tokens for any synthetic completions removed from this day
+    // Refund mark-off tokens for any synthetic completions removed from the
+    // day being changed.
     let tokenRefund = 0;
-    if (ownNew < ownCount) {
-        const markOff = h.markOffDays?.[dIdx] || 0;
+    if (targetNew < targetOld) {
+        const markOff = h.markOffDays?.[targetDay] || 0;
         if (markOff > 0) {
-            const real       = ownCount - markOff;
-            const newMarkOff = Math.max(0, Math.min(markOff, ownNew - real));
+            const real       = targetOld - markOff;
+            const newMarkOff = Math.max(0, Math.min(markOff, targetNew - real));
             tokenRefund      = markOff - newMarkOff;
             h.markOffDays    = h.markOffDays || {};
-            if (newMarkOff === 0) delete h.markOffDays[dIdx];
-            else h.markOffDays[dIdx] = newMarkOff;
+            if (newMarkOff === 0) delete h.markOffDays[targetDay];
+            else h.markOffDays[targetDay] = newMarkOff;
         }
     }
 
-    // The entire mutation: set just this day's own count. No propagation.
-    h.history[dIdx] = ownNew;
+    // The entire mutation: set just the target day's own count. No propagation.
+    h.history[targetDay] = targetNew;
     const newTier = getTier(h, weekTotal(h.history));
 
     // Optimistic render — show the result immediately, don't wait for Firebase
