@@ -214,14 +214,14 @@ export async function executeWeeklyReset(io, now = new Date()) {
 
     // ── Wipe history, clear bounties, advance cycles ─────────────────────
     habits = habits.map(h => {
-        if (isDormant(h)) return { ...h, history: [0, 0, 0, 0, 0, 0, 0], excused: false };
+        if (isDormant(h)) return { ...h, history: [0, 0, 0, 0, 0, 0, 0], excused: false, markOffDays: {} };
 
         const hist3 = (h.history || []).slice(0, 7);
         const cur3  = weekTotal(hist3);
         const tier3 = getTier(h, cur3);
         const bountyTriggered3 = h.bountyActive && (tier3 === 'goal' || tier3 === 'bonus');
 
-        let updated = { ...h, history: [0, 0, 0, 0, 0, 0, 0], excused: false };
+        let updated = { ...h, history: [0, 0, 0, 0, 0, 0, 0], excused: false, markOffDays: {} };
         if (bountyTriggered3) {
             delete updated.bountyActive;
             delete updated.bountyDollars;
