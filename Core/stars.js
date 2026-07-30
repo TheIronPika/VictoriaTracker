@@ -68,9 +68,12 @@ export async function syncStarData() {
 
 /**
  * Append a log entry. Caller is responsible for syncStarData() afterward.
+ * `extra` merges in additional structured fields (e.g. Lucky Draw's
+ * habitName/tier/oddsPct) without changing the shape every other log type
+ * gets — existing entries and callers are unaffected.
  */
-export function addStarLog(type, amount, reason) {
-    state.starLog.unshift({ ts: Date.now(), type, amount, reason });
+export function addStarLog(type, amount, reason, extra = {}) {
+    state.starLog.unshift({ ts: Date.now(), type, amount, reason, ...extra });
 }
 
 /**
@@ -81,6 +84,45 @@ export async function awardStars(amount, reason = 'Manual award') {
     setStarBalance(state.starBalance + amount);
     addStarLog('earn', amount, reason);
     await syncStarData();
+}
+
+// Reason string for a real (non-test) Lucky Draw win. luckyDrawWinsToday()
+// filters on this exact string so ShopManage's test-trigger button (which
+// passes its own reason) never suppresses Victoria's real daily odds.
+export const LUCKY_DRAW_REASON = 'Lucky Draw! 🍀';
+
+/**
+ * Award exactly 1 star from a Lucky Draw win. Kept separate from awardStars()
+ * so the log entry stays tagged 'luckyDraw' (not 'earn') — HabitCard's real
+ * roll and ShopManage's test-trigger button both call this, so the two
+ * paths can never drift into different log semantics.
+ *
+ * @param {string} [reason]
+ * @param {{habitName?: string, tier?: string, oddsPct?: number}|null} [source]
+ *   Which habit/tier/odds the win came from, so the star history can show
+ *   it. Omitted for the Manage test-trigger button, which has no real habit
+ *   to attribute to — the log/history UI just shows those entries without
+ *   the detail line.
+ */
+export async function awardLuckyDrawStar(reason = LUCKY_DRAW_REASON, source = null) {
+    setStarBalance(state.starBalance + 1);
+    addStarLog('luckyDraw', 1, reason, source || {});
+    await syncStarData();
+}
+
+/**
+ * How many *real* Lucky Draw wins have already landed today (UTC date, same
+ * boundary used elsewhere for "today"). Test-triggered wins (distinct reason)
+ * don't count, so previewing the effect in Manage never nerfs her real odds.
+ * Used to soft-decay the odds on each subsequent roll — see LUCKY_DRAW_ODDS.
+ */
+export function luckyDrawWinsToday() {
+    const today = new Date().toISOString().split('T')[0];
+    return state.starLog.filter(e =>
+        e.type === 'luckyDraw' &&
+        e.reason === LUCKY_DRAW_REASON &&
+        new Date(e.ts).toISOString().split('T')[0] === today,
+    ).length;
 }
 
 /**
@@ -211,6 +253,18 @@ export async function useMarkOffToken() {
     addStarLog('markOffToken', -1, 'Mark-off token used');
     await syncStarData();
     return true;
+}
+
+/**
+ * Update a shop item's icon, name, and/or cost by id.
+ */
+export async function updateShopItem(id, { icon, name, cost }) {
+    const item = state.shopItems.find(it => it.id === id);
+    if (!item) return;
+    if (icon !== undefined) item.icon = icon;
+    if (name !== undefined) item.name = name;
+    if (cost !== undefined) item.cost = cost;
+    await syncStarData();
 }
 
 /**

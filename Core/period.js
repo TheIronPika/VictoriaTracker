@@ -66,6 +66,38 @@ export function getWeekStart() {
 }
 
 /**
+ * Estimate the next period's start from logged history. Uses the gaps
+ * between the last up-to-4 logged start dates (so 5 entries → 4 gaps max),
+ * averaged, projected forward from the most recent start.
+ * confidence: 'none' (<2 entries, no gap to measure), 'low' (exactly one
+ * gap), 'estimate' (2+ gaps). Returns { confidence, cyclesUsed } only when
+ * there isn't enough history for a prediction.
+ */
+export function predictNextPeriod() {
+    const history = state.periodData.history || [];
+    const starts = history.slice(0, 4).map(e => e.startTs).filter(Boolean);
+    if (starts.length < 2) return { confidence: 'none', cyclesUsed: 0 };
+
+    const gaps = [];
+    for (let i = 0; i < starts.length - 1; i++) {
+        gaps.push(Math.round((starts[i] - starts[i + 1]) / 86400000));
+    }
+    const avgCycle = Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length);
+    const durations = history.slice(0, 4).map(e => e.duration).filter(d => d != null);
+    const avgDuration = durations.length
+        ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
+        : null;
+
+    return {
+        confidence: gaps.length >= 2 ? 'estimate' : 'low',
+        cyclesUsed: gaps.length,
+        avgCycle,
+        avgDuration,
+        predictedTs: starts[0] + avgCycle * 86400000,
+    };
+}
+
+/**
  * Returns the Mon=0…Sun=6 index when the period started this week.
  * Returns 7 if no period active or this week (safe — no bubble will be >= 7).
  */

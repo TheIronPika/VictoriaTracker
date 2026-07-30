@@ -5,8 +5,18 @@
 // ─────────────────────────────────────────────────────────────────────
 
 import { state, setHabits } from './state.js';
-import { writeDoc, watchDoc } from './firebase.js';
+import { readDoc, writeDoc, watchDoc } from './firebase.js';
 import { FIRESTORE_DOCS } from './config.js';
+
+/**
+ * One-time load of habits — for headless contexts (e.g. the widget task
+ * handler) that need state.habits populated without a live subscription.
+ * Safe to call multiple times.
+ */
+export async function loadHabits() {
+    const data = await readDoc(FIRESTORE_DOCS.HABITS);
+    setHabits((data && data.data) || []);
+}
 
 /**
  * Subscribe to live habits updates from Firestore.

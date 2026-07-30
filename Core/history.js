@@ -43,7 +43,9 @@ export async function saveWeekSnapshot(habits, totalBalance, dateStr) {
                     cat: h.cat,
                     tier,
                     payout: getBasePayout(h, tier),
-                    // Snapshots stay cumulative so the history view is unchanged.
+                    // Snapshots stay in cumulative form so the history view
+                    // (which renders them as a running-total bubble row) is
+                    // unchanged by the per-day storage switch.
                     history: toCumulative(h.history),
                     thresh: {
                         punish: h.punish || 1,

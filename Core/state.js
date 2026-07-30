@@ -57,6 +57,18 @@ export const state = {
     // Each event: { id, title, startISO, endISO, allDay? }.
     calendarEvents: [],
     calendarLoaded: false,
+
+    // Permanent achievement badges unlocked over time.
+    achievements: [],
+
+    // Water tracker (system/water_data). history is keyed by local
+    // 'YYYY-MM-DD'; amount/date are derived for today by water.js on load.
+    waterData: { date: null, amount: 0, goal: 120, history: {} },
+    waterLoaded: false,
+
+    // Weekly reset approval (system/reset_state) — see core/resetState.js.
+    resetState: { pendingReset: false, pendingSince: null, snoozeCount: 0, snoozedUntil: null, lastWeeklyReset: null },
+    resetStateLoaded: false,
 };
 
 // ─── Mutators ────────────────────────────────────────────────────────
@@ -76,3 +88,4 @@ export function setMarkOffTokens(n)       { state.markOffTokens = n; }
 export function setSectionOrder(list)  { state.sectionOrder = Array.isArray(list) ? list : []; }
 export function setWeeklyPlans(map)    { state.weeklyPlans = (map && typeof map === 'object') ? map : {}; }
 export function setCalendarEvents(list){ state.calendarEvents = Array.isArray(list) ? list : []; }
+export function setResetState(data)    { state.resetState = { ...state.resetState, ...(data || {}) }; }

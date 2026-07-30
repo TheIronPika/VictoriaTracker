@@ -3,11 +3,12 @@
 // Firebase init + three thin wrappers used by every data module:
 //   readDoc  — one-time getDoc
 //   writeDoc — setDoc (merge: false, full overwrite)
+//   mergeDoc — setDoc (merge: true, field-level, supports sentinels)
 //   watchDoc — onSnapshot live listener, returns unsubscribe fn
 // ─────────────────────────────────────────────────────────────────────
 
 import { initializeApp }                        from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-import { getFirestore, doc, getDoc, setDoc, onSnapshot }
+import { getFirestore, doc, getDoc, setDoc, onSnapshot, increment }
     from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import { FIREBASE_CONFIG } from './config.js';
 
@@ -38,6 +39,18 @@ export async function writeDoc([col, id], data) {
 }
 
 /**
+ * Field-level merge write. Unlike writeDoc this leaves untouched fields
+ * alone, and supports sentinel values (e.g. increment()) so concurrent
+ * writers — her phone, his phone, the native app — sum instead of
+ * clobbering each other.
+ * @param {[string, string]} docPath
+ * @param {object}           partial
+ */
+export async function mergeDoc([col, id], partial) {
+    await setDoc(doc(db, col, id), partial, { merge: true });
+}
+
+/**
  * Subscribe to live updates on a Firestore document.
  * Fires immediately with current data, then on every change.
  * @param {[string, string]} docPath
@@ -50,5 +63,6 @@ export function watchDoc([col, id], callback) {
     });
 }
 
-// Export db instance for any module that needs it directly
-export { db };
+// Export db instance for any module that needs it directly, plus the
+// increment() sentinel for additive field writes via mergeDoc.
+export { db, increment };
