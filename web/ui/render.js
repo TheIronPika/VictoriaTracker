@@ -12,7 +12,7 @@ import { getDayIdx, escapeHtml } from '../../Core/utils.js';
 import { getTier, computeWeeklyPayout, toCumulative } from '../../Core/habits.js';
 import { isCycleDue, isCyclic, cycleLabel, cycleDueLabel } from '../../Core/cycles.js';
 import { computeStreaksFromHistory } from '../../Core/streaks.js';
-import { MANAGE_PASSCODE, TIER_COLORS } from '../../Core/config.js';
+import { MANAGE_PASSCODE, TIER_COLORS, WATER_CONFIG } from '../../Core/config.js';
 import { animateMoneyDisplay } from './animations.js';
 import { renderSeasonalSection, renderEventsManage } from './events-ui.js';
 import { getEventPayoutsTotal } from '../../Core/events.js';
@@ -208,6 +208,10 @@ export function render() {
             // today with no visual cue — confusing (see feedback
             // 2026-07-21). Lock those days from editing instead.
             const isFutureDay = dIdx > todayIdx;
+            // The water tracker's linked habit is forward-filled by
+            // Core/water.js, so its bubbles are a read-out, not a control —
+            // drop the tap affordance (habits-ui.js also refuses the write).
+            const isSystemDriven = h.id === WATER_CONFIG.linkedHabitId;
             let bubblesHtml = '';
             for (let i = 1; i <= (h.max || 7); i++) {
                 const stepTier   = getTier(h, i);
@@ -227,7 +231,7 @@ export function render() {
                 const bubbleClass = `bubble day-bub ${isFilled ? ('filled ' + (isSynthetic ? 'mark-off' : stepTier)) : ''} ${isFuture ? 'future' : ''} ${isPaused ? 'period-paused' : ''}`;
                 const borderColor = isSynthetic ? '#aaa' : `var(--color-${stepTier})`;
                 const extraStyle  = isFuture ? `background:${hexToRgba(TIER_COLORS[stepTier], 0.15)};color:${TIER_COLORS[stepTier]};` : '';
-                const onclickAttr = isFutureDay ? '' : `onclick="window.toggleBubble('${h.id}',${i})"`;
+                const onclickAttr = (isFutureDay || isSystemDriven) ? '' : `onclick="window.toggleBubble('${h.id}',${i})"`;
                 bubblesHtml += `<div class="${bubbleClass}"
                     style="border-color:${borderColor};${extraStyle}"
                     ${onclickAttr}>${dayLetter}</div>`;
@@ -253,7 +257,7 @@ export function render() {
                             ${h.bountyActive ? `<span class="bounty-badge">🏆 Bounty</span>` : ''}
                             ${forecastBadgeSpan}
                             ${(h.excused || state.excuseTokens > 0) ? `<button class="excuse-btn ${h.excused ? 'excuse-on' : ''}" onclick="event.stopPropagation();window.toggleExcused('${h.id}')">${h.excused ? 'Unexcuse' : 'Excuse'}</button>` : ''}
-                            ${(!isFutureDay && state.markOffTokens > 0) ? `<button class="mark-btn" onclick="event.stopPropagation();window.useMarkOffBubble('${h.id}')" title="Use a mark-off token to count one extra completion">📝 +1</button>` : ''}
+                            ${(!isFutureDay && !isSystemDriven && state.markOffTokens > 0) ? `<button class="mark-btn" onclick="event.stopPropagation();window.useMarkOffBubble('${h.id}')" title="Use a mark-off token to count one extra completion">📝 +1</button>` : ''}
                         </div>
                         ${forecastDetailDiv}
                         <div class="bubbles" style="${isFutureDay ? 'opacity:0.45;pointer-events:none;' : ''}">${bubblesHtml}</div>

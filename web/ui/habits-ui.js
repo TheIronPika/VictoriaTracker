@@ -9,7 +9,7 @@ import { uiState, saveCollapsedState } from './ui-state.js';
 import { state } from '../../Core/state.js';
 import { getDayIdx, escapeHtml } from '../../Core/utils.js';
 import { getTier, toCumulative, weekTotal } from '../../Core/habits.js';
-import { LUCKY_DRAW_ODDS } from '../../Core/config.js';
+import { LUCKY_DRAW_ODDS, WATER_CONFIG } from '../../Core/config.js';
 import { syncHabits, toggleExcused as coreToggleExcused, deleteHabit as coreDeleteHabit } from '../../Core/habits-data.js';
 import { syncStarData, addStarLog, useExcuseToken, useStreakResetToken, useMarkOffToken, grantMarkOffTokens, awardLuckyDrawStar, luckyDrawWinsToday } from '../../Core/stars.js';
 import { playBubblePop, triggerFanfare, checkPerfectWeek, checkStreakMilestones } from './animations.js';
@@ -285,6 +285,17 @@ window.resetBadStreak = async (id) => {
     }
 };
 
+// System-driven habits render like any other card but reject manual fill
+// attempts: their history is forward-filled from elsewhere, so a bubble tap
+// or mark-off would fight that auto-fill (and either hand out a free
+// completion or get silently overwritten on the next sync). Right now this
+// is only the water tracker's linked "Drink Water" habit — Core/water.js
+// syncWaterHabit() owns that habit's bubbles. Mirrors the native app's
+// HabitCard `locked` prop; enforced at the handler so every view is covered.
+function isSystemDriven(id) {
+    return id === WATER_CONFIG.linkedHabitId;
+}
+
 // ── Mark-off token ────────────────────────────────────────────────────
 // Spend one mark-off token to synthetically add +1 completion to a habit
 // for the current viewing day, as if she actually did it.
@@ -292,6 +303,7 @@ window.resetBadStreak = async (id) => {
 window.useMarkOffBubble = async (id) => {
     const h = uiState.habits.find(x => x.id === id);
     if (!h) return;
+    if (isSystemDriven(id)) return;
     // A day after today has no independent identity yet — editing it isn't
     // meaningful (see toggleBubble below).
     if (getDayIdx(uiState.viewingDate) > getDayIdx(new Date())) return;
@@ -364,6 +376,7 @@ window.useMarkOffBubble = async (id) => {
 window.toggleBubble = async (id, val) => {
     const h = uiState.habits.find(x => x.id === id);
     if (!h) return;
+    if (isSystemDriven(id)) return;
     // A day after today has no independent identity yet (it just mirrors
     // today) — editing it would silently redirect to today with no visual
     // cue, which is confusing. render.js already omits the onclick for
