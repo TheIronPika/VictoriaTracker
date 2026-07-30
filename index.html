@@ -40,6 +40,9 @@
         import { loadSectionOrder, watchSectionOrder } from './Core/section-order.js';
         import { watchWeeklyPlans } from './Core/planning.js';
         import { watchCalendarEvents } from './Core/calendar.js';
+        import { watchWaterData } from './Core/water.js';
+        import { watchAchievements } from './Core/achievements.js';
+        import { watchResetState } from './Core/resetState.js';
 
         // ── UI (DOM rendering + window.* handler registration) ───────────────
         import { uiState } from './web/ui/ui-state.js';
@@ -61,6 +64,8 @@
         import './web/ui/manage-ui.js';
         import './web/ui/rooms-ui.js';
         import './web/ui/planning-ui.js';
+        import './web/ui/water-ui.js';
+        import { checkPerfectMonth, checkEarningsTotal } from './web/ui/achievements-ui.js';
 
         // ── EmailJS init ─────────────────────────────────────────────────────
         emailjs.init(EMAIL_CONFIG.publicKey);
@@ -97,12 +102,25 @@
             // Section order: load once, then subscribe so other tabs/devices
             // see reorders live without a refresh.
             loadSectionOrder().then(() => { window.render?.(); watchSectionOrder(); }).catch(() => {});
-            // Pre-load history so streak badges render immediately
-            loadWeeklyHistory().then(() => { window.render?.(); window.maybeShowWeeklyReportAfterReset?.(); }).catch(() => {});
+            // Pre-load history so streak badges render immediately. The two
+            // history-derived achievement checks run here because nothing else
+            // triggers them — both are idempotent, so re-running on each load
+            // is harmless.
+            loadWeeklyHistory().then(() => {
+                window.render?.();
+                window.maybeShowWeeklyReportAfterReset?.();
+                checkPerfectMonth();
+                checkEarningsTotal();
+            }).catch(() => {});
             // Planning tab: live-watch the plan + calendar docs so a phone edit
             // reflects on desktop and vice versa (re-renders only the Planning view).
             watchWeeklyPlans(() => window.renderPlanning?.());
             watchCalendarEvents(() => window.renderPlanning?.());
+            // Water tracker, achievement badges, and weekly-reset state — all
+            // shared live with the native app, so a tap there shows up here.
+            watchWaterData();
+            watchAchievements();
+            watchResetState();
         });
 
     </script>
@@ -1341,6 +1359,10 @@
         <div style="display:flex;justify-content:flex-end;padding:8px 2px 4px;">
             <button id="sortLockBtn" class="sort-lock-btn" onclick="window.toggleSortLock()" title="Completed tasks move to bottom">⇅ Sort</button>
         </div>
+        <!-- Water tracker: its own Firestore doc and its own daily streak, not
+             a habit — so it sits above sectionsRoot, outside the reorderable
+             section system (it isn't a category). Matches the native app. -->
+        <div id="waterRoot"></div>
         <!-- sectionsRoot owns the order. Category divs are inserted by render.js
              as direct children with data-section-id="<category name>". The two
              special cards (seasonal/rooms) live here as well so they can be
@@ -1384,6 +1406,7 @@
                 <button class="msp-nav-btn" id="msp-nav-period" onclick="window.switchManageSection('period')">&#129656; Period</button>
                 <button class="msp-nav-btn" id="msp-nav-streakdollars" onclick="window.switchManageSection('streakdollars')">&#128176; Streak $</button>
                 <button class="msp-nav-btn" id="msp-nav-layout" onclick="window.switchManageSection('layout')">&#128306; Layout</button>
+                <button class="msp-nav-btn" id="msp-nav-achievements" onclick="window.switchManageSection('achievements')">&#127942; Achievements</button>
               </nav>
               <div class="msp-habit-list-wrap">
                 <div id="manageListRoot"></div>
@@ -1610,6 +1633,14 @@
                 </div>
               </div>
 
+              <!-- Achievements -->
+              <div id="msp-right-achievements" style="display:none">
+                <div class="msp-section">
+                  <div class="msp-section-title">&#127942; Achievements</div>
+                  <div id="achievementsRoot"></div>
+                </div>
+              </div>
+
               <!-- Period History -->
               <div id="msp-right-period" style="display:none">
                 <div class="msp-section">
@@ -1671,6 +1702,66 @@
         <div id="defBody" style="font-family:'Montserrat',sans-serif;font-size:14px;line-height:1.7;color:#666;white-space:pre-wrap;"></div>
     </div>
 </div>
+
+<style id="water-styles">
+    /* ── Water tracker card (web/ui/water-ui.js) ──────────────────── */
+    .water-card {
+        display: flex; align-items: center; gap: 16px;
+        background: rgba(230,244,255,0.60);
+        border-radius: 16px; padding: 14px 16px; margin-bottom: 14px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.04);
+    }
+    .water-vessel-col { display: flex; flex-direction: column; align-items: center; }
+    .water-vessel-svg { display: block; overflow: visible; }
+    .water-ground-shadow {
+        width: 34px; height: 6px; border-radius: 3px; margin-top: -1px;
+        background: rgba(40,60,80,0.12); transform: scaleX(1.1);
+    }
+    .water-vessel-pill {
+        display: flex; align-items: center; gap: 3px; margin-top: 5px;
+        padding: 3px 8px; border-radius: 12px; cursor: pointer;
+        background: rgba(255,255,255,0.55);
+        border: 1px solid rgba(59,143,212,0.28);
+        font-family: 'Montserrat', sans-serif; font-size: 10px; font-weight: 600; color: #2c5f82;
+    }
+    .water-chevron { font-size: 9px; color: #3b8fd4; font-weight: 700; }
+    .water-body { flex: 1; min-width: 0; }
+    .water-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+    .water-title { font-size: 16px; color: #2c5f82; font-weight: 600; }
+    .water-streak { font-size: 12px; color: #e67e22; font-weight: 700; }
+    .water-amount-row { display: flex; align-items: baseline; margin-bottom: 10px; }
+    .water-amount { font-family: 'Playfair Display', serif; font-size: 30px; font-weight: 700; color: #1d4e6e; }
+    .water-amount-gold { color: #b8912f; }
+    .water-amount-goal { font-size: 12px; color: #6b8ba3; }
+    .water-picker { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+    .water-thumb {
+        width: 44px; height: 46px; border-radius: 12px; cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+        background: rgba(255,255,255,0.5); border: 1px solid rgba(59,143,212,0.22);
+    }
+    .water-thumb-sel { border: 2px solid #3b8fd4; background: rgba(214,236,251,0.9); }
+    .water-btn-row { display: flex; gap: 10px; }
+    .water-add-btn {
+        flex: 1; background: rgba(59,143,212,0.85); border: none; border-radius: 12px;
+        padding: 10px 0; color: #fff; font-weight: 700; font-size: 13px; cursor: pointer;
+        font-family: 'Montserrat', sans-serif;
+    }
+    .water-undo-btn {
+        padding: 0 14px; border-radius: 12px; background: none; cursor: pointer;
+        border: 1.5px solid rgba(59,143,212,0.4); color: #3b8fd4; font-weight: 700; font-size: 13px;
+        font-family: 'Montserrat', sans-serif;
+    }
+    .water-undo-btn:disabled { opacity: 0.4; cursor: default; }
+    /* The fill/surface slide to their new level; the wave loops horizontally
+       one full viewBox width, which is exactly one period of wavePath(). */
+    .water-fill, .water-wave, .water-vessel-svg line { transition: y 600ms ease-out, y1 600ms ease-out, y2 600ms ease-out, d 600ms ease-out; }
+    .water-wave { animation: water-wave-drift 3.5s linear infinite; }
+    @keyframes water-wave-drift { from { transform: translateX(0); } to { transform: translateX(50%); } }
+    @media (prefers-reduced-motion: reduce) {
+        .water-wave { animation: none; }
+        .water-fill, .water-wave, .water-vessel-svg line { transition: none; }
+    }
+</style>
 
 <style id="planning-styles">
     /* ── Planning tab ─────────────────────────────────────────────── */

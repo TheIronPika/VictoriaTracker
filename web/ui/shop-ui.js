@@ -6,6 +6,7 @@
 import { uiState } from './ui-state.js';
 import { state } from '../../Core/state.js';
 import { escapeHtml } from '../../Core/utils.js';
+import { unlockAchievement } from '../../Core/achievements.js';
 import {
     syncStarData,
     awardStars      as coreAwardStars,
@@ -149,6 +150,11 @@ window.doRedeem = async () => {
     if (item.isExcuseToken)      await addExcuseToken();
     if (item.isStreakResetToken) await addStreakResetToken();
     if (item.isMarkOffToken)     await addMarkOffToken();
+
+    const redeemCount = (state.starLog || []).filter(e => e.reason?.startsWith('Redeemed:')).length;
+    if (redeemCount === 1)  await unlockAchievement({ id: 'shop_first', achId: 'shop_first', label: 'First shop redemption' });
+    if (redeemCount === 10) await unlockAchievement({ id: 'shop_ten',   achId: 'shop_ten',   label: 'Ten shop redemptions' });
+
     updateStarDisplay();
     renderShopSheet();
 };

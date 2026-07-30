@@ -11,7 +11,7 @@ import { getDayIdx, escapeHtml } from '../../Core/utils.js';
 import { getTier, toCumulative, weekTotal } from '../../Core/habits.js';
 import { LUCKY_DRAW_ODDS } from '../../Core/config.js';
 import { syncHabits, toggleExcused as coreToggleExcused, deleteHabit as coreDeleteHabit } from '../../Core/habits-data.js';
-import { syncStarData, addStarLog, useExcuseToken, useStreakResetToken, useMarkOffToken, grantMarkOffTokens } from '../../Core/stars.js';
+import { syncStarData, addStarLog, useExcuseToken, useStreakResetToken, useMarkOffToken, grantMarkOffTokens, awardLuckyDrawStar, luckyDrawWinsToday } from '../../Core/stars.js';
 import { playBubblePop, triggerFanfare, checkPerfectWeek, checkStreakMilestones } from './animations.js';
 import { showCloverPopup, showLuckyDrawToast } from './lucky-draw.js';
 
@@ -457,15 +457,19 @@ window.toggleBubble = async (id, val) => {
         triggerFanfare(newTier);
     }
 
-    // ── Lucky draw (odds scale with tier, max once per habit per day) ──
-    if (isUp) {
-        const today = new Date().toISOString().split('T')[0];
-        if (h.lastLuckyDrawDate !== today && Math.random() * 100 < LUCKY_DRAW_ODDS[newTier]) {
-            state.starBalance += 1;
-            h.lastLuckyDrawDate = today;
-            addStarLog('luckyDraw', 1, 'Lucky draw! 🍀');
-            await syncStarData();
-            await syncHabits();
+    // ── Lucky draw ────────────────────────────────────────────────────
+    // Odds scale with tier, then halve for every real win already landed
+    // today (2/5/7/10 -> 1/2.5/3.5/5 after the first, and so on) so more
+    // than one is possible in a day but each is less likely than the last.
+    // targetDay === todayIdx restricts this to completions actually logged
+    // on today's real card — the whole point is to reward filling habits
+    // out daily, so backdating a past day's bubble (or popping/re-filling
+    // one from an earlier day's card) must never roll for a lucky draw.
+    if (isUp && targetDay === todayIdx) {
+        const decay   = Math.pow(0.5, luckyDrawWinsToday());
+        const oddsPct = LUCKY_DRAW_ODDS[newTier] * decay;
+        if (Math.random() * 100 < oddsPct) {
+            await awardLuckyDrawStar(undefined, { habitName: h.name, tier: newTier, oddsPct });
 
             const bubbleEl = document.querySelector(
                 `.habit-card[data-habit-id="${id}"] .bubble[onclick*="toggleBubble('${id}',${val})"]`

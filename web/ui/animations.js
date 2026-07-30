@@ -7,11 +7,14 @@
 
 import { uiState } from './ui-state.js';
 import { state } from '../../Core/state.js';
-import { getTier, toCumulative } from '../../Core/habits.js';
+import { getTier, toCumulative, computeWeeklyPayout } from '../../Core/habits.js';
 import { getDayIdx } from '../../Core/utils.js';
 import { computeStreaksFromHistory } from '../../Core/streaks.js';
 import { isCycleDue } from '../../Core/cycles.js';
+import { isPeriodActive } from '../../Core/period.js';
 import { WEATHER_CONFIG } from '../../Core/config.js';
+import { unlockAchievement } from '../../Core/achievements.js';
+import { MILESTONE_TO_ACHIEVEMENT } from './achievement-catalog.js';
 
 // ── Bubble pop sound ──────────────────────────────────────────────────
 
@@ -101,7 +104,11 @@ export function checkPerfectWeek() {
         const tier = getTier(h, toCumulative(h.history)[getDayIdx(uiState.viewingDate)] || 0);
         return tier === 'goal' || tier === 'bonus';
     });
-    if (allGood) { localStorage.setItem(key, '1'); triggerPerfectWeek(); }
+    if (allGood) {
+        localStorage.setItem(key, '1');
+        triggerPerfectWeek();
+        unlockAchievement({ id: 'perfect_week', achId: 'perfect_week', label: 'Perfect week' });
+    }
 }
 
 export function triggerPerfectWeek() {
@@ -116,18 +123,47 @@ export function triggerPerfectWeek() {
 }
 
 // ── Streak milestone confetti ─────────────────────────────────────────
-// Fires when a habit's streak hits 1, 2, 4, or 14+ weeks exactly.
-// Uses localStorage to avoid re-triggering on every page load.
+// Fires when a habit's streak hits 1, 4, or 14 weeks exactly. Uses
+// localStorage to avoid re-triggering on every page load.
+//
+// The current week counts toward the streak when it's already at goal or
+// bonus, so a milestone lands the moment she earns it rather than waiting
+// for the Monday reset to fold it into history. The native app's
+// checkStreakMilestones does the same with the same gating keys.
+
+// Badge wording per milestone. The streak counter and the displayed week
+// count are NOT the same scale — these strings are the user-facing names
+// and must stay byte-identical to the native app's, since both write into
+// the same achievements doc.
+const MILESTONE_LABELS = {
+    1:  '7 week streak!',
+    4:  '30 week streak!',
+    14: '100 weeks — legendary!',
+};
 
 export function checkStreakMilestones() {
     if (!state.weeklyHistory.length) return;
-    const milestones = [1, 2, 4, 14];
+    const milestones = [1, 4, 14];
+    const periodActive = isPeriodActive();
     uiState.habits.forEach(h => {
-        const { streak } = computeStreaksFromHistory(state.weeklyHistory, h.id);
+        const { streak: histStreak } = computeStreaksFromHistory(state.weeklyHistory, h.id);
+        const { tier: curTier } = computeWeeklyPayout(h, { periodActive });
+        const curWeekGood = curTier === 'goal' || curTier === 'bonus';
+        const streak = histStreak + (curWeekGood ? 1 : 0);
         if (!milestones.includes(streak)) return;
         const key = `streakMilestone_${h.id}_${streak}`;
         if (localStorage.getItem(key)) return;
         localStorage.setItem(key, '1');
+
+        const achId = MILESTONE_TO_ACHIEVEMENT[streak];
+        if (achId) {
+            unlockAchievement({
+                id: `${achId}_${h.id}`,
+                achId,
+                habitId: h.id,
+                label: `${MILESTONE_LABELS[streak] || `${streak}w streak`}: ${h.name}`,
+            });
+        }
 
         const shapes = [confetti.shapeFromText({ text: '🔥', scalar: 2 })];
         confetti({ particleCount: 60, spread: 50, origin: { x: 0.4, y: 0.8 }, shapes, scalar: 2, startVelocity: 45 });

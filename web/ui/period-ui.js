@@ -7,8 +7,9 @@
 import { state } from '../../Core/state.js';
 import { uiState } from './ui-state.js';
 import {
-    isPeriodActive, periodDayCount, syncPeriodData
+    isPeriodActive, periodDayCount, syncPeriodData, predictNextPeriod
 } from '../../Core/period.js';
+import { shortDate } from '../../Core/utils.js';
 
 // Same calendar day? (ignores time-of-day)
 function sameDay(a, b) {
@@ -130,27 +131,66 @@ window.clearPeriodWeekFlag = async () => {
 
 // ── History panel (Manage tab) ────────────────────────────────────────
 
+// "Cycle Insights" headline + confidence badge, mirroring the native app's
+// block in ManageContent.tsx so both read the same prediction the same way.
+function renderCycleInsights(prediction, history, isActive) {
+    const badge = prediction.confidence === 'estimate'
+        ? { text: 'Estimate',        fg: '#1d7a43', bg: 'rgba(39,174,96,0.10)' }
+        : prediction.confidence === 'low'
+            ? { text: 'Low confidence', fg: '#d9534f', bg: 'rgba(217,83,79,0.12)' }
+            : { text: 'Not enough data', fg: '#999',    bg: 'rgba(0,0,0,0.05)' };
+
+    let body;
+    if (prediction.confidence === 'none') {
+        const need = Math.max(1, 2 - history.length);
+        body = `<div style="font-size:12px;color:#bbb;line-height:1.5;">Log ${need} more period${need !== 1 ? 's' : ''} and a prediction shows up here automatically — needs at least two to measure a cycle length.</div>`;
+    } else if (isActive) {
+        const diff = Math.round((prediction.predictedTs - (state.periodData.startTs || 0)) / 86400000);
+        const diffLabel = diff === 0 ? 'right on predicted schedule'
+            : diff > 0 ? `${diff} day${diff > 1 ? 's' : ''} later than predicted`
+                : `${-diff} day${-diff > 1 ? 's' : ''} earlier than predicted`;
+        body = `<div style="font-size:20px;font-weight:500;color:#d9534f;">Started ${shortDate(state.periodData.startTs)}</div>
+                <div style="font-size:11px;color:#999;margin-top:3px;">${diffLabel} (predicted ${shortDate(prediction.predictedTs)})</div>`;
+    } else {
+        const daysUntil = Math.round((prediction.predictedTs - Date.now()) / 86400000);
+        const late = daysUntil < 0;
+        const headline = daysUntil === 0 ? 'Expected today'
+            : late ? `${-daysUntil} day${-daysUntil > 1 ? 's' : ''} late`
+                : `In ${daysUntil} day${daysUntil > 1 ? 's' : ''}`;
+        body = `<div style="font-size:20px;font-weight:500;color:${late ? '#d9534f' : '#1d7a43'};">${headline}</div>
+                <div style="font-size:11px;color:#999;margin-top:3px;">Expected ${shortDate(prediction.predictedTs)} · based on last ${prediction.cyclesUsed + 1} cycles</div>`;
+    }
+
+    return `
+        <div style="border-bottom:1px solid rgba(0,0,0,0.05);padding-bottom:14px;margin-bottom:16px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                <div style="font-size:12px;color:#999;text-transform:uppercase;letter-spacing:0.5px;">Cycle Insights</div>
+                <div style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;color:${badge.fg};background:${badge.bg};">${badge.text}</div>
+            </div>
+            ${body}
+        </div>`;
+}
+
 export function renderPeriodHistory() {
     const root = document.getElementById('periodHistoryRoot');
     if (!root) return;
 
     const history = state.periodData.history || [];
 
-    const avgCycleDays = history.length >= 2
-        ? Math.round((history[0].startTs - history[history.length - 1].startTs) / ((history.length - 1) * 86400000))
-        : 0;
-    const avgDurationDays = history.length > 0
-        ? Math.round(history.reduce((sum, e) => sum + e.duration, 0) / history.length * 10) / 10
-        : 0;
-    const nextPeriodTs   = history.length > 0 && avgCycleDays > 0
-        ? history[0].endTs + (avgCycleDays * 86400000)
-        : null;
-    const nextPeriodDate = nextPeriodTs ? new Date(nextPeriodTs) : null;
-    const nextPeriodStr  = nextPeriodDate
+    // Prediction comes from Core so this agrees with the native app to the
+    // day — it averages the gaps between the last few START dates, which is
+    // not the same as projecting forward from the last END date.
+    const prediction      = predictNextPeriod();
+    const hasPrediction   = prediction.confidence !== 'none';
+    const avgCycleDays    = hasPrediction ? prediction.avgCycle : 0;
+    const avgDurationDays = hasPrediction && prediction.avgDuration != null ? prediction.avgDuration : 0;
+    const nextPeriodDate  = hasPrediction ? new Date(prediction.predictedTs) : null;
+    const nextPeriodStr   = nextPeriodDate
         ? (nextPeriodDate.getMonth() + 1) + '/' + nextPeriodDate.getDate() + '/' + nextPeriodDate.getFullYear()
         : '--';
 
     const isActive = isPeriodActive();
+    const insightsHtml = renderCycleInsights(prediction, history, isActive);
     let html = `
         <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
             <button onclick="window.clearPeriodWeekFlag()"
@@ -160,6 +200,7 @@ export function renderPeriodHistory() {
         </div>
         ${isActive ? `<div style="background:rgba(217,83,79,0.08);border:1px solid rgba(217,83,79,0.2);border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:#d9534f;font-weight:600;">⚠ Period is currently active — this will end it and remove pink bubbles. History log is untouched.</div>` : ''}
         <div class="period-history-card" style="background:rgba(255,255,255,0.85);border-radius:16px;padding:18px;margin-bottom:14px;box-shadow:0 4px 15px rgba(0,0,0,0.04);">
+            ${insightsHtml}
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:18px;">
                 <div style="background:rgba(232,100,100,0.08);border-radius:8px;padding:1rem;">
                     <div style="font-size:12px;color:#999;margin-bottom:0.5rem;">Next period</div>

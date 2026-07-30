@@ -10,7 +10,7 @@ import { uiState, saveCollapsedState } from './ui-state.js';
 import { state } from '../../Core/state.js';
 import { getDayIdx, escapeHtml } from '../../Core/utils.js';
 import { getTier, computeWeeklyPayout, toCumulative } from '../../Core/habits.js';
-import { isCycleDue, cycleLabel, cycleDueLabel } from '../../Core/cycles.js';
+import { isCycleDue, isCyclic, cycleLabel, cycleDueLabel } from '../../Core/cycles.js';
 import { computeStreaksFromHistory } from '../../Core/streaks.js';
 import { MANAGE_PASSCODE, TIER_COLORS } from '../../Core/config.js';
 import { animateMoneyDisplay } from './animations.js';
@@ -22,6 +22,7 @@ import { isPeriodActive, periodDayCount, periodStartDayIdx } from '../../Core/pe
 import { getRoomPayoutsTotal } from '../../Core/rooms.js';
 import { renderPeriodHistory } from './period-ui.js';
 import { renderRoomsSection } from './rooms-ui.js';
+import { renderWaterCard } from './water-ui.js';
 import { computeForecast } from './manage-ui.js';
 import { syncHabits } from '../../Core/habits-data.js';
 import { setHabits } from '../../Core/state.js';
@@ -85,15 +86,23 @@ export function render() {
         // categoryHtmlById at the end of the loop.
         let todayHtml = '';
 
-        if (!uiState.sortLocked) {
-            items.sort((a, b) => {
-                const aP = (toCumulative(a.history)[dIdx] || 0) > 0;
-                const bP = (toCumulative(b.history)[dIdx] || 0) > 0;
-                if (aP && !bP) return 1;
-                if (!aP && bP) return -1;
-                return 0;
-            });
-        }
+        // Recurring/cyclic habits (🔄 every-N-weeks/monthly/etc.) don't show up
+        // daily, so they're easy to forget — pin them above the regular daily
+        // habits unconditionally, even while the sort lock is on (the lock only
+        // freezes the "done today sinks to the bottom" ordering within each group).
+        items.sort((a, b) => {
+            const aCyclic = isCyclic(a);
+            const bCyclic = isCyclic(b);
+            if (aCyclic !== bCyclic) return aCyclic ? -1 : 1;
+
+            if (uiState.sortLocked) return 0;
+
+            const aP = (toCumulative(a.history)[dIdx] || 0) > 0;
+            const bP = (toCumulative(b.history)[dIdx] || 0) > 0;
+            if (aP && !bP) return 1;
+            if (!aP && bP) return -1;
+            return 0;
+        });
 
         const miniDotsHtml = items.map(h => {
             if (h.excused) return `<div class="mini-dot" style="background:#c8c8c8;opacity:0.5;"></div>`;
@@ -379,6 +388,7 @@ export function render() {
     document.getElementById('countBonus').innerText  = counts.bonus;
 
     // Assign all HTML at once (instead of repeated += operations)
+    renderWaterCard();
     renderTodaySections(sectionsRoot, categoryHtmlById);
     priorityRoot.innerHTML = priorityHtml;
     weeklyRoot.innerHTML = weeklyHtml;

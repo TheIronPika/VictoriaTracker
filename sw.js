@@ -1,4 +1,4 @@
-const CACHE = 'victoria-v28';
+const CACHE = 'victoria-v29';
 
 // App shell files to cache on install.
 // NOTE: Folder is `Core/` (capital C) on disk — GitHub Pages is case-sensitive,
@@ -26,6 +26,10 @@ const SHELL = [
   '/VictoriaTracker/Core/planning.js',
   '/VictoriaTracker/Core/calendar.js',
   '/VictoriaTracker/Core/firebase.js',
+  '/VictoriaTracker/Core/water.js',
+  '/VictoriaTracker/Core/achievements.js',
+  '/VictoriaTracker/Core/resetState.js',
+  '/VictoriaTracker/Core/weeklyReset.js',
   '/VictoriaTracker/web/ui/render.js',
   '/VictoriaTracker/web/ui/ui-state.js',
   '/VictoriaTracker/web/ui/habits-ui.js',
@@ -39,6 +43,10 @@ const SHELL = [
   '/VictoriaTracker/web/ui/google-calendar.js',
   '/VictoriaTracker/web/ui/lucky-draw.js',
   '/VictoriaTracker/web/ui/animations.js',
+  '/VictoriaTracker/web/ui/water-ui.js',
+  '/VictoriaTracker/web/ui/vessel-geometry.js',
+  '/VictoriaTracker/web/ui/achievements-ui.js',
+  '/VictoriaTracker/web/ui/achievement-catalog.js',
 ];
 
 // Install: cache the app shell

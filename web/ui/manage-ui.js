@@ -14,6 +14,7 @@ import { loadWeeklyHistory } from '../../Core/history.js';
 import { renderPeriodHistory } from './period-ui.js';
 import { renderEventsManage } from './events-ui.js';
 import { renderShopManage } from './shop-ui.js';
+import { renderAchievementsManage } from './achievements-ui.js';
 import { resolveOrderedSections, moveSection, SECTION_SEASONAL, SECTION_ROOMS } from '../../Core/section-order.js';
 import { isPeriodActive } from '../../Core/period.js';
 import { getRoomPayoutsTotal } from '../../Core/rooms.js';
@@ -28,7 +29,7 @@ let currentManageHabitId  = null;
 
 window.switchManageSection = (section) => {
     currentManageSection = section;
-    ['habits', 'add', 'events', 'stars', 'period', 'layout', 'streakdollars'].forEach(s => {
+    ['habits', 'add', 'events', 'stars', 'period', 'layout', 'streakdollars', 'achievements'].forEach(s => {
         const btn   = document.getElementById('msp-nav-' + s);
         const panel = document.getElementById('msp-right-' + s);
         if (btn)   btn.classList.toggle('msp-nav-active', s === section);
@@ -41,6 +42,7 @@ window.switchManageSection = (section) => {
     if (section === 'period')        renderPeriodHistory();
     if (section === 'layout')        renderSectionOrderManage();
     if (section === 'streakdollars') renderStreakDollarsManage();
+    if (section === 'achievements')  renderAchievementsManage();
 };
 
 // ── Today section ordering (Manage > Layout) ─────────────────────────
