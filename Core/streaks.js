@@ -9,6 +9,12 @@
 // Caching by reference means O(N log N) -> O(1) for every call after the
 // first within a render — and stays correct on data updates because the
 // state setter replaces the array with a fresh reference.
+//
+// LOAD-BEARING: correctness depends on weeklyHistory being REPLACED, never
+// mutated in place. An in-place push/unshift/sort keeps the same reference, so
+// these would keep handing back the previous sort and every streak read would
+// silently use stale data. If you ever need to append a week, build a new array
+// (weeklyReset.js does: `[entry, ...weeks]`) and pass that to setWeeklyHistory.
 let _newestFirstSrc = null, _newestFirstSorted = null;
 let _oldestFirstSrc = null, _oldestFirstSorted = null;
 

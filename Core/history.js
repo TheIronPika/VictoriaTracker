@@ -1,13 +1,13 @@
 // ─────────────────────────────────────────────────────────────────────
 // core/history.js
-// Weekly history snapshots: load, save, and aggregate queries.
-// Snapshots are taken at weekly reset time and used for streaks + charts.
+// Weekly history snapshots: load + aggregate queries. Snapshots are WRITTEN
+// by weeklyReset.js (inside its atomic batch); this file only reads them and
+// derives the totals the charts and achievements use.
 // ─────────────────────────────────────────────────────────────────────
 
 import { state, setWeeklyHistory } from './state.js';
-import { readDoc, writeDoc } from './firebase.js';
-import { FIRESTORE_DOCS, HISTORY_MAX_WEEKS } from './config.js';
-import { getTier, getBasePayout, getCurrentCount, toCumulative } from './habits.js';
+import { readDoc } from './firebase.js';
+import { FIRESTORE_DOCS } from './config.js';
 
 /**
  * Load weekly history into state.
@@ -20,50 +20,12 @@ export async function loadWeeklyHistory() {
     } catch (e) { console.error('loadWeeklyHistory:', e); }
 }
 
-/**
- * Save a weekly snapshot of habit performance.
- * Snapshots are stored newest-first and capped at HISTORY_MAX_WEEKS.
- */
-export async function saveWeekSnapshot(habits, totalBalance, dateStr) {
-    try {
-        const data = await readDoc(FIRESTORE_DOCS.HISTORY);
-        let weeks = data?.weeks || [];
-        const entry = {
-            id: Date.now().toString(),
-            weekEnding: dateStr,
-            timestamp: Date.now(),
-            totalBalance,
-            habits: habits.map(h => {
-                const cur  = getCurrentCount(h);
-                const tier = getTier(h, cur);
-                return {
-                    id: h.id,
-                    name: h.name,
-                    icon: h.icon,
-                    cat: h.cat,
-                    tier,
-                    payout: getBasePayout(h, tier),
-                    // Snapshots stay in cumulative form so the history view
-                    // (which renders them as a running-total bubble row) is
-                    // unchanged by the per-day storage switch.
-                    history: toCumulative(h.history),
-                    thresh: {
-                        punish: h.punish || 1,
-                        low:    h.low    || 3,
-                        goal:   h.goal   || 5,
-                        bonus:  h.bonus  || 7
-                    }
-                };
-            })
-        };
-        weeks.unshift(entry);
-        if (weeks.length > HISTORY_MAX_WEEKS) {
-            weeks = weeks.slice(0, HISTORY_MAX_WEEKS);
-        }
-        await writeDoc(FIRESTORE_DOCS.HISTORY, { weeks });
-        setWeeklyHistory(weeks);
-    } catch (e) { console.error('saveWeekSnapshot:', e); }
-}
+// Weekly snapshots are written by weeklyReset.js, as part of its one atomic
+// batch — there is deliberately no save function here. An unused
+// saveWeekSnapshot() lived here until 2026-07-30; nothing had called it since
+// the reset was centralised, and it built a DIFFERENT entry shape than the one
+// weeklyReset writes (no periodProtected, no excused), so reviving it would
+// have quietly seeded rows the readers below mis-handle.
 
 // ─── Aggregation helpers (used by history charts) ────────────────────
 

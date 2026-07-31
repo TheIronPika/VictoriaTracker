@@ -110,18 +110,32 @@ export async function awardLuckyDrawStar(reason = LUCKY_DRAW_REASON, source = nu
     await syncStarData();
 }
 
+/** Local 'YYYY-MM-DD' key for a date — same shape water.js uses. */
+function localDateKey(d) {
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
 /**
- * How many *real* Lucky Draw wins have already landed today (UTC date, same
- * boundary used elsewhere for "today"). Test-triggered wins (distinct reason)
- * don't count, so previewing the effect in Manage never nerfs her real odds.
+ * How many *real* Lucky Draw wins have already landed today (LOCAL date, like
+ * every other "today" in the app). Test-triggered wins (distinct reason) don't
+ * count, so previewing the effect in Manage never nerfs her real odds.
  * Used to soft-decay the odds on each subsequent roll — see LUCKY_DRAW_ODDS.
+ *
+ * This compared UTC dates until 2026-07-30, which silently moved the day
+ * boundary: west of UTC the counter reset hours BEFORE local midnight (at
+ * UTC-4, 20:00 local), handing out full undecayed odds for the rest of the
+ * evening, while those evening wins then counted against the next local
+ * morning. Everything else here is local — utils.js, water.js dateKey(),
+ * weeklyReset's toDateString() — so this was the outlier, not the rule.
  */
 export function luckyDrawWinsToday() {
-    const today = new Date().toISOString().split('T')[0];
+    const today = localDateKey(new Date());
     return state.starLog.filter(e =>
         e.type === 'luckyDraw' &&
         e.reason === LUCKY_DRAW_REASON &&
-        new Date(e.ts).toISOString().split('T')[0] === today,
+        localDateKey(new Date(e.ts)) === today,
     ).length;
 }
 
@@ -133,6 +147,38 @@ export async function spendStars(amount, reason) {
     setStarBalance(state.starBalance - amount);
     setStarsSpent (state.starsSpent  + amount);
     addStarLog('spend', amount, reason);
+    await syncStarData();
+    return true;
+}
+
+/**
+ * Redeem a shop item: spend the stars AND grant whatever token it carries, in
+ * ONE document write. Returns false (changing nothing) if she can't afford it.
+ *
+ * The UI used to call spendStars() and then addExcuseToken()/addStreakResetToken()/
+ * addMarkOffToken() in sequence — two full writes of the same doc, so a failure
+ * between them charged the stars and granted no token. All the state changes
+ * happen here before a single syncStarData().
+ */
+export async function redeemItem(item) {
+    if (!item || item.cost > state.starBalance) return false;
+    setStarBalance(state.starBalance - item.cost);
+    setStarsSpent (state.starsSpent  + item.cost);
+    addStarLog('spend', item.cost, 'Redeemed: ' + item.name);
+
+    if (item.isExcuseToken) {
+        setExcuseTokens(state.excuseTokens + 1);
+        addStarLog('excuseToken', 1, 'Excuse token added');
+    }
+    if (item.isStreakResetToken) {
+        setStreakResetTokens(state.streakResetTokens + 1);
+        addStarLog('streakResetToken', 1, 'Streak reset token added');
+    }
+    if (item.isMarkOffToken) {
+        setMarkOffTokens(state.markOffTokens + 1);
+        addStarLog('markOffToken', 1, 'Mark-off token added');
+    }
+
     await syncStarData();
     return true;
 }
@@ -273,13 +319,4 @@ export async function updateShopItem(id, { icon, name, cost }) {
 export async function deleteShopItem(id) {
     setShopItems(state.shopItems.filter(it => it.id !== id));
     await syncStarData();
-}
-
-/**
- * Redeem an item by index in shopItems. Convenience wrapper around spendStars.
- */
-export async function redeemShopItem(index) {
-    const item = state.shopItems[index];
-    if (!item) return false;
-    return spendStars(item.cost, 'Redeemed: ' + item.name);
 }

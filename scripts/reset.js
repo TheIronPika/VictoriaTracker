@@ -41,6 +41,30 @@ async function firestoreSet(path, data) {
     return res.json();
 }
 
+/**
+ * Commit several whole-document overwrites atomically via the Firestore REST
+ * :commit endpoint — the REST counterpart of the SDK's writeBatch(), and the
+ * force-mode half of the weekly reset's all-or-nothing guarantee. Writes with
+ * no updateMask replace the document, matching writeDoc / setDoc(merge:false).
+ *
+ * @param {Array<[string, object]>} entries  [['system/habits_list', data], ...]
+ */
+async function firestoreCommit(entries) {
+    const writes = entries.map(([path, data]) => ({
+        update: {
+            name: `projects/${PROJECT_ID}/databases/(default)/documents/${path}`,
+            ...toFirestoreDoc(data)
+        }
+    }));
+    const res = await fetch(`${BASE_URL}:commit?key=${API_KEY}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ writes })
+    });
+    if (!res.ok) throw new Error(`COMMIT (${entries.length} writes) failed: ${res.status} ${await res.text()}`);
+    return res.json();
+}
+
 // ── Firestore value converters ───────────────────────────────────────────────
 function toFirestoreDoc(obj) {
     return { fields: toFields(obj) };
@@ -93,11 +117,17 @@ function fromDoc(doc) {
     return obj;
 }
 
-// io adapter — same readDoc/writeDoc([col,id]) contract Core/firebase.js
-// exposes in the browser, just backed by REST instead of the SDK.
+// io adapter — same readDoc/writeDoc/writeAll([col,id]) contract
+// Core/firebase.js exposes in the browser, just backed by REST instead of the
+// SDK. writeAll is what makes executeWeeklyReset atomic here too: without it
+// the reset falls back to sequential writes and a mid-run failure can leave
+// the week half-closed.
 const io = {
-    readDoc: async ([col, id]) => fromDoc(await firestoreGet(`${col}/${id}`)),
+    readDoc:  async ([col, id]) => fromDoc(await firestoreGet(`${col}/${id}`)),
     writeDoc: async ([col, id], data) => { await firestoreSet(`${col}/${id}`, data); },
+    writeAll: async (entries) => {
+        await firestoreCommit(entries.map(([[col, id], data]) => [`${col}/${id}`, data]));
+    },
 };
 
 // ── Main ─────────────────────────────────────────────────────────────────────

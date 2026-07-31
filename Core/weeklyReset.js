@@ -24,7 +24,7 @@
 //     the unattended force-fallback if she never does.
 // ─────────────────────────────────────────────────────────────────────
 
-import { getTier, computeWeeklyPayout, weekTotal, toCumulative } from './habits.js';
+import { getTier, computeWeeklyPayout, weekTotal, toCumulative, getStarsEarned } from './habits.js';
 import { isCycleDue, isCyclic, cycleIntervalMs } from './cycles.js';
 import { FIRESTORE_DOCS, HISTORY_MAX_WEEKS } from './config.js';
 
@@ -58,6 +58,21 @@ export async function proposeWeeklyReset(io, now = new Date()) {
  * streaks, snapshots history, wipes the week, resets rooms, advances event
  * watermarks and cyclic due-dates, then clears the pending/approval state.
  * Returns a small summary for logging.
+ *
+ * ATOMICITY: every read happens first, then everything is computed, then all
+ * seven writes are committed together through io.writeAll(). They used to be
+ * seven separate awaited writes, with the reset_state doc — the only thing
+ * resetAlreadyHandledToday() checks — written LAST. Any failure before that
+ * left the guard false while part of the work had already landed, and the
+ * approval modal tells her to try again: a retry after the stars write but
+ * before the habits wipe re-awarded every star AND prepended a second copy of
+ * the week, which getAllTimeTotal(), the earnings achievements and the streak
+ * scan all count as real. Committing as one batch means a failed reset changes
+ * nothing at all, so retrying is genuinely safe.
+ *
+ * io.writeAll is optional — callers that don't provide it fall back to the old
+ * sequential writes, so an un-updated adapter still works (just without the
+ * atomicity guarantee).
  */
 export async function executeWeeklyReset(io, now = new Date()) {
     const months = ['January','February','March','April','May','June',
@@ -120,22 +135,27 @@ export async function executeWeeklyReset(io, now = new Date()) {
     let starDoc = { balance: 0, spent: 0, items: [], log: [], excuseTokens: 0 };
     try {
         const sd = await io.readDoc(FIRESTORE_DOCS.STARS);
-        if (sd) starDoc = sd;
+        // Copy, don't alias: balance/log/excuseTokens are mutated below, and if
+        // an io adapter ever returned a shared or cached object (the SDK and
+        // REST ones both return fresh ones today) those edits would survive a
+        // failed commit and be re-applied on the retry — exactly the
+        // double-award this batch is here to prevent.
+        if (sd) starDoc = { ...sd };
     } catch (e) { /* first run */ }
 
     let totalStarsEarned = 0, totalExcuseAwarded = 0;
     habits.forEach(h => {
         if (isDormant(h) || h.excused) return;
-        const hist = (h.history || []).slice(0, 7);
-        const cur  = weekTotal(hist);
-        const tier = getTier(h, cur);
-        const newStreak = (tier === 'goal' || tier === 'bonus') ? (h.streak || 0) + 1 : 0;
-        let earned = 0, reasons = [];
-        if (tier === 'goal'  && (h.starGoal  || 0) > 0) { earned += h.starGoal;  reasons.push(h.name + ' Goal'); }
-        if (tier === 'bonus' && (h.starBonus || 0) > 0) { earned += h.starBonus; reasons.push(h.name + ' Bonus'); }
-        if (newStreak >= 2   && (h.starStreak|| 0) > 0) { earned += h.starStreak;reasons.push(h.name + ' Streak'); }
+        const tier = getTier(h, weekTotal(h.history));
+        // The goal/bonus/streak rule lives in habits.js getStarsEarned() — this
+        // used to re-implement it inline, against that file's own "change it
+        // HERE, don't re-implement" rule, and the two had already drifted on
+        // the streak reason string. Bounty stars stay here because the bounty
+        // flags they depend on are cleared further down.
+        let { earned, reasons } = getStarsEarned(h);
         if (h.bountyActive && (tier === 'goal' || tier === 'bonus') && (h.bountyStars || 0) > 0) {
-            earned += h.bountyStars; reasons.push(h.name + ' Bounty 🏆');
+            earned += h.bountyStars;
+            reasons = [...reasons, h.name + ' Bounty 🏆'];
         }
         if (earned > 0) {
             totalStarsEarned += earned;
@@ -150,10 +170,13 @@ export async function executeWeeklyReset(io, now = new Date()) {
                            ...(starDoc.log || [])].slice(0, 200);
         }
     });
+    // Every write below is staged here and committed as ONE batch at the end.
+    const writes = [];
+
     const starDocChanged = totalStarsEarned > 0 || totalExcuseAwarded > 0;
     if (totalStarsEarned > 0) starDoc.balance = (starDoc.balance || 0) + totalStarsEarned;
     if (starDocChanged) {
-        await io.writeDoc(FIRESTORE_DOCS.STARS, starDoc);
+        writes.push([FIRESTORE_DOCS.STARS, starDoc]);
         console.log(`   ✅ Awarded ${totalStarsEarned} stars, ${totalExcuseAwarded} excuse token(s)`);
     }
 
@@ -209,8 +232,8 @@ export async function executeWeeklyReset(io, now = new Date()) {
         })
     };
     let weeks = [entry, ...(histDoc.weeks || [])].slice(0, HISTORY_MAX_WEEKS);
-    await io.writeDoc(FIRESTORE_DOCS.HISTORY, { weeks });
-    console.log('   ✅ History saved');
+    writes.push([FIRESTORE_DOCS.HISTORY, { weeks }]);
+    console.log('   ✅ History staged');
 
     // ── Wipe history, clear bounties, advance cycles ─────────────────────
     habits = habits.map(h => {
@@ -234,7 +257,7 @@ export async function executeWeeklyReset(io, now = new Date()) {
         }
         return updated;
     });
-    await io.writeDoc(FIRESTORE_DOCS.HABITS, { data: habits });
+    writes.push([FIRESTORE_DOCS.HABITS, { data: habits }]);
 
     // ── Reset rooms: advance streaks for cleaned rooms, clear all marks ──
     if (rooms.length) {
@@ -243,35 +266,46 @@ export async function executeWeeklyReset(io, now = new Date()) {
             streak:  r.checked ? Math.min((r.streak || 0) + 1, r.maxStreak || 0) : 0,
             checked: false
         }));
-        await io.writeDoc(FIRESTORE_DOCS.ROOMS, { rooms: resetRooms });
-        console.log('   ✅ Rooms reset');
+        writes.push([FIRESTORE_DOCS.ROOMS, { rooms: resetRooms }]);
+        console.log('   ✅ Rooms staged');
     }
 
     // ── Advance event payout watermark ───────────────────────────────────
     if (events.length) {
         const paidEvents = events.map(ev => ({ ...ev, lastPaidCompletions: ev.completions || 0 }));
-        await io.writeDoc(FIRESTORE_DOCS.EVENTS, { events: paidEvents });
-        console.log('   ✅ Event payout watermark advanced');
+        writes.push([FIRESTORE_DOCS.EVENTS, { events: paidEvents }]);
+        console.log('   ✅ Event payout watermark staged');
     }
 
     // ── Mark reset done, clear pending/approval/snooze state ─────────────
-    await io.writeDoc(FIRESTORE_DOCS.RESET, {
+    writes.push([FIRESTORE_DOCS.RESET, {
         lastWeeklyReset: now.toDateString(),
         pendingReset:    false,
         pendingSince:    null,
         snoozeCount:     0,
         snoozedUntil:    null,
-    });
+    }]);
 
     // ── Clear period week flags (only if period already ended) ───────────
     if (periodData && !periodActive) {
-        await io.writeDoc(FIRESTORE_DOCS.PERIOD, {
+        writes.push([FIRESTORE_DOCS.PERIOD, {
             active:            false,
             startTs:           null,
             startDayIdx:       null,
             periodWasThisWeek: false,
             history:           periodData.history || []
-        });
+        }]);
+    }
+
+    // ── Commit ───────────────────────────────────────────────────────────
+    // One atomic batch: the whole week closes out or nothing does. The
+    // sequential fallback keeps an adapter without writeAll working — it just
+    // can't promise all-or-nothing, so it re-exposes the partial-reset window.
+    if (typeof io.writeAll === 'function') {
+        await io.writeAll(writes);
+    } else {
+        console.warn('   ⚠️  io.writeAll not provided — falling back to non-atomic sequential writes');
+        for (const [docPath, data] of writes) await io.writeDoc(docPath, data);
     }
 
     console.log(`✅ Reset complete! Balance: ${totalMoney.toFixed(2)}, Stars: ${totalStarsEarned}, Habits: ${habits.length}`);

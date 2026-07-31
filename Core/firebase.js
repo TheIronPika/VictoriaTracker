@@ -8,7 +8,7 @@
 // ─────────────────────────────────────────────────────────────────────
 
 import { initializeApp }                        from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-import { getFirestore, doc, getDoc, setDoc, onSnapshot, increment }
+import { getFirestore, doc, getDoc, setDoc, onSnapshot, increment, writeBatch }
     from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import { FIREBASE_CONFIG } from './config.js';
 
@@ -48,6 +48,25 @@ export async function writeDoc([col, id], data) {
  */
 export async function mergeDoc([col, id], partial) {
     await setDoc(doc(db, col, id), partial, { merge: true });
+}
+
+/**
+ * Overwrite SEVERAL documents atomically — every write lands or none does.
+ *
+ * Exists for the weekly reset, which touches seven docs (stars, history,
+ * habits, rooms, events, reset_state, period). Done as separate writeDoc
+ * calls, a failure partway left the week half-closed: stars already awarded
+ * but habits not yet wiped, so the retry the UI invites re-awarded them and
+ * prepended a duplicate history week (which getAllTimeTotal, the earnings
+ * achievements, and the streak scan all read as real). A batch removes the
+ * partial state entirely.
+ *
+ * @param {Array<[[string, string], object]>} entries  [[docPath, data], ...]
+ */
+export async function writeAll(entries) {
+    const batch = writeBatch(db);
+    for (const [[col, id], data] of entries) batch.set(doc(db, col, id), data);
+    await batch.commit();
 }
 
 /**
