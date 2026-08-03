@@ -151,7 +151,8 @@ window.updateField = async (id, field, value) => {
                                                               h[field] = parseFloat(value) || 0;
     else if (field === 'bountyDollars' || field === 'bountyStars')
                                                               h[field] = parseFloat(value) || 0;
-    else if (field === 'bountyExcuseTokens')                  h[field] = parseInt(value)   || 0;
+    else if (field === 'bountyExcuseTokens' || field === 'bountyStreakResetTokens')
+                                                              h[field] = parseInt(value)   || 0;
     else                                                      h[field] = parseInt(value)   || 1;
     await syncHabits();
 };
@@ -159,11 +160,12 @@ window.updateField = async (id, field, value) => {
 window.setBounty = async (id) => {
     const h = uiState.habits.find(x => x.id === id);
     if (!h) return;
-    h.bountyActive       = true;
-    h.bountyDollars      = 0;
-    h.bountyStars        = 0;
-    h.bountyExcuseTokens = 0;
-    h.bountyNote         = '';
+    h.bountyActive            = true;
+    h.bountyDollars           = 0;
+    h.bountyStars             = 0;
+    h.bountyExcuseTokens      = 0;
+    h.bountyStreakResetTokens = 0;
+    h.bountyNote              = '';
     await syncHabits();
     window.showManageDetail(id);
 };
@@ -175,6 +177,7 @@ window.clearBounty = async (id) => {
     delete h.bountyDollars;
     delete h.bountyStars;
     delete h.bountyExcuseTokens;
+    delete h.bountyStreakResetTokens;
     delete h.bountyNote;
     await syncHabits();
     window.showManageDetail(id);
@@ -198,20 +201,20 @@ window.toggleExcused = async (id) => {
     overlay.className = 'period-modal-overlay';
     overlay.innerHTML = tokens > 0
         ? `<div class="period-modal-sheet">
-               <div class="period-modal-title">✦ Use an excuse token?</div>
+               <div class="period-modal-title">🌿 Take a Rest Week?</div>
                <div class="period-modal-sub">
-                   This will excuse <strong>${escapeHtml(h.name)}</strong> for the week — no payout penalty and your streak won't reset.<br><br>
-                   You have <strong>${tokens} excuse token${tokens !== 1 ? 's' : ''}</strong>. You'll have ${tokens - 1} after this.
+                   <strong>${escapeHtml(h.name)}</strong> takes this week off — your streak stays safe and your payout is untouched.<br><br>
+                   You have <strong>${tokens} Rest Week${tokens !== 1 ? 's' : ''}</strong>. You'll have ${tokens - 1} after this.
                </div>
                <div class="period-modal-btns">
                    <button class="period-modal-btn cancel" onclick="document.getElementById('excuseConfirmOverlay').remove()">Cancel</button>
-                   <button class="period-modal-btn confirm" id="excuseConfirmBtn">Use token</button>
+                   <button class="period-modal-btn confirm" id="excuseConfirmBtn">Use Rest Week</button>
                </div>
            </div>`
         : `<div class="period-modal-sheet">
-               <div class="period-modal-title">No excuse tokens</div>
+               <div class="period-modal-title">No Rest Weeks left</div>
                <div class="period-modal-sub">
-                   You don't have any excuse tokens. Buy one from the star shop!<br><br>
+                   You're out of Rest Weeks — pick more up in the star shop.<br><br>
                    Current balance: <strong>✨ ${state.starBalance} stars</strong>
                </div>
                <div class="period-modal-btns">
@@ -249,20 +252,20 @@ window.resetBadStreak = async (id) => {
     overlay.className = 'period-modal-overlay';
     overlay.innerHTML = tokens > 0
         ? `<div class="period-modal-sheet">
-               <div class="period-modal-title">🌧️ Reset bad streak?</div>
+               <div class="period-modal-title">☀️ Use a Fresh Start?</div>
                <div class="period-modal-sub">
-                   This clears <strong>${escapeHtml(h.name)}</strong>'s 🌧️ counter without requiring a goal week.<br><br>
-                   You have <strong>${tokens} streak reset token${tokens !== 1 ? 's' : ''}</strong>. You'll have ${tokens - 1} after this.
+                   Clears <strong>${escapeHtml(h.name)}</strong>'s 🌧️ missed-week streak — like it never happened.<br><br>
+                   You have <strong>${tokens} Fresh Start${tokens !== 1 ? 's' : ''}</strong>. You'll have ${tokens - 1} after this.
                </div>
                <div class="period-modal-btns">
                    <button class="period-modal-btn cancel" onclick="document.getElementById('streakResetConfirmOverlay').remove()">Cancel</button>
-                   <button class="period-modal-btn confirm" id="streakResetConfirmBtn">Use token</button>
+                   <button class="period-modal-btn confirm" id="streakResetConfirmBtn">Use Fresh Start</button>
                </div>
            </div>`
         : `<div class="period-modal-sheet">
-               <div class="period-modal-title">No streak reset tokens</div>
+               <div class="period-modal-title">No Fresh Starts left</div>
                <div class="period-modal-sub">
-                   You don't have any streak reset tokens. Buy one from the star shop!<br><br>
+                   You're out of Fresh Starts — pick more up in the star shop.<br><br>
                    Current balance: <strong>✨ ${state.starBalance} stars</strong>
                </div>
                <div class="period-modal-btns">
@@ -330,21 +333,21 @@ window.useMarkOffBubble = async (id) => {
            </div>`;
     } else if (tokens > 0) {
         overlay.innerHTML = `<div class="period-modal-sheet">
-               <div class="period-modal-title">📝 Use a mark-off token?</div>
+               <div class="period-modal-title">🎫 Use a Day Pass?</div>
                <div class="period-modal-sub">
-                   This will count one extra completion for <strong>${escapeHtml(h.name)}</strong> today (${cur} → ${cur + 1}).<br><br>
-                   You have <strong>${tokens} mark-off token${tokens !== 1 ? 's' : ''}</strong>. You'll have ${tokens - 1} after this.
+                   This will mark one bubble for <strong>${escapeHtml(h.name)}</strong> today (${cur} → ${cur + 1}).<br><br>
+                   You have <strong>${tokens} Day Pass${tokens !== 1 ? 'es' : ''}</strong>. You'll have ${tokens - 1} after this.
                </div>
                <div class="period-modal-btns">
                    <button class="period-modal-btn cancel" onclick="document.getElementById('markOffConfirmOverlay').remove()">Cancel</button>
-                   <button class="period-modal-btn confirm" id="markOffConfirmBtn">Use token</button>
+                   <button class="period-modal-btn confirm" id="markOffConfirmBtn">Use Day Pass</button>
                </div>
            </div>`;
     } else {
         overlay.innerHTML = `<div class="period-modal-sheet">
-               <div class="period-modal-title">No mark-off tokens</div>
+               <div class="period-modal-title">No Day Passes left</div>
                <div class="period-modal-sub">
-                   You don't have any mark-off tokens. Buy one from the star shop!<br><br>
+                   You're out of Day Passes — pick more up in the star shop.<br><br>
                    Current balance: <strong>✨ ${state.starBalance} stars</strong>
                </div>
                <div class="period-modal-btns">
@@ -531,7 +534,8 @@ window.showDefinition = (id) => {
         const parts = [];
         if ((h.bountyDollars      || 0) > 0) parts.push(`+$${parseFloat(h.bountyDollars).toFixed(2)} bonus`);
         if ((h.bountyStars        || 0) > 0) parts.push(`✨ ${h.bountyStars} stars`);
-        if ((h.bountyExcuseTokens || 0) > 0) parts.push(`🎫 ${h.bountyExcuseTokens} excuse token${h.bountyExcuseTokens !== 1 ? 's' : ''}`);
+        if ((h.bountyExcuseTokens || 0) > 0) parts.push(`🌿 ${h.bountyExcuseTokens} Rest Week${h.bountyExcuseTokens !== 1 ? 's' : ''}`);
+        if ((h.bountyStreakResetTokens || 0) > 0) parts.push(`☀️ ${h.bountyStreakResetTokens} Fresh Start${h.bountyStreakResetTokens !== 1 ? 's' : ''}`);
         if (h.bountyNote && h.bountyNote.trim()) parts.push(h.bountyNote.trim());
         bountyDetailsEl.innerText = parts.join(' · ') || 'Bounty active';
         bountyEl.style.display = '';

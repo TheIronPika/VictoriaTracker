@@ -93,14 +93,14 @@ export function renderShopManage() {
         '<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.1);flex-wrap:wrap;">'
         + '<span style="font-size:18px;">' + it.icon + '</span>'
         + '<span style="flex:1;min-width:120px;font-size:12px;font-weight:600;color:#e8e3f5;">' + escapeHtml(it.name) + '</span>'
-        + '<label style="display:flex;align-items:center;gap:4px;font-size:10px;color:#c8942a;cursor:pointer;white-space:nowrap;" title="Grants an excuse token when redeemed">'
-        + '<input type="checkbox" ' + (it.isExcuseToken ? 'checked' : '') + ' style="accent-color:#c8942a;" onchange="window.toggleShopItemExcuseToken(\'' + it.id + '\',this.checked)"> excuse'
+        + '<label style="display:flex;align-items:center;gap:4px;font-size:10px;color:#c8942a;cursor:pointer;white-space:nowrap;" title="Grants a Rest Week when redeemed">'
+        + '<input type="checkbox" ' + (it.isExcuseToken ? 'checked' : '') + ' style="accent-color:#c8942a;" onchange="window.toggleShopItemExcuseToken(\'' + it.id + '\',this.checked)"> 🌿 rest'
         + '</label>'
-        + '<label style="display:flex;align-items:center;gap:4px;font-size:10px;color:#7ab5c9;cursor:pointer;white-space:nowrap;" title="Grants a streak reset token when redeemed">'
-        + '<input type="checkbox" ' + (it.isStreakResetToken ? 'checked' : '') + ' style="accent-color:#7ab5c9;" onchange="window.toggleShopItemStreakResetToken(\'' + it.id + '\',this.checked)"> 🌧️ reset'
+        + '<label style="display:flex;align-items:center;gap:4px;font-size:10px;color:#7ab5c9;cursor:pointer;white-space:nowrap;" title="Grants a Fresh Start when redeemed">'
+        + '<input type="checkbox" ' + (it.isStreakResetToken ? 'checked' : '') + ' style="accent-color:#7ab5c9;" onchange="window.toggleShopItemStreakResetToken(\'' + it.id + '\',this.checked)"> ☀️ fresh'
         + '</label>'
-        + '<label style="display:flex;align-items:center;gap:4px;font-size:10px;color:#4caf77;cursor:pointer;white-space:nowrap;" title="Grants a mark-off token when redeemed">'
-        + '<input type="checkbox" ' + (it.isMarkOffToken ? 'checked' : '') + ' style="accent-color:#4caf77;" onchange="window.toggleShopItemMarkOffToken(\'' + it.id + '\',this.checked)"> 📝 mark'
+        + '<label style="display:flex;align-items:center;gap:4px;font-size:10px;color:#4caf77;cursor:pointer;white-space:nowrap;" title="Grants a Day Pass when redeemed">'
+        + '<input type="checkbox" ' + (it.isMarkOffToken ? 'checked' : '') + ' style="accent-color:#4caf77;" onchange="window.toggleShopItemMarkOffToken(\'' + it.id + '\',this.checked)"> 🎫 pass'
         + '</label>'
         + '<span style="font-size:11px;color:#c8942a;font-weight:700;">✨ ' + it.cost + '</span>'
         + '<button class="btn-delete" style="padding:3px 8px;font-size:9px;" onclick="window.deleteShopItem(\'' + it.id + '\')">DEL</button>'
@@ -220,7 +220,7 @@ window.grantExcuseToken = async () => {
     await grantExcuseTokens(amt);
     document.getElementById('grantExcuseAmt').value = '';
     renderExcuseTokenCount();
-    alert('✦ ' + amt + ' excuse token' + (amt !== 1 ? 's' : '') + ' granted!');
+    alert('🌿 ' + amt + ' Rest Week' + (amt !== 1 ? 's' : '') + ' granted!');
 };
 
 window.revokeExcuseToken = async () => {
@@ -240,7 +240,7 @@ window.grantStreakResetToken = async () => {
     await grantStreakResetTokens(amt);
     document.getElementById('grantStreakResetAmt').value = '';
     renderStreakResetTokenCount();
-    alert('🌧️ ' + amt + ' streak reset token' + (amt !== 1 ? 's' : '') + ' granted!');
+    alert('☀️ ' + amt + ' Fresh Start' + (amt !== 1 ? 's' : '') + ' granted!');
 };
 
 window.revokeStreakResetToken = async () => {
@@ -269,7 +269,7 @@ window.grantMarkOffToken = async () => {
     await grantMarkOffTokens(amt);
     document.getElementById('grantMarkOffAmt').value = '';
     renderMarkOffTokenCount();
-    alert('📝 ' + amt + ' mark-off token' + (amt !== 1 ? 's' : '') + ' granted!');
+    alert('🎫 ' + amt + ' Day Pass' + (amt !== 1 ? 'es' : '') + ' granted!');
 };
 
 window.revokeMarkOffToken = async () => {

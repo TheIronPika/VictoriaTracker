@@ -168,15 +168,15 @@ export async function redeemItem(item) {
 
     if (item.isExcuseToken) {
         setExcuseTokens(state.excuseTokens + 1);
-        addStarLog('excuseToken', 1, 'Excuse token added');
+        addStarLog('excuseToken', 1, 'Rest Week added');
     }
     if (item.isStreakResetToken) {
         setStreakResetTokens(state.streakResetTokens + 1);
-        addStarLog('streakResetToken', 1, 'Streak reset token added');
+        addStarLog('streakResetToken', 1, 'Fresh Start added');
     }
     if (item.isMarkOffToken) {
         setMarkOffTokens(state.markOffTokens + 1);
-        addStarLog('markOffToken', 1, 'Mark-off token added');
+        addStarLog('markOffToken', 1, 'Day Pass added');
     }
 
     await syncStarData();
@@ -203,7 +203,7 @@ export async function addShopItem({ icon = '✨', name, cost, isExcuseToken = fa
  */
 export async function addExcuseToken() {
     setExcuseTokens(state.excuseTokens + 1);
-    addStarLog('excuseToken', 1, 'Excuse token added');
+    addStarLog('excuseToken', 1, 'Rest Week added');
     await syncStarData();
 }
 
@@ -215,7 +215,7 @@ export async function grantExcuseTokens(count) {
     const n = parseInt(count, 10);
     if (!Number.isFinite(n) || n <= 0) return;
     setExcuseTokens(state.excuseTokens + n);
-    addStarLog('excuseToken', n, n === 1 ? 'Excuse token added' : `${n} excuse tokens added`);
+    addStarLog('excuseToken', n, n === 1 ? 'Rest Week added' : `${n} Rest Weeks added`);
     await syncStarData();
 }
 
@@ -225,7 +225,7 @@ export async function grantExcuseTokens(count) {
 export async function useExcuseToken() {
     if (state.excuseTokens <= 0) return false;
     setExcuseTokens(state.excuseTokens - 1);
-    addStarLog('excuseToken', -1, 'Excuse token used');
+    addStarLog('excuseToken', -1, 'Rest Week used');
     await syncStarData();
     return true;
 }
@@ -240,7 +240,7 @@ export async function useExcuseToken() {
  */
 export async function addStreakResetToken() {
     setStreakResetTokens(state.streakResetTokens + 1);
-    addStarLog('streakResetToken', 1, 'Streak reset token added');
+    addStarLog('streakResetToken', 1, 'Fresh Start added');
     await syncStarData();
 }
 
@@ -251,7 +251,7 @@ export async function grantStreakResetTokens(count) {
     const n = parseInt(count, 10);
     if (!Number.isFinite(n) || n <= 0) return;
     setStreakResetTokens(state.streakResetTokens + n);
-    addStarLog('streakResetToken', n, n === 1 ? 'Streak reset token added' : `${n} streak reset tokens added`);
+    addStarLog('streakResetToken', n, n === 1 ? 'Fresh Start added' : `${n} Fresh Starts added`);
     await syncStarData();
 }
 
@@ -261,7 +261,7 @@ export async function grantStreakResetTokens(count) {
 export async function useStreakResetToken() {
     if (state.streakResetTokens <= 0) return false;
     setStreakResetTokens(state.streakResetTokens - 1);
-    addStarLog('streakResetToken', -1, 'Streak reset token used');
+    addStarLog('streakResetToken', -1, 'Fresh Start used');
     await syncStarData();
     return true;
 }
@@ -275,7 +275,7 @@ export async function useStreakResetToken() {
  */
 export async function addMarkOffToken() {
     setMarkOffTokens(state.markOffTokens + 1);
-    addStarLog('markOffToken', 1, 'Mark-off token added');
+    addStarLog('markOffToken', 1, 'Day Pass added');
     await syncStarData();
 }
 
@@ -286,7 +286,7 @@ export async function grantMarkOffTokens(count) {
     const n = parseInt(count, 10);
     if (!Number.isFinite(n) || n <= 0) return;
     setMarkOffTokens(state.markOffTokens + n);
-    addStarLog('markOffToken', n, n === 1 ? 'Mark-off token added' : `${n} mark-off tokens added`);
+    addStarLog('markOffToken', n, n === 1 ? 'Day Pass added' : `${n} Day Passes added`);
     await syncStarData();
 }
 
@@ -296,7 +296,7 @@ export async function grantMarkOffTokens(count) {
 export async function useMarkOffToken() {
     if (state.markOffTokens <= 0) return false;
     setMarkOffTokens(state.markOffTokens - 1);
-    addStarLog('markOffToken', -1, 'Mark-off token used');
+    addStarLog('markOffToken', -1, 'Day Pass used');
     await syncStarData();
     return true;
 }

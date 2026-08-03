@@ -179,7 +179,7 @@ function _paintHistory(root) {
                 const hPeriodProtected = !!h.periodProtected;
                 const flagClasses     = (hExcused ? ' is-excused' : '') + (hPeriodProtected ? ' is-period-protected' : '');
                 const flagPills       =
-                    (hExcused         ? '<span class="flag-pill excused">✦ Excused</span>'   : '') +
+                    (hExcused         ? '<span class="flag-pill excused">✦ Resting</span>'   : '') +
                     (hPeriodProtected ? '<span class="flag-pill period">🩸 Protected</span>' : '');
                 body += '<div class="hist-habit-row' + flagClasses + '">'
                       + '<span class="hist-habit-icon">' + h.icon + '</span>'

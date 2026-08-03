@@ -1,4 +1,4 @@
-_Last updated 2026-07-21 by overnight automation (toolkit v1.0.0). Review before relying on it._
+_Last updated 2026-07-24 by overnight automation (toolkit v1.0.0). Review before relying on it._
 
 # VictoriaTracker — Claude Code Guidelines
 
@@ -91,7 +91,7 @@ VictoriaTracker/
 │                           starts Firestore listeners, registers window.maybeShowWeeklyReportAfterReset
 │                           for the post-reset popup
 ├── manifest.json         ← PWA metadata (installable on iOS/Android)
-├── sw.js                 ← Service worker — offline caching, app-shell strategy (currently v26)
+├── sw.js                 ← Service worker — offline caching, app-shell strategy (currently v27)
 ├── background.jpg        ← App background image
 │
 ├── Core/                 ← Pure logic modules (NO DOM access)
@@ -103,13 +103,18 @@ VictoriaTracker/
 │   │                       section order, etc.) — single source of truth for the UI render loop
 │   ├── utils.js          ← Pure helpers (date math, money formatting, HTML escaping)
 │   ├── firebase.js       ← readDoc / writeDoc / watchDoc wrappers around Firestore SDK v10.7.1
-│   ├── habits.js         ← Tier classification and payout calculation logic (including streak bonuses)
+│   ├── habits.js         ← Tier classification and payout calculation logic (including streak bonuses);
+│   │                       weekTotal(history) — sums per-day array to a week total;
+│   │                       toCumulative(history) — converts per-day array to cumulative running
+│   │                       total for bubble-UI display; getCurrentCount() = weekTotal()
 │   ├── habits-data.js    ← Firestore CRUD + onSnapshot listener for habits; NaN guard on val
 │   │                       fields so a cleared input never writes $NaN to Firestore
-│   ├── weeklyReset.js    ← THE RESET LOGIC — proposeWeeklyReset() + executeWeeklyReset().
-│   │                       Shared between scripts/reset.js (GitHub Action) and the planned
-│   │                       in-app approval flow. Takes an injected io={readDoc,writeDoc} so it
-│   │                       works under plain Node (REST) and in the browser (Firebase SDK).
+│   ├── weeklyReset.js    ← THE RESET LOGIC — proposeWeeklyReset() + executeWeeklyReset() +
+│   │                       resetAlreadyHandledToday() (idempotency check, exported so callers
+│   │                       can guard without re-reading Firestore). Shared between
+│   │                       scripts/reset.js (GitHub Action) and the planned in-app approval
+│   │                       flow. Takes an injected io={readDoc,writeDoc} so it works under
+│   │                       plain Node (REST) and in the browser (Firebase SDK).
 │   ├── streaks.js        ← Streak computation from weekly_history snapshots (memo-cached)
 │   ├── cycles.js         ← Cyclic habit scheduling (weekly/monthly/quarterly/yearly)
 │   ├── stars.js          ← Star balance, shop item logic, star log; excuse/streak-reset/mark-off tokens
@@ -163,9 +168,12 @@ VictoriaTracker/
 │                           • Mon 09:00 UTC (4 AM Central) — RESET_MODE=propose
 │                           • Tue 00:00 UTC (7 PM Central Mon) — RESET_MODE=force
 │
+├── FIXES.md              ← Running log of overnight-review findings and their resolutions;
+│                           the nightly reviewer reads this and won't re-flag resolved items
 ├── docs/
 │   ├── OVERVIEW.md
-│   └── ARCHITECTURE.md
+│   ├── ARCHITECTURE.md
+│   └── ARCHITECTURE.png  ← Rendered PNG of the Mermaid diagram (auto-generated)
 │
 └── icons/                ← PWA icons (192px, 512px)
 ```
@@ -210,7 +218,10 @@ All data lives in **Firebase Firestore**, project `victoria-tracker-1d2ab`, coll
   cycleType: 'none'|'weeks'|'monthly'|'quarterly'|'yearly',
   cycleEvery: 1, cycleNextDue: timestamp,
   periodSensitive: false, excused: false,
-  history: [0,0,0,0,0,0,0],  // Mon–Sun, index 6 = today (Sun)
+  history: [0,0,0,0,0,0,0],  // PER-DAY counts Mon–Sun (index 6 = Sun).
+                              // Each cell = completions logged ON that day alone (not cumulative).
+                              // Use weekTotal(h.history) for the week total; toCumulative(h.history)
+                              // for the running-total view the bubble UI renders.
   streak: 0, badStreak: 0, bestStreak: 0,
   // Set by streak-reset token; tells weeklyReset.js the bad streak was manually cleared:
   badStreakResetTs: timestamp,
@@ -220,7 +231,7 @@ All data lives in **Firebase Firestore**, project `victoria-tracker-1d2ab`, coll
   lastLuckyDrawDate: string,
   // Optional bounty fields (cleared on reset after triggered):
   bountyActive: bool, bountyDollars: number, bountyStars: number,
-  bountyExcuseTokens: number, bountyNote: string
+  bountyExcuseTokens: number, bountyStreakResetTokens: number, bountyNote: string
 }
 ```
 
@@ -228,11 +239,13 @@ All data lives in **Firebase Firestore**, project `victoria-tracker-1d2ab`, coll
 ```js
 {
   id, icon, name, cost,
-  isExcuseToken?: true,       // redeeming grants one excuse token
-  isStreakResetToken?: true,  // redeeming grants one streak reset token
-  isMarkOffToken?: true       // redeeming grants one mark-off token
+  isExcuseToken?: true,       // redeeming grants one Rest Week 🌿
+  isStreakResetToken?: true,  // redeeming grants one Fresh Start ☀️
+  isMarkOffToken?: true       // redeeming grants one Day Pass 🎫
 }
 ```
+
+**UI naming vs. internal identifiers (2026-08-03 rename).** "Excuse" → "Rest Week" 🌿, "Mark Off" → "Day Pass" 🎫, "Streak Reset" → "Fresh Start" ☀️. Only visible copy changed — field/function names (`excuseTokens`, `markOffTokens`, `streakResetTokens`, `useExcuseToken`, etc.) and Firestore doc shape are untouched.
 
 **In-memory state** lives in `Core/state.js`. It is populated from Firestore on every `onSnapshot` callback and is the single source of truth for the UI render loop. Also holds `sectionOrder[]`, `weeklyPlans{}`, and `calendarEvents[]`.
 
@@ -273,6 +286,12 @@ All data lives in **Firebase Firestore**, project `victoria-tracker-1d2ab`, coll
 
 1. **Day index is Monday-first (0 = Mon, 6 = Sun).** `getDayIdx()` in `utils.js` normalizes JS's Sunday-first `Date.getDay()`. `history[6]` is always today (Sunday). This is the index into the 7-element `habit.history` array.
 
+   **As of 2026-07-23, `habit.history` stores per-day counts, not a cumulative running total.** `history[i]` is the number of completions logged *on day i alone*. Before this change it was a monotonically-increasing weekly total; that caused backdating one day to corrupt earlier days. Two helper functions in `Core/habits.js` bridge old and new callers:
+   - `weekTotal(history)` — sums the 7 cells to the week's total (replaces reading the last element).
+   - `toCumulative(history)` — converts per-day to a cumulative array (Mon through Sun) for bubble display. The UI feeds this into the same rendering logic that previously read the raw array, so visually nothing changed.
+   - `getCurrentCount(habit)` now delegates to `weekTotal`.
+   - Weekly history snapshots written to `weekly_history` are still stored in cumulative form so the History tab and reset calculations are unchanged.
+
 2. **Streaks are computed from `weekly_history`, not stored counters.** `streaks.js` scans backward through snapshots to derive current and bad streaks. `computeStreaksFromHistory()` is memo-cached by array reference so repeated calls in the same render are O(1). This prevents drift when resets are missed or run manually.
 
 3. **Firestore paths use a two-element tuple `[collection, docId]`.** Always use `FIRESTORE_DOCS.*` constants from `config.js` — never hard-code path strings.
@@ -289,7 +308,7 @@ All data lives in **Firebase Firestore**, project `victoria-tracker-1d2ab`, coll
 
 7. **Cyclic habits are hidden until their `cycleNextDue` date passes.** The reset advances `cycleNextDue` automatically. They won't appear on the Today tab when not yet due (`isCycleDue()` returns false). Cyclic habits **never take weekly negative payouts** — punish/low weeks pay $0 instead of a penalty. Late completions reduce the positive payout: `weeksLate × streakPenaltyPer` is deducted, floored at $0.
 
-8. **Bounty system.** A habit can have a one-time bounty (`bountyActive`, `bountyDollars`, `bountyStars`, `bountyExcuseTokens`). On reset, if the habit lands at goal/bonus that week, the bounty fires and all bounty fields are cleared. The `bounty-glow` card style appears when `bountyActive` is true.
+8. **Bounty system.** A habit can have a one-time bounty (`bountyActive`, `bountyDollars`, `bountyStars`, `bountyExcuseTokens`, `bountyStreakResetTokens`). On reset, if the habit lands at goal/bonus that week, the bounty fires and all bounty fields are cleared. The `bounty-glow` card style appears when `bountyActive` is true.
 
 9. **Section order is persisted to `system/ui_config`.** The Today tab's section order (categories + Seasonal + Rooms cards) is reorderable from Manage → Layout. Order is synced live across tabs/devices via `watchSectionOrder()`. New categories not in the stored order are appended at the end automatically.
 
@@ -313,11 +332,12 @@ All data lives in **Firebase Firestore**, project `victoria-tracker-1d2ab`, coll
 
 19. **Planning bubble colors reflect the tier that planned-day-count-so-far would reach.** Each planning bubble is colored by the performance tier the running planned count would land on for that day of the week, giving a visual preview of the week's expected outcome.
 
-20. **Three token types live in `star_data`.** All three are purchased from the Star Shop and consumed from habit cards:
-    - **Excuse tokens** (`excuseTokens`) — freeze one habit for the week (no payout either direction, streak held). `h.excused = true`.
-    - **Streak reset tokens** (`streakResetTokens`) — zero a habit's bad-streak counter without requiring a goal week. Sets `h.badStreak = 0` and `h.badStreakResetTs = Date.now()`.
-    - **Mark-off tokens** (`markOffTokens`) — synthetically add +1 completion to a habit for the current viewing day (as if she actually did it). The synthetic increment is stored in `h.markOffDays[dayIdx]`. Removing a mark-off bubble refunds the token proportionally.
-    - All three token flows show a confirmation modal before consuming a token, and show a "no tokens — buy from the star shop" modal if balance is 0. The Excuse and Mark-off action buttons are hidden entirely when the respective token balance is 0.
+20. **Three token types live in `star_data`.** All three are purchased from the Star Shop and consumed from habit cards. Field/function names are unchanged from before the 2026-08-03 UI rename; only the visible copy uses the new names:
+    - **Rest Week** 🌿 (field `excuseTokens`, fns `useExcuseToken`/`addExcuseToken`) — freeze one habit for the week (no payout either direction, streak held). `h.excused = true`.
+    - **Fresh Start** ☀️ (field `streakResetTokens`, fns `useStreakResetToken`/`addStreakResetToken`) — zero a habit's bad-streak counter without requiring a goal week. Sets `h.badStreak = 0` and `h.badStreakResetTs = Date.now()`.
+    - **Day Pass** 🎫 (field `markOffTokens`, fns `useMarkOffToken`/`addMarkOffToken`) — synthetically add +1 completion to a habit for the current viewing day (as if she actually did it). The synthetic increment is stored in `h.markOffDays[dayIdx]`. Removing a Day Pass bubble refunds the token proportionally.
+    - All three token flows show a confirmation modal before consuming a token, and show a "no tokens left — pick more up in the star shop" modal if balance is 0. The Rest Week and Day Pass action buttons are hidden entirely when the respective token balance is 0.
+    - Bounties can grant Rest Weeks and/or Fresh Starts (`bountyExcuseTokens`, `bountyStreakResetTokens`); see item 8.
     - `shop-ui.js` `doRedeem()` checks the return value of `spendStars()` before granting tokens — if the balance is insufficient for any reason, the UI is reset without granting anything.
 
 21. **Mark-off completions appear as grey bubbles.** The bubble rendered for a synthetic (mark-off) day is visually distinguished from a real completion to make it clear it was purchased, not earned.

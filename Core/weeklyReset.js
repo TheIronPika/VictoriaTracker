@@ -132,7 +132,7 @@ export async function executeWeeklyReset(io, now = new Date()) {
     console.log(`💰 Total balance: ${(totalMoney < 0 ? '-$' : '+$') + Math.abs(totalMoney).toFixed(2)}`);
 
     // ── Award stars ──────────────────────────────────────────────────────
-    let starDoc = { balance: 0, spent: 0, items: [], log: [], excuseTokens: 0 };
+    let starDoc = { balance: 0, spent: 0, items: [], log: [], excuseTokens: 0, streakResetTokens: 0 };
     try {
         const sd = await io.readDoc(FIRESTORE_DOCS.STARS);
         // Copy, don't alias: balance/log/excuseTokens are mutated below, and if
@@ -143,7 +143,7 @@ export async function executeWeeklyReset(io, now = new Date()) {
         if (sd) starDoc = { ...sd };
     } catch (e) { /* first run */ }
 
-    let totalStarsEarned = 0, totalExcuseAwarded = 0;
+    let totalStarsEarned = 0, totalExcuseAwarded = 0, totalStreakResetAwarded = 0;
     habits.forEach(h => {
         if (isDormant(h) || h.excused) return;
         const tier = getTier(h, weekTotal(h.history));
@@ -169,15 +169,22 @@ export async function executeWeeklyReset(io, now = new Date()) {
             starDoc.log = [{ ts: Date.now(), type: 'excuseToken', amount: tokens, reason: h.name + ' Bounty 🏆' },
                            ...(starDoc.log || [])].slice(0, 200);
         }
+        if (h.bountyActive && (tier === 'goal' || tier === 'bonus') && (h.bountyStreakResetTokens || 0) > 0) {
+            const tokens = h.bountyStreakResetTokens;
+            totalStreakResetAwarded += tokens;
+            starDoc.streakResetTokens = (starDoc.streakResetTokens || 0) + tokens;
+            starDoc.log = [{ ts: Date.now(), type: 'streakResetToken', amount: tokens, reason: h.name + ' Bounty 🏆' },
+                           ...(starDoc.log || [])].slice(0, 200);
+        }
     });
     // Every write below is staged here and committed as ONE batch at the end.
     const writes = [];
 
-    const starDocChanged = totalStarsEarned > 0 || totalExcuseAwarded > 0;
+    const starDocChanged = totalStarsEarned > 0 || totalExcuseAwarded > 0 || totalStreakResetAwarded > 0;
     if (totalStarsEarned > 0) starDoc.balance = (starDoc.balance || 0) + totalStarsEarned;
     if (starDocChanged) {
         writes.push([FIRESTORE_DOCS.STARS, starDoc]);
-        console.log(`   ✅ Awarded ${totalStarsEarned} stars, ${totalExcuseAwarded} excuse token(s)`);
+        console.log(`   ✅ Awarded ${totalStarsEarned} stars, ${totalExcuseAwarded} Rest Week(s), ${totalStreakResetAwarded} Fresh Start(s)`);
     }
 
     // ── Update streaks ───────────────────────────────────────────────────
@@ -250,6 +257,7 @@ export async function executeWeeklyReset(io, now = new Date()) {
             delete updated.bountyDollars;
             delete updated.bountyStars;
             delete updated.bountyExcuseTokens;
+            delete updated.bountyStreakResetTokens;
             delete updated.bountyNote;
         }
         if (h.cycleType && h.cycleType !== 'none' && (tier3 === 'goal' || tier3 === 'bonus')) {

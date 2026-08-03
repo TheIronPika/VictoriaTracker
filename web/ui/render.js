@@ -247,17 +247,17 @@ export function render() {
                     <div style="flex:1">
                         ${isUrgent ? `<span class="priority-tag">✦ ${uiState.priorityMode === 'bonus' ? 'Bonus' : 'Goal'} at Risk</span>` : ''}
                         ${periodProtectedCard ? '<span class="period-tag">✦ Period protected</span>' : ''}
-                        ${h.excused ? '<span class="excused-tag">✦ Excused this week</span>' : ''}
+                        ${h.excused ? '<span class="excused-tag">✦ Resting this week</span>' : ''}
                         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                             <p style="margin:0; font-weight:600;">${escapeHtml(h.name)}</p>
                             ${streaks.streak >= 1 ? `<span class="streak-badge">🔥 ${streaks.streak}</span>` : ''}
-                            ${streaks.badStreak >= 1 ? `<span class="bad-streak-badge" onclick="event.stopPropagation();window.resetBadStreak('${h.id}')" style="cursor:pointer" title="Click to use a streak reset token">🌧️ ${streaks.badStreak}</span>` : ''}
+                            ${streaks.badStreak >= 1 ? `<span class="bad-streak-badge" onclick="event.stopPropagation();window.resetBadStreak('${h.id}')" style="cursor:pointer" title="Click to use a Fresh Start">🌧️ ${streaks.badStreak}</span>` : ''}
                             ${cycleLabel(h) ? `<span class="cycle-badge">🔄 ${cycleLabel(h)}</span>` : ''}
                             ${wkLate > 0 ? `<span class="cycle-badge" style="background:rgba(217,83,79,0.15);color:#d9534f;border-color:rgba(217,83,79,0.3);" title="Late completion will reduce payout">⏰ ${wkLate}w late</span>` : ''}
                             ${h.bountyActive ? `<span class="bounty-badge">🏆 Bounty</span>` : ''}
                             ${forecastBadgeSpan}
-                            ${(h.excused || state.excuseTokens > 0) ? `<button class="excuse-btn ${h.excused ? 'excuse-on' : ''}" onclick="event.stopPropagation();window.toggleExcused('${h.id}')">${h.excused ? 'Unexcuse' : 'Excuse'}</button>` : ''}
-                            ${(!isFutureDay && !isSystemDriven && state.markOffTokens > 0) ? `<button class="mark-btn" onclick="event.stopPropagation();window.useMarkOffBubble('${h.id}')" title="Use a mark-off token to count one extra completion">📝 +1</button>` : ''}
+                            ${(h.excused || state.excuseTokens > 0) ? `<button class="excuse-btn ${h.excused ? 'excuse-on' : ''}" onclick="event.stopPropagation();window.toggleExcused('${h.id}')">${h.excused ? 'Undo Rest Week' : 'Rest Week'}</button>` : ''}
+                            ${(!isFutureDay && !isSystemDriven && state.markOffTokens > 0) ? `<button class="mark-btn" onclick="event.stopPropagation();window.useMarkOffBubble('${h.id}')" title="Use a Day Pass to mark one bubble for today">🎫 +1</button>` : ''}
                         </div>
                         ${forecastDetailDiv}
                         <div class="bubbles" style="${isFutureDay ? 'opacity:0.45;pointer-events:none;' : ''}">${bubblesHtml}</div>
@@ -289,7 +289,7 @@ export function render() {
             const wkPeriodProtected = isPeriodActive() && !!h.periodSensitive;
             const wkFlagClasses    = (wkExcused ? ' is-excused' : '') + (wkPeriodProtected ? ' is-period-protected' : '');
             const wkFlagPills      =
-                (wkExcused        ? '<span class="flag-pill excused">✦ Excused</span>'   : '') +
+                (wkExcused        ? '<span class="flag-pill excused">✦ Resting</span>'   : '') +
                 (wkPeriodProtected ? '<span class="flag-pill period">🩸 Protected</span>' : '');
 
             weekSectionHtml += `
