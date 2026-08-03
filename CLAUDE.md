@@ -206,6 +206,7 @@ All data lives in **Firebase Firestore**, project `victoria-tracker-1d2ab`, coll
 | `ui_config` | `{ sectionOrder: string[] }` |
 | `weekly_plans` | `{ plans: { "YYYY-MM-DD": { [habitId]: [bool x7] } } }` (max 16 weeks retained) |
 | `calendar_events` | `{ events: CalendarEvent[] }` where each event is `{ id, title, startISO, endISO, allDay? }` |
+| `category_config` | `{ categories: { [catName]: { punish\|low\|goal\|bonus: { dollars, stars?, restWeek?, dayPass?, freshStart? } } } }` — see item 25 |
 
 **Habit object (critical fields):**
 ```js
@@ -350,6 +351,16 @@ All data lives in **Firebase Firestore**, project `victoria-tracker-1d2ab`, coll
 23. **Lucky draw odds scale by tier.** When a bubble tap increases the completion count, there is a per-tier chance of winning a bonus star (max once per habit per day). Odds are defined in `LUCKY_DRAW_ODDS` in `Core/config.js`: Debt 2%, Low 5%, Goal 7%, Bonus 10%. Winning triggers the clover popup and confetti effect via `web/ui/lucky-draw.js`. The last-win date (`h.lastLuckyDrawDate`) is stored on the habit to enforce the once-per-day cap.
 
 24. **NaN guard on payout fields.** `Core/habits-data.js` `updateHabitField()` treats any non-finite `parseFloat()` result (e.g., from a cleared input) as a no-op, keeping the previous Firestore value rather than writing `NaN`. This prevents "$NaN" from appearing in payout totals.
+
+25. **Category-wide payouts (`system/category_config`).** The only cross-habit payout in the app: when every *counting* habit in a category reaches a tier, the category itself pays dollars, stars and all three tokens. Added 2026-08-03.
+    - **The tier rule:** a category's tier is the **lowest** tier any counting habit reached. All at Goal pays Goal; one straggler at Low drags the whole category to Low. There is no separate "did they all hit it?" flag — that one rule covers every case.
+    - **Counting habits exclude** not-yet-due cyclic habits, resting habits (Rest Week), and period-protected habits. Resting and protected are *neutral* — they neither block the payout nor need to hit tier. (Blocking would turn a Rest Week token into a trap that silently kills her category payout.)
+    - **A category with zero counting habits pays nothing.** Over an empty set "every habit hit goal" is vacuously true, which would hand out a free payout every week for a fully-rested category. Guarded explicitly in `computeCategoryResult` — do not remove.
+    - **Debt/Low are dollars-only** (negative = penalty), mirroring habits, which have `valPunish`/`valLow` but no `starPunish`/`starLow`.
+    - **Two modules, deliberately split.** `Core/category-payouts.js` is pure math with NO `./firebase.js` import, because `Core/weeklyReset.js` imports it and must run under plain Node in the GitHub Action. `Core/category-config.js` holds the Firestore load/watch/save and imports firebase. **Keep Firebase out of category-payouts.js.**
+    - **Tier math uses the WEEK TOTAL** (`weekTotal(h.history)`), not the as-of-viewed-day cumulative that the header mini-dots use. Mixing them makes the progress line contradict what actually pays.
+    - **Four places must agree on the dollar figure:** the Today headline (`render.js`), the Streak $ grand total (`manage-ui.js`), the native "This Week" block (`ManageContent.tsx`), and the reset's `totalMoney`. All four funnel through the same pure function — keep it that way.
+    - **Results are snapshotted into the weekly history** (`entry.categories`), not re-derived at read time, because the config can change after a week closes. Only categories that actually paid are recorded.
 
 ---
 

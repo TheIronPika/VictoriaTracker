@@ -27,6 +27,10 @@
 import { getTier, computeWeeklyPayout, weekTotal, toCumulative, getStarsEarned } from './habits.js';
 import { isCycleDue, isCyclic, cycleIntervalMs } from './cycles.js';
 import { FIRESTORE_DOCS, HISTORY_MAX_WEEKS } from './config.js';
+// Pure math only — category-payouts.js deliberately avoids ./firebase.js so
+// this file still runs under plain Node in the GitHub Action. Persistence for
+// that feature lives in category-config.js, which is NOT imported here.
+import { computeAllCategoryResults, rewardIsEmpty } from './category-payouts.js';
 
 /** True if a reset already executed today — idempotency guard for both modes. */
 export async function resetAlreadyHandledToday(io, now = new Date()) {
@@ -100,6 +104,13 @@ export async function executeWeeklyReset(io, now = new Date()) {
         events = (evDoc && evDoc.events) || [];
     } catch (e) { console.warn('   ⚠️  Could not load events:', e.message); }
 
+    // ── Load category payout config ──────────────────────────────────────
+    let categoryConfig = {};
+    try {
+        const catDoc = await io.readDoc(FIRESTORE_DOCS.CATEGORIES);
+        categoryConfig = (catDoc && catDoc.categories) || {};
+    } catch (e) { console.warn('   ⚠️  Could not load category config:', e.message); }
+
     // ── Load period state (drives period-protection gating) ────────────────
     let periodActive = false, periodWasThisWeek = false, periodData = null;
     try {
@@ -129,10 +140,32 @@ export async function executeWeeklyReset(io, now = new Date()) {
         if (unpaid <= 0) return;
         totalMoney += unpaid * (ev.payout || 0);
     });
+
+    // ── Category-wide payouts ────────────────────────────────────────────
+    // Computed ONCE here and reused for money, stars/tokens and the history
+    // snapshot, so those three can't disagree. The tier rule (lowest tier
+    // among counting habits; resting/protected/dormant habits are neutral)
+    // lives in category-payouts.js — do not re-implement it here.
+    const categoryResults = computeAllCategoryResults(habits, {
+        config: categoryConfig, periodActive, periodWasThisWeek,
+    });
+    categoryResults.forEach(r => { totalMoney += r.total || 0; });
+    const paidCategories = categoryResults.filter(r => r.tier && !rewardIsEmpty(r.reward));
+    if (paidCategories.length) {
+        console.log(`   📂 ${paidCategories.length} category payout(s): ` +
+            paidCategories.map(r => `${r.cat}@${r.tier}`).join(', '));
+    }
+
     console.log(`💰 Total balance: ${(totalMoney < 0 ? '-$' : '+$') + Math.abs(totalMoney).toFixed(2)}`);
 
     // ── Award stars ──────────────────────────────────────────────────────
-    let starDoc = { balance: 0, spent: 0, items: [], log: [], excuseTokens: 0, streakResetTokens: 0 };
+    // markOffTokens belongs in this default: writeDoc is a FULL overwrite
+    // (firebase.js setDoc, merge:false), so on the first-run path where the
+    // stars doc doesn't exist yet, writing a default that omits the field
+    // would silently drop her Day Pass balance. Masked until now only because
+    // `{ ...sd }` copies it off an existing doc.
+    let starDoc = { balance: 0, spent: 0, items: [], log: [],
+                    excuseTokens: 0, streakResetTokens: 0, markOffTokens: 0 };
     try {
         const sd = await io.readDoc(FIRESTORE_DOCS.STARS);
         // Copy, don't alias: balance/log/excuseTokens are mutated below, and if
@@ -143,7 +176,8 @@ export async function executeWeeklyReset(io, now = new Date()) {
         if (sd) starDoc = { ...sd };
     } catch (e) { /* first run */ }
 
-    let totalStarsEarned = 0, totalExcuseAwarded = 0, totalStreakResetAwarded = 0;
+    let totalStarsEarned = 0, totalExcuseAwarded = 0, totalStreakResetAwarded = 0,
+        totalMarkOffAwarded = 0;
     habits.forEach(h => {
         if (isDormant(h) || h.excused) return;
         const tier = getTier(h, weekTotal(h.history));
@@ -177,14 +211,53 @@ export async function executeWeeklyReset(io, now = new Date()) {
                            ...(starDoc.log || [])].slice(0, 200);
         }
     });
+
+    // ── Category stars + tokens ──────────────────────────────────────────
+    // Same categoryResults computed above for the money, so the two can't
+    // disagree about which categories paid. Day Passes are awarded here for
+    // the first time anywhere in the reset — nothing else grants them.
+    const TIER_LABEL = { punish: 'Punish', low: 'Low', goal: 'Goal', bonus: 'Bonus' };
+    categoryResults.forEach(r => {
+        if (!r.tier) return;                       // nothing counted this week
+        const { stars, restWeek, dayPass, freshStart } = r.reward;
+        const why = `${r.cat} category — all at ${TIER_LABEL[r.tier]} 📂`;
+        const log = (type, amount) => {
+            starDoc.log = [{ ts: Date.now(), type, amount, reason: why },
+                           ...(starDoc.log || [])].slice(0, 200);
+        };
+        if (stars > 0) {
+            totalStarsEarned += stars;
+            log('earn', stars);
+        }
+        if (restWeek > 0) {
+            totalExcuseAwarded += restWeek;
+            starDoc.excuseTokens = (starDoc.excuseTokens || 0) + restWeek;
+            log('excuseToken', restWeek);
+        }
+        if (freshStart > 0) {
+            totalStreakResetAwarded += freshStart;
+            starDoc.streakResetTokens = (starDoc.streakResetTokens || 0) + freshStart;
+            log('streakResetToken', freshStart);
+        }
+        if (dayPass > 0) {
+            totalMarkOffAwarded += dayPass;
+            starDoc.markOffTokens = (starDoc.markOffTokens || 0) + dayPass;
+            log('markOffToken', dayPass);
+        }
+    });
+
     // Every write below is staged here and committed as ONE batch at the end.
     const writes = [];
 
-    const starDocChanged = totalStarsEarned > 0 || totalExcuseAwarded > 0 || totalStreakResetAwarded > 0;
+    // totalMarkOffAwarded belongs in this test: a category configured to pay
+    // ONLY Day Passes would otherwise mutate starDoc and never write it.
+    const starDocChanged = totalStarsEarned > 0 || totalExcuseAwarded > 0
+                        || totalStreakResetAwarded > 0 || totalMarkOffAwarded > 0;
     if (totalStarsEarned > 0) starDoc.balance = (starDoc.balance || 0) + totalStarsEarned;
     if (starDocChanged) {
         writes.push([FIRESTORE_DOCS.STARS, starDoc]);
-        console.log(`   ✅ Awarded ${totalStarsEarned} stars, ${totalExcuseAwarded} Rest Week(s), ${totalStreakResetAwarded} Fresh Start(s)`);
+        console.log(`   ✅ Awarded ${totalStarsEarned} stars, ${totalExcuseAwarded} Rest Week(s), ` +
+                    `${totalStreakResetAwarded} Fresh Start(s), ${totalMarkOffAwarded} Day Pass(es)`);
     }
 
     // ── Update streaks ───────────────────────────────────────────────────
@@ -236,7 +309,20 @@ export async function executeWeeklyReset(io, now = new Date()) {
                      thresh: { punish: h.punish || 1, low: h.low || 3, goal: h.goal || 5, bonus: h.bonus || 7 },
                      excused: !!h.excused,
                      periodProtected: r.periodProtected };
-        })
+        }),
+        // Settled category results. Snapshotted rather than re-derived at read
+        // time because the config can change after the week closes — the same
+        // trap bounties fall into, where the reset deletes the bounty fields
+        // and the report silently stops showing them.
+        // paidCategories, not every scored category: an unconfigured category
+        // still resolves to a tier, and snapshotting those would put a
+        // zero-value row in the report and grow the history doc for nothing.
+        categories: paidCategories
+            .map(r => ({ cat: r.cat, tier: r.tier,
+                         counting: r.counting.length, atTier: r.atTier,
+                         dollars: r.reward.dollars, stars: r.reward.stars,
+                         restWeek: r.reward.restWeek, dayPass: r.reward.dayPass,
+                         freshStart: r.reward.freshStart }))
     };
     let weeks = [entry, ...(histDoc.weeks || [])].slice(0, HISTORY_MAX_WEEKS);
     writes.push([FIRESTORE_DOCS.HISTORY, { weeks }]);

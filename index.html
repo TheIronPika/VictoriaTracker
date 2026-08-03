@@ -43,6 +43,7 @@
         import { watchWaterData } from './Core/water.js';
         import { watchAchievements } from './Core/achievements.js';
         import { watchResetState } from './Core/resetState.js';
+        import { loadCategoryConfig, watchCategoryConfig } from './Core/category-config.js';
 
         // ── UI (DOM rendering + window.* handler registration) ───────────────
         import { uiState } from './web/ui/ui-state.js';
@@ -102,6 +103,10 @@
             // Section order: load once, then subscribe so other tabs/devices
             // see reorders live without a refresh.
             loadSectionOrder().then(() => { window.render?.(); watchSectionOrder(); }).catch(() => {});
+            // Category payouts: same load-then-subscribe shape. Until this
+            // resolves getCategoryPayoutsTotal() returns 0, so the headline
+            // never shows a half-computed number.
+            loadCategoryConfig().then(() => { window.render?.(); watchCategoryConfig(); }).catch(() => {});
             // Pre-load history so streak badges render immediately. The two
             // history-derived achievement checks run here because nothing else
             // triggers them — both are idempotent, so re-running on each load
@@ -262,6 +267,21 @@
         }
         .cat-label { font-family: 'Playfair Display'; font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: 1.5px; }
         .status-mini-bar { display: flex; gap: 4px; margin-top: 6px; }
+
+        /* ── CATEGORY PAYOUT LINE ───────────────────────────────────────── */
+        /* Only rendered for categories with a configured reward, so an
+           unconfigured install looks exactly as it did before. */
+        .cat-payout-line {
+            font-size: 10px;
+            margin-top: 5px;
+            letter-spacing: 0.2px;
+            text-transform: none;
+            font-family: 'Montserrat', sans-serif;
+            font-weight: 600;
+            color: #b0a4c4;
+        }
+        .cat-pay-now  { color: #c8961a; }
+        .cat-pay-next { color: #9a8fb0; font-weight: 500; }
         .mini-dot {
             width: 6px;
             height: 6px;
@@ -1431,6 +1451,7 @@
                 <button class="msp-nav-btn" id="msp-nav-stars"  onclick="window.switchManageSection('stars')">&#10024; Stars</button>
                 <button class="msp-nav-btn" id="msp-nav-period" onclick="window.switchManageSection('period')">&#129656; Period</button>
                 <button class="msp-nav-btn" id="msp-nav-streakdollars" onclick="window.switchManageSection('streakdollars')">&#128176; Streak $</button>
+                <button class="msp-nav-btn" id="msp-nav-category" onclick="window.switchManageSection('category')">&#128193; Category $</button>
                 <button class="msp-nav-btn" id="msp-nav-layout" onclick="window.switchManageSection('layout')">&#128306; Layout</button>
                 <button class="msp-nav-btn" id="msp-nav-achievements" onclick="window.switchManageSection('achievements')">&#127942; Achievements</button>
               </nav>
@@ -1645,6 +1666,23 @@
                 <div class="msp-section">
                   <div class="msp-section-title">&#128176; Streak $ Breakdown</div>
                   <div id="streakDollarsRoot"></div>
+                </div>
+              </div>
+
+              <!-- Category-wide payouts -->
+              <div id="msp-right-category" style="display:none">
+                <div class="msp-section">
+                  <div class="msp-section-title">&#128193; Category Payouts</div>
+                  <div style="font-size:11px;color:#aaa;margin-bottom:6px;line-height:1.5;">
+                    Paid when <strong>every</strong> counting habit in a category reaches a tier. The
+                    category takes the <strong>lowest</strong> tier any habit landed on — all at Goal pays
+                    Goal, and one straggler at Low drags the whole category to Low.
+                  </div>
+                  <div style="font-size:11px;color:#7a7390;margin-bottom:12px;line-height:1.5;">
+                    Resting (&#127807;), period-protected and not-yet-due habits don't count either way.
+                    Debt/Low are dollars-only &mdash; use a negative number for a penalty.
+                  </div>
+                  <div id="categoryPayoutRoot"></div>
                 </div>
               </div>
 

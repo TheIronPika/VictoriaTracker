@@ -1,4 +1,4 @@
-const CACHE = 'victoria-v32';
+const CACHE = 'victoria-v33';
 
 // App shell files to cache on install.
 // NOTE: Folder is `Core/` (capital C) on disk — GitHub Pages is case-sensitive,
@@ -30,6 +30,8 @@ const SHELL = [
   '/VictoriaTracker/Core/achievements.js',
   '/VictoriaTracker/Core/resetState.js',
   '/VictoriaTracker/Core/weeklyReset.js',
+  '/VictoriaTracker/Core/category-payouts.js',
+  '/VictoriaTracker/Core/category-config.js',
   '/VictoriaTracker/web/ui/render.js',
   '/VictoriaTracker/web/ui/ui-state.js',
   '/VictoriaTracker/web/ui/habits-ui.js',

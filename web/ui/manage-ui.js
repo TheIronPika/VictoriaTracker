@@ -20,6 +20,11 @@ import { isPeriodActive } from '../../Core/period.js';
 import { getRoomPayoutsTotal } from '../../Core/rooms.js';
 import { getEventPayoutsTotal } from '../../Core/events.js';
 import { isCyclic, weeksLate } from '../../Core/cycles.js';
+import {
+    currentCategoryResults, getCategoryPayoutsTotal,
+    setCategoryReward, getCategoryRewardValue
+} from '../../Core/category-config.js';
+import { rewardIsEmpty, formatReward, TIER_LABEL as CAT_TIER_LABEL } from '../../Core/category-payouts.js';
 
 // ── Manage section state ──────────────────────────────────────────────
 let currentManageSection  = 'habits';
@@ -29,7 +34,7 @@ let currentManageHabitId  = null;
 
 window.switchManageSection = (section) => {
     currentManageSection = section;
-    ['habits', 'add', 'events', 'stars', 'period', 'layout', 'streakdollars', 'achievements'].forEach(s => {
+    ['habits', 'add', 'events', 'stars', 'period', 'layout', 'streakdollars', 'achievements', 'category'].forEach(s => {
         const btn   = document.getElementById('msp-nav-' + s);
         const panel = document.getElementById('msp-right-' + s);
         if (btn)   btn.classList.toggle('msp-nav-active', s === section);
@@ -43,6 +48,7 @@ window.switchManageSection = (section) => {
     if (section === 'layout')        renderSectionOrderManage();
     if (section === 'streakdollars') renderStreakDollarsManage();
     if (section === 'achievements')  renderAchievementsManage();
+    if (section === 'category')      renderCategoryPayoutsManage();
 };
 
 // ── Today section ordering (Manage > Layout) ─────────────────────────
@@ -92,6 +98,86 @@ function currentAvailableSections() {
     return [SECTION_SEASONAL, ...cats, SECTION_ROOMS];
 }
 
+// ── Category payouts (Manage > Category $) ───────────────────────────
+// Per-category, per-tier rewards paid when EVERY counting habit in the
+// category reaches that tier. The tier rule (lowest tier wins; resting,
+// period-protected and not-yet-due habits are neutral) lives in
+// Core/category-payouts.js — this panel only edits the numbers.
+//
+// Debt/Low are dollars-only, matching habits (which have valPunish/valLow
+// but no starPunish/starLow); use a negative number there for a penalty.
+
+const CAT_TIER_ROWS = [
+    { tier: 'bonus',  label: '🏆 Bonus', full: true  },
+    { tier: 'goal',   label: '🎯 Goal',  full: true  },
+    { tier: 'low',    label: '⚠️ Low',   full: false },
+    { tier: 'punish', label: '🔻 Debt',  full: false },
+];
+const CAT_REWARD_COLS = [
+    { key: 'dollars',    label: '$',  step: '0.25' },
+    { key: 'stars',      label: '✨', step: '1'    },
+    { key: 'restWeek',   label: '🌿', step: '1'    },
+    { key: 'dayPass',    label: '🎫', step: '1'    },
+    { key: 'freshStart', label: '☀️', step: '1'    },
+];
+
+export function renderCategoryPayoutsManage() {
+    const root = document.getElementById('categoryPayoutRoot');
+    if (!root) return;
+    const cats = [...new Set((state.habits || []).map(h => h.cat))].filter(Boolean);
+    if (!cats.length) {
+        root.innerHTML = '<div style="font-size:12px;color:#aaa;padding:4px 0;">No categories yet — add a habit first.</div>';
+        return;
+    }
+    const results = new Map(currentCategoryResults().map(r => [r.cat, r]));
+    const esc = c => c.replace(/'/g, "\\'");
+
+    root.innerHTML = cats.map(cat => {
+        const r = results.get(cat);
+        // Live status so Drew can see what the numbers he's typing would do
+        // right now, without switching tabs.
+        const status = !r ? ''
+            : !r.tier
+                ? '<span style="color:#7a7390;">nothing counting this week</span>'
+                : `<span style="color:#c8961a;">${r.counting.length} counting · at `
+                  + `${CAT_TIER_LABEL[r.tier]}${rewardIsEmpty(r.reward) ? '' : ' → ' + formatReward(r.reward)}</span>`;
+
+        const rows = CAT_TIER_ROWS.map(({ tier, label, full }) => {
+            const cols = CAT_REWARD_COLS.map(({ key, label: cl, step }) => {
+                // Stars/tokens are meaningless as a penalty — taking back
+                // things she already earned fights the whole tone here.
+                if (!full && key !== 'dollars') {
+                    return '<div style="width:52px"></div>';
+                }
+                const val = getCategoryRewardValue(cat, tier, key);
+                return '<div class="msp-field-row" style="width:52px">'
+                     + `<span class="msp-field-label" style="text-align:center">${cl}</span>`
+                     + `<input type="number" class="msp-field-input" step="${step}" value="${val}" placeholder="—" `
+                     + 'style="width:100%;box-sizing:border-box;text-align:center" '
+                     + `onchange="window.updateCategoryField('${esc(cat)}','${tier}','${key}',this.value)">`
+                     + '</div>';
+            }).join('');
+            return '<div style="display:flex;gap:6px;align-items:flex-end;margin-bottom:8px;">'
+                 + `<span style="width:74px;font-size:11px;color:#ccc8e0;font-weight:600;flex-shrink:0;">${label}</span>`
+                 + cols + '</div>';
+        }).join('');
+
+        return '<div class="msp-section">'
+             + `<div class="msp-section-title">📂 ${escapeHtml(cat)}</div>`
+             + `<div style="font-size:10px;margin-bottom:12px;">${status}</div>`
+             + rows
+             + '</div>';
+    }).join('');
+}
+
+window.renderCategoryPayoutsManage = renderCategoryPayoutsManage;
+
+window.updateCategoryField = async (cat, tier, key, value) => {
+    await setCategoryReward(cat, tier, key, value);
+    renderCategoryPayoutsManage();
+    window.render?.();
+};
+
 window.moveSectionUp = async (id) => {
     await moveSection(id, -1, currentAvailableSections());
     renderSectionOrderManage();
@@ -134,8 +220,11 @@ window.showManageDetail = (id) => {
     const h = uiState.habits.find(x => x.id === id);
     if (!h) return;
 
-    // Show habits panel, hide others
-    ['add', 'events', 'stars', 'period'].forEach(s => {
+    // Show habits panel, hide others. This list had drifted behind the
+    // switcher's — layout/streakdollars/achievements were never added, so
+    // clicking a habit while one of those panes was open left BOTH visible.
+    // Keep it in sync with the array in switchManageSection above.
+    ['add', 'events', 'stars', 'period', 'layout', 'streakdollars', 'achievements', 'category'].forEach(s => {
         const p   = document.getElementById('msp-right-' + s);
         const btn = document.getElementById('msp-nav-' + s);
         if (p)   p.style.display = 'none';
@@ -404,6 +493,31 @@ function _wrWinRow(w) {
         </div>`;
 }
 
+// One settled category payout from the week's history snapshot.
+// `c` is the snapshot shape written by Core/weeklyReset.js, NOT a live result.
+function _wrCategoryRow(c) {
+    const TC = { punish:'#d9534f', low:'#e67e22', goal:'#27ae60', bonus:'#8e44ad' };
+    const color = TC[c.tier] || '#c490c4';
+    const tokens = formatReward({
+        dollars: 0, stars: c.stars, restWeek: c.restWeek,
+        dayPass: c.dayPass, freshStart: c.freshStart,
+    });
+    const d = c.dollars || 0;
+    return `
+        <div style="display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:10px;margin-bottom:8px;background:rgba(240,192,64,0.06);border-left:3px solid ${color};">
+            <div style="font-size:20px;flex-shrink:0;">📂</div>
+            <div style="flex:1;">
+                <div style="font-weight:700;color:#4a3a3a;font-size:12px;margin-bottom:3px;">${escapeHtml(c.cat)}</div>
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                    <span style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;padding:2px 6px;border-radius:4px;background:rgba(0,0,0,0.05);color:${color};">All ${c.tier}</span>
+                    <span style="font-size:10px;color:#aaa;">${c.counting} habit${c.counting !== 1 ? 's' : ''}</span>
+                    ${tokens ? `<span style="font-size:9px;font-weight:700;color:#c8961a;">${tokens}</span>` : ''}
+                </div>
+            </div>
+            ${d ? `<div style="font-family:'Great Vibes',cursive;font-size:22px;color:${d < 0 ? '#d9534f' : color};flex-shrink:0;">${d < 0 ? '−' : '+'}$${Math.abs(d).toFixed(2)}</div>` : ''}
+        </div>`;
+}
+
 function _wrCloseRow(s) {
     return `
         <div style="display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:10px;margin-bottom:8px;background:rgba(212,163,163,0.05);border-left:3px solid rgba(196,144,196,0.3);">
@@ -496,6 +610,11 @@ function renderInteractiveReport(idx) {
     const closeHtml = soClose.length ? soClose.map(_wrCloseRow).join('') : '<div style="color:#aaa;font-size:11px;padding:8px 0;">Great job hitting your goals!</div>';
     _wrLastStreaks = streaks;
     const streakHtml = _wrStreakSectionInner(streaks, _wrStreakMode);
+    // Read the SNAPSHOT, not live config — the config can change after the
+    // week closed, and re-deriving would rewrite history (the trap bounties
+    // fall into, where the reset clears the fields and the report goes blank).
+    const wkCats  = wk.categories || [];
+    const catHtml = wkCats.map(_wrCategoryRow).join('');
 
     body.innerHTML = `
       <div style="padding:16px 14px 26px;">
@@ -514,6 +633,11 @@ function renderInteractiveReport(idx) {
             ${title('🌟 You Crushed It', wins.length)}
             <div class="wr-scroll4">${winsHtml}</div>
           </div>
+          ${wkCats.length ? `
+          <div style="background:linear-gradient(180deg,#fdf8ff 0%,#f9f4fd 100%);padding:18px 20px 16px;border-top:1px solid rgba(196,144,196,0.12);">
+            ${title('📂 Category Bonuses', wkCats.length)}
+            <div class="wr-scroll4">${catHtml}</div>
+          </div>` : ''}
           <div style="background:linear-gradient(180deg,#fdf8ff 0%,#f9f4fd 100%);padding:18px 20px 16px;border-top:1px solid rgba(196,144,196,0.12);">
             ${title('💪 So Close', soClose.length)}
             <div class="wr-scroll4">${closeHtml}</div>
@@ -818,7 +942,11 @@ export function renderStreakDollarsManage() {
     const grandBounty = breakdowns.reduce((s, x) => s + x.br.bounty, 0);
     const grandRooms  = getRoomPayoutsTotal();
     const grandEvents = getEventPayoutsTotal();
-    const grandTotal  = grandBase + grandGood + grandBad + grandBounty + grandRooms + grandEvents;
+    // Category payouts are cross-habit, so they sit at the grand-total layer
+    // rather than inside _thisWeekBreakdown (which is per-habit).
+    const grandCategory = getCategoryPayoutsTotal();
+    const grandTotal  = grandBase + grandGood + grandBad + grandBounty
+                      + grandRooms + grandEvents + grandCategory;
 
     const thisWeekRows = breakdowns.map(({ h, br }) => {
         const streakBadge = br.streakCount >= 2 && br.goodStreak > 0
@@ -889,6 +1017,7 @@ export function renderStreakDollarsManage() {
                 · Bounty <span style="color:${_moneyColor(grandBounty)};">${_money(grandBounty)}</span>
                 · Rooms <span style="color:${_moneyColor(grandRooms)};">${_money(grandRooms)}</span>
                 · Events <span style="color:${_moneyColor(grandEvents)};">${_money(grandEvents)}</span>
+                · Category <span style="color:${_moneyColor(grandCategory)};">${_money(grandCategory)}</span>
             </div>
             <div style="font-size:10px;color:#666;margin-top:4px;">Matches the Today-view headline.</div>
         </div>

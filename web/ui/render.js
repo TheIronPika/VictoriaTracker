@@ -24,6 +24,35 @@ import { renderPeriodHistory } from './period-ui.js';
 import { renderRoomsSection } from './rooms-ui.js';
 import { renderWaterCard } from './water-ui.js';
 import { computeForecast } from './manage-ui.js';
+import { currentCategoryResults, getCategoryPayoutsTotal } from '../../Core/category-config.js';
+import { rewardIsEmpty, formatReward, TIER_LABEL as CAT_TIER_LABEL } from '../../Core/category-payouts.js';
+
+/**
+ * The category-payout line under a category header.
+ * Returns '' for categories with nothing configured, so an untouched install
+ * looks exactly as it did before this feature existed.
+ *
+ * Shows what the category is banking right now, then what the next rung is
+ * worth and how many habits are holding it back:
+ *   "📂 Goal +$5 ✨2 · 2 to go for Bonus +$10 ✨5"
+ */
+function buildCategoryLine(r) {
+    if (!r || !r.tier) return '';                       // nothing counting this week
+    const earning = !rewardIsEmpty(r.reward);
+    const next    = !!r.nextTier;
+    if (!earning && !next) return '';                   // category isn't configured
+
+    const bits = [];
+    if (earning) {
+        bits.push(`<span class="cat-pay-now">${CAT_TIER_LABEL[r.tier]} ${formatReward(r.reward)}</span>`);
+    }
+    if (next) {
+        const n = r.laggards.length;
+        bits.push(`<span class="cat-pay-next">${n} to go for `
+                + `${CAT_TIER_LABEL[r.nextTier]} ${formatReward(r.nextReward)}</span>`);
+    }
+    return `<div class="cat-payout-line">📂 ${bits.join(' · ')}</div>`;
+}
 import { syncHabits } from '../../Core/habits-data.js';
 import { setHabits } from '../../Core/state.js';
 import { resolveOrderedSections, SECTION_SEASONAL, SECTION_ROOMS } from '../../Core/section-order.js';
@@ -76,6 +105,11 @@ export function render() {
 
     const categories = [...new Set(uiState.habits.map(h => h.cat))];
 
+    // Category-wide payout state for every category, computed once per render
+    // from the same pure math the Monday reset uses (Core/category-payouts.js),
+    // so the header line can never promise something the reset won't pay.
+    const catResultsById = new Map(currentCategoryResults().map(r => [r.cat, r]));
+
     categories.forEach(cat => {
         const isCol = uiState.collapsed[cat] !== false;
         let items   = uiState.habits.filter(h => h.cat === cat && isCycleDue(h));
@@ -110,11 +144,20 @@ export function render() {
             return `<div class="mini-dot" style="background:var(--grad-${t})"></div>`;
         }).join('');
 
+        // Category payout line — only rendered for categories that actually
+        // have a reward configured, so unconfigured ones look exactly as
+        // before. Uses WEEK-TOTAL tiers (via Core), not the as-of-day
+        // cumulative the mini-dots above use; mixing the two would show a
+        // line that contradicts what pays out on Monday.
+        const catRes = catResultsById.get(cat);
+        const catLineHtml = buildCategoryLine(catRes);
+
         todayHtml += `
             <div class="category-header" onclick="window.toggleCol('${cat}')">
                 <div style="flex:1">
                     <span class="cat-label">${escapeHtml(cat)}</span>
                     <div class="status-mini-bar">${miniDotsHtml}</div>
+                    ${catLineHtml}
                 </div>
                 <span style="color:var(--header-pink); font-size:12px; font-weight:bold;">${isCol ? 'SHOW ✦' : 'HIDE ✧'}</span>
             </div>
@@ -394,11 +437,12 @@ export function render() {
 
     uiState.lastActedId = null;
 
-    // Include room + event payouts in the headline — the reset pays them out
-    // Monday and the Streak $ panel + email report both count them, so the
-    // live header should match. (Review M1 + M2.)
+    // Include room + event + category payouts in the headline — the reset pays
+    // them out Monday and the Streak $ panel + email report both count them, so
+    // the live header should match. (Review M1 + M2.)
     totalMoney += getRoomPayoutsTotal();
     totalMoney += getEventPayoutsTotal();
+    totalMoney += getCategoryPayoutsTotal();
     animateMoneyDisplay(totalMoney);
     if (state.eventsLoaded) renderSeasonalSection();
 

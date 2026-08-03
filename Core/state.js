@@ -69,6 +69,14 @@ export const state = {
     // Weekly reset approval (system/reset_state) — see core/resetState.js.
     resetState: { pendingReset: false, pendingSince: null, snoozeCount: 0, snoozedUntil: null, lastWeeklyReset: null },
     resetStateLoaded: false,
+
+    // Category-wide payouts (system/category_config). Map keyed by category
+    // name; each value holds a per-tier reward object. A category absent from
+    // this map — or a tier absent from a category — is simply inert, so the
+    // whole feature is a no-op until Drew configures something.
+    // See core/category-payouts.js.
+    categoryConfig: {},
+    categoryConfigLoaded: false,
 };
 
 // ─── Mutators ────────────────────────────────────────────────────────
@@ -89,3 +97,4 @@ export function setSectionOrder(list)  { state.sectionOrder = Array.isArray(list
 export function setWeeklyPlans(map)    { state.weeklyPlans = (map && typeof map === 'object') ? map : {}; }
 export function setCalendarEvents(list){ state.calendarEvents = Array.isArray(list) ? list : []; }
 export function setResetState(data)    { state.resetState = { ...state.resetState, ...(data || {}) }; }
+export function setCategoryConfig(map) { state.categoryConfig = (map && typeof map === 'object') ? map : {}; }

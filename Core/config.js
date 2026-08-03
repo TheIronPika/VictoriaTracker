@@ -57,6 +57,10 @@ export const FIRESTORE_DOCS = {
     ACHIEVEMENTS: ['system', 'achievements_data'],
     // Water tracker: { goal, history: { 'YYYY-MM-DD': ounces } }
     WATER: ['system', 'water_data'],
+    // Category-wide payouts: { categories: { [catName]: { punish|low|goal|bonus:
+    // { dollars, stars?, restWeek?, dayPass?, freshStart? } } } }.
+    // See Core/category-payouts.js.
+    CATEGORIES: ['system', 'category_config'],
 };
 
 // Google Calendar OAuth. Leave clientId '' to keep the integration disabled
