@@ -182,6 +182,26 @@ export function render() {
                 ? `<div class="forecast-detail" id="fc-${h.id}">On pace for ${forecast.pace} · last week: ${forecast.lastWeek}</div>`
                 : '';
 
+            // Star value badge — tap reveals which tiers pay stars on this
+            // habit. Mirrors core/habits.js getStarsEarned()'s own thresholds
+            // (goal tier, bonus tier, 2+ week streak) so it never drifts from
+            // what actually gets paid on reset. Deliberately NOT on long-press
+            // — that already opens the edit modal (window.startLongPress).
+            const starGoal      = h.starGoal   || 0;
+            const starBonus     = h.starBonus  || 0;
+            const starStreak    = h.starStreak || 0;
+            const hasStarValue  = starGoal > 0 || starBonus > 0 || starStreak > 0;
+            const starBadgeSpan = hasStarValue
+                ? `<span class="star-badge" onclick="event.stopPropagation();document.getElementById('star-${h.id}').classList.toggle('show')">⭐</span>`
+                : '';
+            const starDetailDiv = hasStarValue
+                ? `<div class="star-detail" id="star-${h.id}">
+                       ${starGoal   > 0 ? `<div class="star-detail-row"><span>Goal</span><span>+${starGoal} ⭐</span></div>` : ''}
+                       ${starBonus  > 0 ? `<div class="star-detail-row"><span>Bonus</span><span>+${starBonus} ⭐</span></div>` : ''}
+                       ${starStreak > 0 ? `<div class="star-detail-row"><span>2+ week streak</span><span>+${starStreak} ⭐</span></div>` : ''}
+                   </div>`
+                : '';
+
             const periodProtectedCard = isPeriodActive() && !!h.periodSensitive;
             const pStartIdx = periodStartDayIdx(getDayIdx);
 
@@ -255,11 +275,13 @@ export function render() {
                             ${cycleLabel(h) ? `<span class="cycle-badge">🔄 ${cycleLabel(h)}</span>` : ''}
                             ${wkLate > 0 ? `<span class="cycle-badge" style="background:rgba(217,83,79,0.15);color:#d9534f;border-color:rgba(217,83,79,0.3);" title="Late completion will reduce payout">⏰ ${wkLate}w late</span>` : ''}
                             ${h.bountyActive ? `<span class="bounty-badge">🏆 Bounty</span>` : ''}
+                            ${starBadgeSpan}
                             ${forecastBadgeSpan}
                             ${(h.excused || state.excuseTokens > 0) ? `<button class="excuse-btn ${h.excused ? 'excuse-on' : ''}" onclick="event.stopPropagation();window.toggleExcused('${h.id}')">${h.excused ? 'Undo Rest Week' : 'Rest Week'}</button>` : ''}
                             ${(!isFutureDay && !isSystemDriven && state.markOffTokens > 0) ? `<button class="mark-btn" onclick="event.stopPropagation();window.useMarkOffBubble('${h.id}')" title="Use a Day Pass to mark one bubble for today">🎫 +1</button>` : ''}
                         </div>
                         ${forecastDetailDiv}
+                        ${starDetailDiv}
                         <div class="bubbles" style="${isFutureDay ? 'opacity:0.45;pointer-events:none;' : ''}">${bubblesHtml}</div>
                     </div>
                 </div>`;

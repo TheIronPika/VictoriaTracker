@@ -808,6 +808,32 @@
         }
         .forecast-detail.show { display: block; }
 
+        /* ── STAR VALUE BADGE ───────────────────────────────────────────── */
+        .star-badge {
+            font-size: 12px;
+            cursor: pointer;
+            padding: 0 2px;
+            flex-shrink: 0;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .star-detail {
+            background: rgba(240,192,64,0.1);
+            border-radius: 8px;
+            padding: 6px 10px;
+            margin-top: 3px;
+            display: none;
+        }
+        .star-detail.show { display: block; }
+        .star-detail-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: #8a6d00;
+        }
+        .star-detail-row + .star-detail-row { margin-top: 2px; }
+        .star-detail-row span:last-child { font-weight: 700; }
+
         /* ── DEFINITION MODAL ────────────────────────────────────────── */
         #defOverlay {
             position: fixed; inset: 0; background: rgba(74,58,58,0.45);
