@@ -30,11 +30,20 @@
 // out a bonus payout for a week that visibly scored punish/low.
 //
 // Counting habits EXCLUDE:
-//   • not-yet-due cyclic habits  — dormant, not even rendered
+//   • ALL cyclic habits          — a category payout is a WEEKLY judgement, and
+//     a monthly/quarterly/yearly habit isn't a weekly commitment. Including one
+//     only on the weeks it happens to fall due made the category silently
+//     harder to clear on those weeks and easier on the rest, which is not a
+//     rule anyone could hold in their head. Excluded outright as of 2026-08-06
+//     (was `isCycleDue(h)`, i.e. included whenever due).
 //   • resting habits (Rest Week) — she spent a token to sit this one out;
 //     blocking the category payout would turn that token into a trap
 //   • period-protected habits    — same neutrality the payout math gives them
 // A category with NO counting habits scores nothing (see the guard below).
+//
+// Seasonal events need no exclusion here: they live in state.seasonalEvents
+// (system/seasonal_events), carry no `cat`, and are never members of
+// state.habits — so they have never entered this math and can't.
 //
 // Doc shape (persisted by Core/category-config.js):
 //   { categories: { "Personal": {
@@ -49,7 +58,7 @@
 // ─────────────────────────────────────────────────────────────────────
 
 import { getTier, weekTotal } from './habits.js';
-import { isCycleDue } from './cycles.js';
+import { isCyclic } from './cycles.js';
 
 // Tier ranking, lowest first — the category takes the minimum.
 export const TIER_RANK = { punish: 0, low: 1, goal: 2, bonus: 3 };
@@ -159,9 +168,10 @@ export function computeCategoryResult(cat, habits, opts = {}) {
     const periodProtected = h =>
         (periodActive || periodWasThisWeek) && !!h.periodSensitive;
 
+    // Weekly habits only — see the EXCLUDE note at the top of this file.
     const counting = (habits || []).filter(h =>
         h && h.cat === cat &&
-        isCycleDue(h) &&
+        !isCyclic(h) &&
         !h.excused &&
         !periodProtected(h)
     );
