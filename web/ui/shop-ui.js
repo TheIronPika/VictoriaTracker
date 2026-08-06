@@ -225,7 +225,7 @@ window.grantExcuseToken = async () => {
 
 window.revokeExcuseToken = async () => {
     if (state.excuseTokens <= 0) { alert('No tokens to revoke.'); return; }
-    await useExcuseToken();
+    await useExcuseToken({ reason: 'Rest Week revoked (Manage)' });
     renderExcuseTokenCount();
 };
 
@@ -245,7 +245,7 @@ window.grantStreakResetToken = async () => {
 
 window.revokeStreakResetToken = async () => {
     if (state.streakResetTokens <= 0) { alert('No tokens to revoke.'); return; }
-    await useStreakResetToken();
+    await useStreakResetToken({ reason: 'Fresh Start revoked (Manage)' });
     renderStreakResetTokenCount();
 };
 
@@ -274,7 +274,7 @@ window.grantMarkOffToken = async () => {
 
 window.revokeMarkOffToken = async () => {
     if (state.markOffTokens <= 0) { alert('No tokens to revoke.'); return; }
-    await useMarkOffToken();
+    await useMarkOffToken({ reason: 'Day Pass revoked (Manage)' });
     renderMarkOffTokenCount();
 };
 

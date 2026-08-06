@@ -227,7 +227,7 @@ window.toggleExcused = async (id) => {
     if (tokens > 0) {
         document.getElementById('excuseConfirmBtn').addEventListener('click', async () => {
             overlay.remove();
-            const ok = await useExcuseToken();
+            const ok = await useExcuseToken({ habitName: h.name, habitId: h.id });
             if (ok) {
                 await coreToggleExcused(id);
                 window.render?.();
@@ -278,7 +278,7 @@ window.resetBadStreak = async (id) => {
     if (tokens > 0) {
         document.getElementById('streakResetConfirmBtn').addEventListener('click', async () => {
             overlay.remove();
-            const ok = await useStreakResetToken();
+            const ok = await useStreakResetToken({ habitName: h.name, habitId: h.id });
             if (!ok) return;
             h.badStreak       = 0;
             h.badStreakResetTs = Date.now();
@@ -362,7 +362,7 @@ window.useMarkOffBubble = async (id) => {
     if (tokens > 0 && !atMax) {
         document.getElementById('markOffConfirmBtn').addEventListener('click', async () => {
             overlay.remove();
-            const ok = await useMarkOffToken();
+            const ok = await useMarkOffToken({ habitName: h.name, habitId: h.id });
             if (!ok) return;
             h.markOffDays = h.markOffDays || {};
             h.markOffDays[dIdx] = (h.markOffDays[dIdx] || 0) + 1;

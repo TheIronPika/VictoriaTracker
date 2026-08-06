@@ -199,6 +199,28 @@ export async function addShopItem({ icon = '✨', name, cost, isExcuseToken = fa
 }
 
 /**
+ * Shared log line for SPENDING a token. Follows awardLuckyDrawStar's pattern:
+ * the habit goes in a structured field, not baked into `reason`, so the UI can
+ * render it on its own line (the reason column is single-line and would clip
+ * "Day Pass used — Reorginize/Clean Freezer").
+ *
+ * `source` is optional — a bare use() still logs exactly the old generic line,
+ * so nothing that predates habit attribution breaks:
+ *   { habitName, habitId }  the habit it was spent on (from a habit card)
+ *   { reason }              explicit override — Manage's admin revoke buttons
+ *                           spend a token with no habit involved, and logging
+ *                           those as "used" made the history lie.
+ */
+function logTokenSpend(type, label, source) {
+    const src   = source || {};
+    const name  = typeof src.habitName === 'string' ? src.habitName.trim() : '';
+    const extra = {};
+    if (name)        extra.habitName = name;
+    if (src.habitId) extra.habitId   = src.habitId;
+    addStarLog(type, -1, src.reason || `${label} used`, extra);
+}
+
+/**
  * Grant one excuse token (called after redeeming an excuse-token shop item).
  */
 export async function addExcuseToken() {
@@ -221,11 +243,13 @@ export async function grantExcuseTokens(count) {
 
 /**
  * Consume one excuse token. Returns false if balance is 0.
+ * @param {{habitName?: string, habitId?: string, reason?: string}|null} [source]
+ *   Which habit it was spent on — see logTokenSpend.
  */
-export async function useExcuseToken() {
+export async function useExcuseToken(source = null) {
     if (state.excuseTokens <= 0) return false;
     setExcuseTokens(state.excuseTokens - 1);
-    addStarLog('excuseToken', -1, 'Rest Week used');
+    logTokenSpend('excuseToken', 'Rest Week', source);
     await syncStarData();
     return true;
 }
@@ -257,11 +281,12 @@ export async function grantStreakResetTokens(count) {
 
 /**
  * Consume one streak reset token. Returns false if balance is 0.
+ * @param {{habitName?: string, habitId?: string, reason?: string}|null} [source]
  */
-export async function useStreakResetToken() {
+export async function useStreakResetToken(source = null) {
     if (state.streakResetTokens <= 0) return false;
     setStreakResetTokens(state.streakResetTokens - 1);
-    addStarLog('streakResetToken', -1, 'Fresh Start used');
+    logTokenSpend('streakResetToken', 'Fresh Start', source);
     await syncStarData();
     return true;
 }
@@ -292,11 +317,12 @@ export async function grantMarkOffTokens(count) {
 
 /**
  * Consume one mark-off token. Returns false if balance is 0.
+ * @param {{habitName?: string, habitId?: string, reason?: string}|null} [source]
  */
-export async function useMarkOffToken() {
+export async function useMarkOffToken(source = null) {
     if (state.markOffTokens <= 0) return false;
     setMarkOffTokens(state.markOffTokens - 1);
-    addStarLog('markOffToken', -1, 'Day Pass used');
+    logTokenSpend('markOffToken', 'Day Pass', source);
     await syncStarData();
     return true;
 }
