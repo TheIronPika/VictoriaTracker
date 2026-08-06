@@ -18,6 +18,17 @@
 // the whole category to low. That single rule covers every case — there is
 // no separate "did they all hit it?" boolean.
 //
+// THE MAXED-OUT EXCEPTION: a habit whose `bonus` threshold sits above its
+// `max` (weekly ceiling) can NEVER return 'bonus' from getTier — so under
+// the bare rule above it pinned its whole category at 'goal' forever, and
+// the category's configured bonus reward was dead config that could never
+// pay. A habit that hit its own ceiling has done everything it is possible
+// to do that week, so it counts as 'bonus' for CATEGORY math only (its own
+// per-habit payout is untouched — that still comes from getTier).
+// Guarded to habits already at goal or better: a habit whose max sits below
+// its own low/goal thresholds is misconfigured, and promoting it would hand
+// out a bonus payout for a week that visibly scored punish/low.
+//
 // Counting habits EXCLUDE:
 //   • not-yet-due cyclic habits  — dormant, not even rendered
 //   • resting habits (Rest Week) — she spent a token to sit this one out;
@@ -83,6 +94,42 @@ export function readReward(catCfg, tier) {
 }
 
 /**
+ * A habit's weekly ceiling — the most completions it can bank. Mirrors the
+ * `h.max || 7` fallback the bubble UI and the Day Pass gate already use.
+ */
+export function habitMax(habit) {
+    const n = parseFloat(habit && habit.max);
+    return Number.isFinite(n) && n > 0 ? n : 7;
+}
+
+/**
+ * True if `habit` literally cannot reach 'bonus': its bonus threshold sits
+ * above its weekly ceiling, so getTier can never return 'bonus' for it.
+ */
+export function bonusUnreachable(habit) {
+    if (!habit) return false;
+    // `habit.bonus || 7` exactly as getTier reads it — 0/blank means default.
+    return (habit.bonus || 7) > habitMax(habit);
+}
+
+/**
+ * The tier a habit contributes to its CATEGORY's minimum — getTier, except a
+ * habit that hit its own weekly ceiling counts as 'bonus'. See the
+ * MAXED-OUT EXCEPTION note at the top of this file.
+ *
+ * Only affects category math. A habit's own dollars/stars/streak still come
+ * straight from getTier in habits.js — a goal-capped habit banks its goal
+ * payout, not its (unreachable) bonus payout.
+ */
+export function effectiveCategoryTier(habit, total) {
+    const tier = getTier(habit, total);
+    if (TIER_RANK[tier] >= TIER_RANK.goal && total >= habitMax(habit)) {
+        return 'bonus';
+    }
+    return tier;
+}
+
+/**
  * Compute one category's weekly result. PURE.
  * Both the live UI and the Monday reset call this, so they can never disagree.
  *
@@ -136,7 +183,8 @@ export function computeCategoryResult(cat, habits, opts = {}) {
         // Week TOTAL, not the as-of-viewed-day cumulative the mini-dots use —
         // payout math is weekly, and mixing the two would make the progress
         // line contradict what actually pays out.
-        const t = getTier(h, weekTotal(h.history));
+        const total = weekTotal(h.history);
+        const t     = effectiveCategoryTier(h, total);
         tiers.set(h, t);
         if (TIER_RANK[t] < minRank) minRank = TIER_RANK[t];
     }
