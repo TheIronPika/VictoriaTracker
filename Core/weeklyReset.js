@@ -30,7 +30,7 @@ import { FIRESTORE_DOCS, HISTORY_MAX_WEEKS } from './config.js';
 // Pure math only — category-payouts.js deliberately avoids ./firebase.js so
 // this file still runs under plain Node in the GitHub Action. Persistence for
 // that feature lives in category-config.js, which is NOT imported here.
-import { computeAllCategoryResults, rewardIsEmpty } from './category-payouts.js';
+import { computeAllCategoryResults, rewardIsEmpty, TIER_LABEL } from './category-payouts.js';
 
 /** True if a reset already executed today — idempotency guard for both modes. */
 export async function resetAlreadyHandledToday(io, now = new Date()) {
@@ -216,7 +216,11 @@ export async function executeWeeklyReset(io, now = new Date()) {
     // Same categoryResults computed above for the money, so the two can't
     // disagree about which categories paid. Day Passes are awarded here for
     // the first time anywhere in the reset — nothing else grants them.
-    const TIER_LABEL = { punish: 'Punish', low: 'Low', goal: 'Goal', bonus: 'Bonus' };
+    // TIER_LABEL comes from category-payouts.js — a local copy here said
+    // 'Punish' where the shared one says 'Debt', which would have surfaced as
+    // two different names for one tier the moment a punish/low tier carried
+    // stars. (Unreachable today: readReward now zeroes non-dollar rewards on
+    // those tiers, so this reason string is never persisted for them.)
     categoryResults.forEach(r => {
         if (!r.tier) return;                       // nothing counted this week
         const { stars, restWeek, dayPass, freshStart } = r.reward;

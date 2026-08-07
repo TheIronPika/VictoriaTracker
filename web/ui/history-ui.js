@@ -457,6 +457,7 @@ window.saveDailyReminderTime = (time) => {
 
 // Fires a notification when the app is open and it's the stored reminder time.
 let _reminderCheckId = null;
+let _lastMins = null;   // minute-of-day at the previous tick; see the crossing check
 (function _initDailyReminder() {
     if (_reminderCheckId) return;
     _reminderCheckId = setInterval(() => {
@@ -465,7 +466,22 @@ let _reminderCheckId = null;
         if (!time) return;
         const now = new Date();
         const [hh, mm] = time.split(':').map(Number);
-        if (now.getHours() === hh && now.getMinutes() === mm) {
+        if (!Number.isFinite(hh) || !Number.isFinite(mm)) return;
+        // Fire when the clock CROSSES the target, not on an exact HH:MM match.
+        // The 60s interval isn't aligned to minute boundaries and browsers
+        // throttle timers in background tabs, so a tick could jump straight
+        // over the target minute and the reminder would never fire that day.
+        //
+        // Crossing (prev < target <= now) rather than a plain "now >= target":
+        // the latter would fire a 9am reminder the moment she opens the app at
+        // 10pm, since the fired-today key would still be unset. Seeding _lastMins
+        // on the first tick means a fresh open can only fire if the target is
+        // reached while the app stays open.
+        const nowMins    = now.getHours() * 60 + now.getMinutes();
+        const targetMins = hh * 60 + mm;
+        const prevMins   = _lastMins === null ? nowMins - 1 : _lastMins;
+        _lastMins = nowMins;
+        if (prevMins < targetMins && nowMins >= targetMins) {
             const key = 'vt_reminderFired_' + now.toDateString();
             if (!localStorage.getItem(key)) {
                 localStorage.setItem(key, '1');

@@ -117,6 +117,16 @@ export function readReward(catCfg, tier) {
     for (const k of ['stars', 'restWeek', 'dayPass', 'freshStart']) {
         out[k] = Math.trunc(out[k]);
     }
+    // Enforce the documented "punish/low are dollars-only" contract HERE, not
+    // just in the editor UI. This doc is shared with the PWA and hand-editable
+    // in Firestore, so a stray stars/token value on a debt or low tier (legacy
+    // data, a manual edit, a bug in either client) would otherwise be paid out
+    // by the reset's category-token loop while no UI ever showed it. Negative
+    // stars/tokens would mean confiscating things she already earned, which
+    // the feature deliberately never does.
+    if (tier === 'punish' || tier === 'low') {
+        out.stars = out.restWeek = out.dayPass = out.freshStart = 0;
+    }
     return out;
 }
 

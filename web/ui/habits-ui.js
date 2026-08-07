@@ -9,6 +9,7 @@ import { uiState, saveCollapsedState } from './ui-state.js';
 import { state } from '../../Core/state.js';
 import { getDayIdx, escapeHtml } from '../../Core/utils.js';
 import { effectiveDate } from '../../Core/resetState.js';
+import { unlockAchievement } from '../../Core/achievements.js';
 import { getTier, toCumulative, weekTotal } from '../../Core/habits.js';
 import { LUCKY_DRAW_ODDS, WATER_CONFIG } from '../../Core/config.js';
 import { syncHabits, toggleExcused as coreToggleExcused, deleteHabit as coreDeleteHabit } from '../../Core/habits-data.js';
@@ -476,6 +477,16 @@ window.toggleBubble = async (id, val) => {
 
     if (isUp && newTier !== 'punish' && newTier !== oldTier) {
         triggerFanfare(newTier);
+    }
+
+    // 🏆 First bounty claimed. The badge has existed in the catalog since the
+    // achievements feature shipped but NOTHING ever unlocked it in either app,
+    // so it was permanently locked and the "N of 13" count was unreachable.
+    // Fired here because this is where a bounty's condition is actually met —
+    // the reset that pays it runs in Node and has no achievements access.
+    // unlockAchievement is idempotent, so re-firing on later taps is harmless.
+    if (isUp && h.bountyActive && (newTier === 'goal' || newTier === 'bonus')) {
+        unlockAchievement({ id: 'bounty_first', achId: 'bounty_first', label: 'First bounty claimed' });
     }
 
     // ── Lucky draw ────────────────────────────────────────────────────
