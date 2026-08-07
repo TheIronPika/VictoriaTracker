@@ -36,6 +36,21 @@
 //     a lone habit in a category would forgive itself into the rung above
 //     (one habit at Goal, nothing else → "Bonus"), which is nonsense.
 //
+// FORGIVENESS IS SUSPENDED BY PERIOD PROTECTION (2026-08-07), for the
+// categories in STRICT_WHEN_PERIOD_PROTECTED below. Period-protected habits
+// leave the counting set entirely, which can shrink a category enough that
+// forgiveness becomes disproportionate: Sexual has 6 counting habits normally
+// but only 2 during a period, so one forgiven straggler would mean a single
+// habit at tier carries the whole payout. Protection is meant to stop her
+// being PENALISED for that week, not to make the reward markedly cheaper to
+// earn. So when protection actually removes a habit from one of those
+// categories, that week is scored strictly — every remaining counting habit
+// must reach the tier.
+//
+// Keyed on protection having really removed something from THIS category, not
+// merely on a period being active: if no habit here is periodSensitive then
+// nothing shrank and there is no reason to tighten.
+//
 // THE MAXED-OUT EXCEPTION: a habit whose `bonus` threshold sits above its
 // `max` (weekly ceiling) can NEVER return 'bonus' from getTier — so under
 // the bare rule above it pinned its whole category at 'goal' forever, and
@@ -87,6 +102,17 @@ export const REWARD_KEYS = ['dollars', 'stars', 'restWeek', 'dayPass', 'freshSta
 
 /** Tiers that can carry stars/tokens (punish/low are dollars-only). */
 export const REWARD_TIERS = ['punish', 'low', 'goal', 'bonus'];
+
+/**
+ * Categories that drop the one-forgiven-straggler rule on any week where
+ * period protection actually removed one of their habits — see the note at
+ * the top of this file.
+ *
+ * Matched on the habit's `cat` string, so RENAMING a category here silently
+ * turns the rule off. Kept as an explicit list rather than a size heuristic
+ * because this is a deliberate per-category judgement, not a general one.
+ */
+export const STRICT_WHEN_PERIOD_PROTECTED = ['Sexual'];
 
 /** An all-zero reward — returned whenever nothing is configured. */
 export function emptyReward() {
@@ -184,7 +210,8 @@ export function categoryRanks(counting) {
  *
  * Returns them worst-first, so the UI naming names the furthest behind first.
  */
-export function blockersForRank(counting, rank) {
+export function blockersForRank(counting, rank, opts = {}) {
+    const forgive = opts.forgive !== false;   // default on; suspended by period protection
     const list = (counting || []).map(h => ({ h, r: TIER_RANK[effectiveCategoryTier(h, weekTotal(h.history))] }));
     const below = list.filter(x => x.r < rank).sort((a, b) => b.r - a.r); // closest first
     if (!below.length) return [];
@@ -193,17 +220,17 @@ export function blockersForRank(counting, rank) {
     // never be its own forgiven straggler — with n=1 it must climb, so
     // reporting "0 to go" would be a lie (and would contradict qualifiesFor,
     // which refuses a tier no habit has actually reached).
-    const canPardon = below[0].r === rank - 1 && list.length >= 2;
+    const canPardon = forgive && below[0].r === rank - 1 && list.length >= 2;
     return below.slice(canPardon ? 1 : 0).sort((a, b) => a.r - b.r).map(x => x.h);
 }
 
 /** True when the category legitimately reaches `rank`. */
-function qualifiesFor(counting, rank) {
+function qualifiesFor(counting, rank, forgive) {
     if (rank <= TIER_RANK.punish) return true;               // the floor is free
     const ranks = categoryRanks(counting);
     // Somebody has to actually be there — forgiveness can't carry an empty tier.
     if (!ranks.some(r => r >= rank)) return false;
-    return blockersForRank(counting, rank).length === 0;
+    return blockersForRank(counting, rank, { forgive }).length === 0;
 }
 
 /**
@@ -237,12 +264,15 @@ export function computeCategoryResult(cat, habits, opts = {}) {
         (periodActive || periodWasThisWeek) && !!h.periodSensitive;
 
     // Weekly habits only — see the EXCLUDE note at the top of this file.
-    const counting = (habits || []).filter(h =>
-        h && h.cat === cat &&
-        !isCyclic(h) &&
-        !h.excused &&
-        !periodProtected(h)
+    const eligible = (habits || []).filter(h =>
+        h && h.cat === cat && !isCyclic(h) && !h.excused
     );
+    const counting  = eligible.filter(h => !periodProtected(h));
+    const protectedOut = eligible.length - counting.length;
+
+    // Forgiveness is suspended when period protection actually shrank THIS
+    // category and the category opted into strictness — see the note up top.
+    const forgive = !(protectedOut > 0 && STRICT_WHEN_PERIOD_PROTECTED.includes(cat));
 
     const catCfg = config[cat];
 
@@ -251,7 +281,7 @@ export function computeCategoryResult(cat, habits, opts = {}) {
     // category she rested entirely. Score nothing instead.
     if (!counting.length) {
         return { cat, tier: null, counting, atTier: 0, total: 0,
-                 reward: emptyReward(), laggards: [],
+                 reward: emptyReward(), laggards: [], protectedOut, forgive,
                  nextTier: null, nextReward: emptyReward() };
     }
 
@@ -263,7 +293,7 @@ export function computeCategoryResult(cat, habits, opts = {}) {
     // contradict what actually pays out (effectiveCategoryTier handles that).
     let achieved = TIER_RANK.punish;
     for (let r = TIER_RANK.bonus; r > TIER_RANK.punish; r--) {
-        if (qualifiesFor(counting, r)) { achieved = r; break; }
+        if (qualifiesFor(counting, r, forgive)) { achieved = r; break; }
     }
 
     const tier   = RANK_TIER[achieved];
@@ -290,11 +320,16 @@ export function computeCategoryResult(cat, habits, opts = {}) {
     // already excluding the habit that rung would forgive, so laggards.length
     // is a truthful count of moves required.
     const laggards = nextRank <= TIER_RANK.bonus
-        ? blockersForRank(counting, nextRank)
+        ? blockersForRank(counting, nextRank, { forgive })
         : [];
 
     return { cat, tier, counting, atTier, total: reward.dollars, reward,
-             laggards, nextTier, nextReward };
+             laggards, nextTier, nextReward,
+             // How many habits period protection removed this week, and whether
+             // the one-straggler rule is live. The UI needs both to explain
+             // itself, and blockersForRank needs `forgive` to agree with the
+             // tier that was actually awarded.
+             protectedOut, forgive };
 }
 
 /**
