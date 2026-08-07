@@ -8,7 +8,8 @@
 
 import { uiState, saveCollapsedState } from './ui-state.js';
 import { state } from '../../Core/state.js';
-import { getDayIdx, escapeHtml } from '../../Core/utils.js';
+import { getDayIdx, escapeHtml, startOfWeek } from '../../Core/utils.js';
+import { effectiveDate } from '../../Core/resetState.js';
 import { getTier, computeWeeklyPayout, toCumulative } from '../../Core/habits.js';
 import { isCycleDue, isCyclic, cycleLabel, cycleDueLabel } from '../../Core/cycles.js';
 import { computeStreaksFromHistory } from '../../Core/streaks.js';
@@ -60,6 +61,18 @@ import { resolveOrderedSections, SECTION_SEASONAL, SECTION_ROOMS } from '../../C
 // ── Main render ───────────────────────────────────────────────────────
 
 export function render() {
+    // Keep viewingDate inside the EFFECTIVE week before anything reads it.
+    // While last week's reset is still un-executed (Monday 00:00 → approval or
+    // the 7pm force-run), habit.history still holds LAST week's per-day data,
+    // so rendering against the real "today" would point the date strip and the
+    // bubbles at the wrong week — and a tap would overwrite an unpaid day
+    // before it is scored and snapshotted. Mirrors the native app's
+    // useAppData effect: snap only when the WEEK differs, so a deliberate
+    // same-week date-strip selection is never yanked away.
+    const eff = effectiveDate();
+    if (startOfWeek(uiState.viewingDate).getTime() !== startOfWeek(eff).getTime()) {
+        uiState.viewingDate = eff;
+    }
     buildDateStrip();
     updateFiltersUI();
 
@@ -259,7 +272,7 @@ export function render() {
             }
             const markOffCount = h.markOffDays?.[dIdx] || 0;
             const realCount    = Math.max(0, cur - markOffCount);
-            const todayIdx     = getDayIdx(new Date());
+            const todayIdx     = getDayIdx(effectiveDate());
             // How far a later REAL day (already happened, up through today) has
             // reached, so backdating shows those bubbles as already-claimed
             // (dashed) instead of empty. Bounded at todayIdx — days after today
@@ -567,11 +580,14 @@ window.render = debouncedRender;
 export function buildDateStrip() {
     const strip       = document.getElementById('dateStrip');
     strip.innerHTML   = '';
-    const startOfWeek = new Date();
-    startOfWeek.setDate(startOfWeek.getDate() - getDayIdx(startOfWeek));
+    // effectiveDate(), not new Date() — during the pending-reset window the
+    // strip must show the week the history arrays actually hold. Named
+    // weekStart so it doesn't shadow the imported startOfWeek() helper.
+    const weekStart = effectiveDate();
+    weekStart.setDate(weekStart.getDate() - getDayIdx(weekStart));
     for (let i = 0; i < 7; i++) {
-        const d        = new Date(startOfWeek);
-        d.setDate(startOfWeek.getDate() + i);
+        const d        = new Date(weekStart);
+        d.setDate(weekStart.getDate() + i);
         const isActive = d.toDateString() === uiState.viewingDate.toDateString();
         strip.innerHTML += `
             <div class="date-item ${isActive ? 'active' : ''}" onclick="window.setDate('${d.toISOString()}')">

@@ -8,6 +8,7 @@
 import { uiState, saveCollapsedState } from './ui-state.js';
 import { state } from '../../Core/state.js';
 import { getDayIdx, escapeHtml } from '../../Core/utils.js';
+import { effectiveDate } from '../../Core/resetState.js';
 import { getTier, toCumulative, weekTotal } from '../../Core/habits.js';
 import { LUCKY_DRAW_ODDS, WATER_CONFIG } from '../../Core/config.js';
 import { syncHabits, toggleExcused as coreToggleExcused, deleteHabit as coreDeleteHabit } from '../../Core/habits-data.js';
@@ -309,7 +310,7 @@ window.useMarkOffBubble = async (id) => {
     if (isSystemDriven(id)) return;
     // A day after today has no independent identity yet — editing it isn't
     // meaningful (see toggleBubble below).
-    if (getDayIdx(uiState.viewingDate) > getDayIdx(new Date())) return;
+    if (getDayIdx(uiState.viewingDate) > getDayIdx(effectiveDate())) return;
 
     const dIdx   = getDayIdx(uiState.viewingDate);
     const cur    = toCumulative(h.history)[dIdx] || 0; // cumulative through viewed day (for the message)
@@ -384,7 +385,7 @@ window.toggleBubble = async (id, val) => {
     // today) — editing it would silently redirect to today with no visual
     // cue, which is confusing. render.js already omits the onclick for
     // these bubbles; this is a defense-in-depth guard against stale DOM.
-    if (getDayIdx(uiState.viewingDate) > getDayIdx(new Date())) return;
+    if (getDayIdx(uiState.viewingDate) > getDayIdx(effectiveDate())) return;
 
     // Auto-expand this habit's category, collapse all others
     if (h.cat) {
@@ -395,7 +396,11 @@ window.toggleBubble = async (id, val) => {
     }
 
     const dIdx     = getDayIdx(uiState.viewingDate);
-    const todayIdx = getDayIdx(new Date());
+    // effectiveDate(), not new Date(): during the pending-reset window the
+    // history arrays still hold LAST week's data, so "today" for write
+    // purposes is that week's Sunday. Using the real today here would let a
+    // Monday tap overwrite an unpaid day before the reset scores it.
+    const todayIdx = getDayIdx(effectiveDate());
     // history stores PER-DAY counts. A tap either pops a filled bubble
     // (remove) or fills an empty one (add):
     //   • Filled bubble (val <= cur): remove one completion from whichever
