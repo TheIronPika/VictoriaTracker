@@ -58,6 +58,17 @@ import { syncHabits } from '../../Core/habits-data.js';
 import { setHabits } from '../../Core/state.js';
 import { resolveOrderedSections, SECTION_SEASONAL, SECTION_ROOMS } from '../../Core/section-order.js';
 
+/**
+ * Escape a value for embedding inside a single-quoted JS string literal that
+ * itself lives in an HTML attribute. Category names are user-created, so
+ * "Victoria's" used to produce toggleCol('Victoria's') — an unterminated
+ * string, so the handler threw and that category could never be expanded or
+ * collapsed. Backslash first, or it would double-escape the quote's escape.
+ * (Breakage, not XSS — single-user threat model, same as manage-ui.js's
+ * existing `replace(/'/g, "\\'")` idiom, which this generalises.)
+ */
+const jsStr = s => String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+
 // ── Main render ───────────────────────────────────────────────────────
 
 export function render() {
@@ -166,7 +177,7 @@ export function render() {
         const catLineHtml = buildCategoryLine(catRes);
 
         todayHtml += `
-            <div class="category-header" onclick="window.toggleCol('${cat}')">
+            <div class="category-header" onclick="window.toggleCol('${jsStr(cat)}')">
                 <div style="flex:1">
                     <span class="cat-label">${escapeHtml(cat)}</span>
                     <div class="status-mini-bar">${miniDotsHtml}</div>
@@ -376,7 +387,14 @@ export function render() {
                     <div class="weekly-dots-row">${weeklyDotsHtml}</div>
                 </div>`;
 
-            manageHtml += `
+            // Only build the per-habit Manage card when the panel is actually
+            // open. This is a large multi-line template (payouts+stars table,
+            // cycle schedule, streak payouts, textarea) built for EVERY habit
+            // on EVERY render — each bubble tap, water tap, Firestore snapshot
+            // and filter toggle — then discarded whenever Manage is closed,
+            // which is the common case. manageListHtml below is already gated
+            // this way; this matches it.
+            if (manageVisible) manageHtml += `
                 <div class="manage-card">
                     <h4 class="beloved-small" style="font-family:'Great Vibes'; font-size:24px; color:var(--header-pink); margin:0 0 10px 0;">${h.icon} ${escapeHtml(h.name)}</h4>
                     <div style="margin-bottom:10px; display:flex; gap:20px; align-items:center; flex-wrap:wrap;">

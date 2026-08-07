@@ -10,16 +10,13 @@ import { unlockAchievement } from '../../Core/achievements.js';
 import {
     syncStarData,
     awardStars      as coreAwardStars,
-    spendStars,
+    redeemItem,
     addShopItem     as coreAddShopItem,
     deleteShopItem  as coreDeleteShopItem,
-    addExcuseToken,
     grantExcuseTokens,
     useExcuseToken,
-    addStreakResetToken,
     grantStreakResetTokens,
     useStreakResetToken,
-    addMarkOffToken,
     grantMarkOffTokens,
     useMarkOffToken
 } from '../../Core/stars.js';
@@ -142,14 +139,17 @@ window.cancelConfirm = () => {
 window.doRedeem = async () => {
     if (!uiState.pendingRedeem) return;
     const item = uiState.pendingRedeem;
-    const ok = await spendStars(item.cost, 'Redeemed: ' + item.name);
+    // ONE write: redeemItem() spends the stars and grants the token together.
+    // The old spendStars() + addExcuseToken() pair was two full writes of the
+    // same doc, so a failure between them (network blip, tab closed) charged
+    // the stars and granted nothing — the next watchStarData snapshot then
+    // overwrote local state from Firestore, making the loss permanent.
+    // Same affordability guard and same log entries as before.
+    const ok = await redeemItem(item);
     uiState.pendingRedeem = null;
     document.getElementById('shopConfirmView').style.display = 'none';
     document.getElementById('shopItemsView').style.display   = '';
     if (!ok) { updateStarDisplay(); renderShopSheet(); return; }
-    if (item.isExcuseToken)      await addExcuseToken();
-    if (item.isStreakResetToken) await addStreakResetToken();
-    if (item.isMarkOffToken)     await addMarkOffToken();
 
     const redeemCount = (state.starLog || []).filter(e => e.reason?.startsWith('Redeemed:')).length;
     if (redeemCount === 1)  await unlockAchievement({ id: 'shop_first', achId: 'shop_first', label: 'First shop redemption' });
