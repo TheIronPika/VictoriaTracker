@@ -13,10 +13,28 @@
 // If you change the tier rule, change it HERE — callers must not
 // re-implement it (getStarsEarned already drifted that way once).
 //
-// THE RULE: a category's tier is the LOWEST tier any counting habit
-// reached. "All at goal" pays the goal reward; one straggler at low drags
-// the whole category to low. That single rule covers every case — there is
-// no separate "did they all hit it?" boolean.
+// THE RULE (revised 2026-08-06 — ONE FORGIVEN STRAGGLER):
+// A category reaches a tier when every counting habit got there, EXCEPT that
+// a single habit sitting exactly ONE tier below is forgiven.
+//
+//   6 at Bonus + 1 at Goal   → Bonus  (the lone Goal is forgiven)
+//   5 at Bonus + 2 at Goal   → Goal   (two below, no forgiveness left)
+//   6 at Bonus + 1 at Low    → Goal   (the straggler is TWO tiers down, so it
+//                                      can't be forgiven at Bonus; at Goal it
+//                                      is only one down, so Goal qualifies)
+//
+// Forgiveness is per-rung, not per-week: the category takes the HIGHEST tier
+// that qualifies. It replaces the old strict-minimum rule, under which one
+// straggler dragged the whole category down — over 15 weeks of real history
+// that produced Debt for all five categories, every single week.
+//
+// Two guards keep it honest:
+//   • Only the CLOSEST habit below the tier can be forgiven, and only when
+//     it is exactly one rung down. A habit two or more rungs down always
+//     blocks — otherwise a single punish habit would ride a bonus category.
+//   • At least one habit must actually BE at or above the tier. Without this
+//     a lone habit in a category would forgive itself into the rung above
+//     (one habit at Goal, nothing else → "Bonus"), which is nonsense.
 //
 // THE MAXED-OUT EXCEPTION: a habit whose `bonus` threshold sits above its
 // `max` (weekly ceiling) can NEVER return 'bonus' from getTier — so under
@@ -139,6 +157,46 @@ export function effectiveCategoryTier(habit, total) {
 }
 
 /**
+ * Effective category rank for each habit, in the input's order.
+ * Applies the maxed-out promotion — this is the number the tier rule reads.
+ */
+export function categoryRanks(counting) {
+    return (counting || []).map(h => TIER_RANK[effectiveCategoryTier(h, weekTotal(h.history))]);
+}
+
+/**
+ * The habits still blocking this category from reaching `rank`.
+ *
+ * Under the one-forgiven-straggler rule the closest habit below the tier is
+ * pardoned when it sits exactly one rung down, so it is NOT returned here —
+ * `blockersForRank(...).length` is therefore a truthful "how many still need
+ * to move up" for any rung, which `laggards.length` alone never was.
+ *
+ * Returns them worst-first, so the UI naming names the furthest behind first.
+ */
+export function blockersForRank(counting, rank) {
+    const list = (counting || []).map(h => ({ h, r: TIER_RANK[effectiveCategoryTier(h, weekTotal(h.history))] }));
+    const below = list.filter(x => x.r < rank).sort((a, b) => b.r - a.r); // closest first
+    if (!below.length) return [];
+    // Pardon the closest, but only if it's exactly one rung down AND the
+    // category has a second habit that could hold the tier. A lone habit can
+    // never be its own forgiven straggler — with n=1 it must climb, so
+    // reporting "0 to go" would be a lie (and would contradict qualifiesFor,
+    // which refuses a tier no habit has actually reached).
+    const canPardon = below[0].r === rank - 1 && list.length >= 2;
+    return below.slice(canPardon ? 1 : 0).sort((a, b) => a.r - b.r).map(x => x.h);
+}
+
+/** True when the category legitimately reaches `rank`. */
+function qualifiesFor(counting, rank) {
+    if (rank <= TIER_RANK.punish) return true;               // the floor is free
+    const ranks = categoryRanks(counting);
+    // Somebody has to actually be there — forgiveness can't carry an empty tier.
+    if (!ranks.some(r => r >= rank)) return false;
+    return blockersForRank(counting, rank).length === 0;
+}
+
+/**
  * Compute one category's weekly result. PURE.
  * Both the live UI and the Monday reset call this, so they can never disagree.
  *
@@ -187,39 +245,43 @@ export function computeCategoryResult(cat, habits, opts = {}) {
                  nextTier: null, nextReward: emptyReward() };
     }
 
-    let minRank = TIER_RANK.bonus;
-    const tiers = new Map();
-    for (const h of counting) {
-        // Week TOTAL, not the as-of-viewed-day cumulative the mini-dots use —
-        // payout math is weekly, and mixing the two would make the progress
-        // line contradict what actually pays out.
-        const total = weekTotal(h.history);
-        const t     = effectiveCategoryTier(h, total);
-        tiers.set(h, t);
-        if (TIER_RANK[t] < minRank) minRank = TIER_RANK[t];
+    // Highest rung that qualifies under the one-forgiven-straggler rule.
+    // Walks DOWN from bonus and stops at the first that holds — the old code
+    // took a plain minimum, which can't express forgiveness.
+    // Week TOTAL, not the as-of-viewed-day cumulative the mini-dots use —
+    // payout math is weekly, and mixing the two would make the progress line
+    // contradict what actually pays out (effectiveCategoryTier handles that).
+    let achieved = TIER_RANK.punish;
+    for (let r = TIER_RANK.bonus; r > TIER_RANK.punish; r--) {
+        if (qualifiesFor(counting, r)) { achieved = r; break; }
     }
 
-    const tier   = RANK_TIER[minRank];
+    const tier   = RANK_TIER[achieved];
     const reward = readReward(catCfg, tier);
-    // The habits sitting at the tier holding the category back — what the UI
-    // points at when it says "2 to go". Every one of them must climb a tier
-    // for the category to reach the next rung, so laggards.length IS the
-    // "how many to go" number.
-    const laggards = counting.filter(h => TIER_RANK[tiers.get(h)] === minRank);
-    const atTier   = counting.length - laggards.length;
+    const ranks  = categoryRanks(counting);
+    const atTier = ranks.filter(r => r >= achieved).length;
 
     // The next rung UP that actually pays something — what the progress line
     // dangles. Skips tiers configured with nothing, so a category that only
     // rewards bonus reads "3 to go for Bonus" from punish, not "for Low".
-    let nextTier = null, nextReward = emptyReward();
-    for (let rank = minRank + 1; rank <= TIER_RANK.bonus; rank++) {
+    let nextTier = null, nextReward = emptyReward(), nextRank = achieved + 1;
+    for (let rank = achieved + 1; rank <= TIER_RANK.bonus; rank++) {
         const candidate = readReward(catCfg, RANK_TIER[rank]);
         if (!rewardIsEmpty(candidate)) {
             nextTier   = RANK_TIER[rank];
             nextReward = candidate;
+            nextRank   = rank;
             break;
         }
     }
+
+    // Who must still climb for the NEXT rung — the set the UI names when it
+    // says "2 to go". Keyed to nextRank rather than the achieved tier, and
+    // already excluding the habit that rung would forgive, so laggards.length
+    // is a truthful count of moves required.
+    const laggards = nextRank <= TIER_RANK.bonus
+        ? blockersForRank(counting, nextRank)
+        : [];
 
     return { cat, tier, counting, atTier, total: reward.dollars, reward,
              laggards, nextTier, nextReward };
