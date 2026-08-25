@@ -1,4 +1,4 @@
-_Last updated 2026-08-06 by overnight automation (toolkit v1.0.0). Review before relying on it._
+_Last updated 2026-08-25 by overnight automation (toolkit v1.0.0). Review before relying on it._
 
 # VictoriaTracker — Claude Code Guidelines
 
@@ -91,7 +91,7 @@ VictoriaTracker/
 │                           starts Firestore listeners, registers window.maybeShowWeeklyReportAfterReset
 │                           for the post-reset popup
 ├── manifest.json         ← PWA metadata (installable on iOS/Android)
-├── sw.js                 ← Service worker — offline caching, app-shell strategy (currently v33)
+├── sw.js                 ← Service worker — offline caching, app-shell strategy (currently v40)
 ├── background.jpg        ← App background image
 │
 ├── Core/                 ← Pure logic modules (NO DOM access)
@@ -99,6 +99,8 @@ VictoriaTracker/
 │   │                       passcode, Firestore paths, season metadata, tier colors,
 │   │                       LUCKY_DRAW_ODDS — per-tier lucky draw chance: Debt 2% / Low 5% /
 │   │                       Goal 7% / Bonus 10%,
+│   │                       TIER_LABELS — uppercase display strings {punish:'DEBT', …},
+│   │                       TIER_DOTS — single-char email codes {punish:'D', …},
 │   │                       WATER_CONFIG — dailyGoalOz / incrementOz / linkedHabitId)
 │   ├── state.js          ← In-memory app state (habits, stars, history, plans, calendar events,
 │   │                       section order, waterData, achievements, resetState, categoryConfig, etc.)
@@ -142,6 +144,9 @@ VictoriaTracker/
 │   │                       (re-reads doc before writing to avoid a stale-state race wiping badges)
 │   ├── category-payouts.js ← Category-wide payout MATH — pure functions, no Firebase import.
 │   │                         computeCategoryResult() returns tier/dollars/stars for a category.
+│   │                         Also exports TIER_LABEL (title-case: 'Debt'/'Low'/'Goal'/'Bonus'),
+│   │                         formatReward() (compact "+$10 ✨5 🌿1" string), readReward(),
+│   │                         blockersForRank(), effectiveCategoryTier(), STRICT_WHEN_PERIOD_PROTECTED.
 │   │                         Imported by weeklyReset.js, category-config.js, and render.js.
 │   │                         Keep Firebase out of this file (weeklyReset.js runs in plain Node).
 │   └── category-config.js  ← Firestore load/watch/save for system/category_config; imports firebase.
@@ -340,7 +345,7 @@ All data lives in **Firebase Firestore**, project `victoria-tracker-1d2ab`, coll
 5. **The weekly reset is a two-phase propose → execute flow.** `Core/weeklyReset.js` exports two functions:
    - `proposeWeeklyReset(io, now)` — called Monday 4am by GitHub Actions. Flips `reset_state.pendingReset = true` only; makes NO data changes. This gives Victoria a window to fix last week's data before anything is scored.
    - `executeWeeklyReset(io, now)` — the actual reset (payouts, snapshots, wipe, etc.). Called either when Victoria approves in-app or by GitHub Actions force mode at 7pm Central Monday.
-   - Both functions take an injected `io = { readDoc, writeDoc }` so they work under Node (REST) and browser (Firebase SDK) without modification.
+   - Both functions take an injected `io = { readDoc, writeDoc, writeAll? }` so they work under Node (REST) and browser (Firebase SDK) without modification. `executeWeeklyReset` stages all writes to a `writes[]` array and then commits them as one atomic batch via `io.writeAll(writes)` if provided, falling back to sequential `io.writeDoc` calls if not. Providing `writeAll` is the correct way to prevent partial-reset state (stars written but habits not wiped) — adapters that lack it still work but lose the atomicity guarantee.
    - Idempotency guard: both check `reset_state.lastWeeklyReset === now.toDateString()` and bail early unless `FORCE_RESET=1` is set.
 
 6. **`Core/resetState.js` owns the UI-side reset approval flow.** It is a separate module from `Core/weeklyReset.js` (which is shared with the GitHub Action and must not grow browser-only deps):
@@ -362,7 +367,7 @@ All data lives in **Firebase Firestore**, project `victoria-tracker-1d2ab`, coll
 
 12. **Manage panel passcode is `1234`** (see `MANAGE_PASSCODE` in `config.js`). It's intentionally public since this is a single-user personal app. Access: History tab → "MANAGE 🔒" button → enter passcode. Sections: Habits, Add Habit, Events, Stars, Period, Layout, Streak $, Achievements, Category.
 
-13. **Service worker caches the app shell only.** Firestore, CDN libraries, and API calls always go network-first. The app shows stale UI when offline but won't lose data. **When adding a new file to the app shell, add it to the `SHELL` array in `sw.js` and bump the `CACHE` version string.** Current version: `victoria-v33`.
+13. **Service worker caches the app shell only.** Firestore, CDN libraries, and API calls always go network-first. The app shows stale UI when offline but won't lose data. **When adding a new file to the app shell, add it to the `SHELL` array in `sw.js` and bump the `CACHE` version string.** Current version: `victoria-v40`.
 
 14. **History chart rendering is deferred.** Chart.js canvases are only built when the History tab is visible, to avoid expensive re-renders on every Firestore update.
 
@@ -385,13 +390,14 @@ All data lives in **Firebase Firestore**, project `victoria-tracker-1d2ab`, coll
     - All three token flows show a confirmation modal before consuming a token, and show a "no tokens left — pick more up in the star shop" modal if balance is 0. The Rest Week and Day Pass action buttons are hidden entirely when the respective token balance is 0.
     - Bounties can grant Rest Weeks and/or Fresh Starts (`bountyExcuseTokens`, `bountyStreakResetTokens`); see item 9.
     - `shop-ui.js` `doRedeem()` checks the return value of `spendStars()` before granting tokens — if the balance is insufficient for any reason, the UI is reset without granting anything.
+    - **Token log attribution (as of 2026-08-06):** `use*Token()` functions in `Core/stars.js` accept an optional `source` argument. Habit-card spends pass `{ habitName, habitId }`, which are logged as structured fields (not baked into `reason`) so the log UI can display them on a separate line. Manage's revoke buttons pass `{ reason: '… revoked (Manage)' }` so admin adjustments are distinguishable from Victoria spending a token. Older log entries without a `habitName` still render fine — they just show no attribution line.
 
 22. **Mark-off completions appear as grey bubbles.** The bubble rendered for a synthetic (mark-off) day is visually distinguished from a real completion to make it clear it was purchased, not earned.
 
 23. **History > Settings sub-tab (⚙).** Contains three user-facing controls:
     - **View Report** — opens the weekly report (same popup as the post-reset auto-show) from the History tab without going into the Manage panel.
     - **Customize Vibe** — hue and saturation sliders override the automatic time-of-day accent color. Values are saved to `localStorage` (`vt_vibeHue`, `vt_vibeSat`). Reset-to-auto removes those keys and restores the time-shift animation.
-    - **Daily Reminder** — toggle + time picker; fires a browser `Notification` once per calendar day while the app tab is open. State saved to `localStorage` (`vt_reminderEnabled`, `vt_reminderTime`).
+    - **Daily Reminder** — toggle + time picker; fires a browser `Notification` once per calendar day while the app tab is open. State saved to `localStorage` (`vt_reminderEnabled`, `vt_reminderTime`). The check fires on *crossing* (previous tick < target ≤ now) rather than an exact HH:MM match — `setInterval(60s)` is not aligned to minute boundaries and browsers throttle background tabs, so the crossing approach guarantees the notification fires even if a tick skips over the target minute.
 
 24. **Lucky draw odds scale by tier.** When a bubble tap increases the completion count, there is a per-tier chance of winning a bonus star (max once per habit per day). Odds are defined in `LUCKY_DRAW_ODDS` in `Core/config.js`: Debt 2%, Low 5%, Goal 7%, Bonus 10%. Winning triggers the clover popup and confetti effect via `web/ui/lucky-draw.js`. The last-win date (`h.lastLuckyDrawDate`) is stored on the habit to enforce the once-per-day cap.
 
@@ -421,7 +427,7 @@ All data lives in **Firebase Firestore**, project `victoria-tracker-1d2ab`, coll
     - Badge definitions live in `web/ui/achievement-catalog.js` and are synced with the native app's catalog so IDs match across platforms.
     - Categories: streak milestones (7/30/100 weeks per habit, composite IDs like `streak_7_<habitId>`), perfect week, perfect month (4 consecutive), cumulative earnings ($1k, $5k), shop milestones (first / 10 redemptions), first bounty, water streak (7/30/100 days).
     - `unlockAchievement(entry)` re-reads the Firestore doc before writing to avoid a stale-state race that would wipe previously-unlocked badges on concurrent app launches.
-    - Perfect-week and streak-milestone unlocks live in `animations.js` (alongside the confetti they accompany). Other checks live in `achievements-ui.js`.
+    - Perfect-week and streak-milestone unlocks live in `animations.js` (alongside the confetti they accompany). The `bounty_first` unlock lives in `habits-ui.js` — it fires on a bubble tap the moment a bounty-active habit reaches goal/bonus tier (can't live in the reset, which runs in Node with no achievements access; `unlockAchievement` is idempotent so later taps are harmless). Other checks live in `achievements-ui.js`.
     - Badge grid is displayed in **Manage → Achievements**.
 
 29. **Tappable star badge on habit cards.** `render.js` renders a `⭐` badge on each habit card when the habit has star thresholds configured. Tapping it (without propagation to the card) toggles a per-habit star breakdown panel showing starGoal, starBonus, and starStreak values.
