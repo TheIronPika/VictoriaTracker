@@ -615,6 +615,24 @@
 
         /* 🔒 Task lock — the habit is gated behind a secondary task she has
            to confirm. Tappable, so it reads as a control, not just a label. */
+        /* 🔒 Task lock — while locked, every bubble renders as a lock instead
+           of a tier circle. Same 24px footprint as .bubble so the row doesn't
+           reflow when it opens. */
+        .bubble-locked {
+            /* NB: deliberately NOT .day-bub — that carries
+               `.bubble.day-bub:not(.filled) { color: transparent }`, which
+               would hide the 🔒 glyph inside the circle. */
+            color: initial;
+            border-color: rgba(240,192,64,0.55) !important;
+            background: rgba(240,192,64,0.14);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            line-height: 1;
+            cursor: pointer;
+        }
+
         .locked-tag {
             display: inline-block;
             font-size: 10px;

@@ -324,7 +324,17 @@ export function render() {
                 const bubbleClass = `bubble day-bub ${isFilled ? ('filled ' + (isSynthetic ? 'mark-off' : stepTier)) : ''} ${isFuture ? 'future' : ''} ${isPaused ? 'period-paused' : ''}`;
                 const borderColor = isSynthetic ? '#aaa' : `var(--color-${stepTier})`;
                 const extraStyle  = isFuture ? `background:${hexToRgba(TIER_COLORS[stepTier], 0.15)};color:${TIER_COLORS[stepTier]};` : '';
-                const onclickAttr = (isFutureDay || isSystemDriven || taskLocked) ? '' : `onclick="window.toggleBubble('${h.id}',${i})"`;
+                // 🔒 Task lock: the bubbles themselves become locks. Her own
+                // habit icon stays put — the row of circles is where the
+                // "you can't touch this yet" has to read, since that's what
+                // she reaches for. Tapping any one opens the confirm.
+                if (taskLocked) {
+                    bubblesHtml += `<div class="bubble bubble-locked"
+                        onclick="event.stopPropagation();window.confirmTaskLock('${h.id}')"
+                        title="Locked — tap to confirm">🔒</div>`;
+                    continue;
+                }
+                const onclickAttr = (isFutureDay || isSystemDriven) ? '' : `onclick="window.toggleBubble('${h.id}',${i})"`;
                 bubblesHtml += `<div class="${bubbleClass}"
                     style="border-color:${borderColor};${extraStyle}"
                     ${onclickAttr}>${dayLetter}</div>`;
@@ -336,8 +346,7 @@ export function render() {
                      ontouchstart="window.startLongPress('${h.id}')"
                      ontouchend="window.cancelLongPress()"
                      ontouchmove="window.cancelLongPress()">
-                    <div style="font-size:24px; margin-right:15px;${taskLocked ? 'cursor:pointer;' : ''}"
-                         ${taskLocked ? `onclick="event.stopPropagation();window.confirmTaskLock('${h.id}')" title="Locked — tap to confirm"` : ''}>${taskLocked ? '🔒' : h.icon}</div>
+                    <div style="font-size:24px; margin-right:15px;">${h.icon}</div>
                     <div style="flex:1">
                         ${isUrgent ? `<span class="priority-tag">✦ ${uiState.priorityMode === 'bonus' ? 'Bonus' : 'Goal'} at Risk</span>` : ''}
                         ${periodProtectedCard ? '<span class="period-tag">✦ Period protected</span>' : ''}
@@ -357,7 +366,7 @@ export function render() {
                         </div>
                         ${forecastDetailDiv}
                         ${starDetailDiv}
-                        <div class="bubbles" style="${isFutureDay ? 'opacity:0.45;pointer-events:none;' : ''}${taskLocked ? 'opacity:0.4;pointer-events:none;' : ''}">${bubblesHtml}</div>
+                        <div class="bubbles" style="${isFutureDay ? 'opacity:0.45;pointer-events:none;' : ''}">${bubblesHtml}</div>
                     </div>
                 </div>`;
 
