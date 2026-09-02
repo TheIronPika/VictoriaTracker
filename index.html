@@ -480,6 +480,25 @@
             margin-bottom: 14px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.04);
         }
+        /* "Past Weeks" is a control once there's more than the visible few:
+           the count of what's hidden sits inline, right-aligned. */
+        .past-weeks-head {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 10px;
+        }
+        .past-weeks-toggle {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            color: #c490c4;
+            text-transform: none;
+            white-space: nowrap;
+        }
+        .past-weeks-toggle.is-open { color: #bbb; }
+
         .history-section-title {
             font-family: 'Playfair Display', serif;
             font-size: 12px;

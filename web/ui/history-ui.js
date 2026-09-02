@@ -152,10 +152,24 @@ function _paintHistory(root) {
     // Settings panel
     html += _buildSettingsPanel(true);
 
-    // Past weeks list
-    html += '<h3 class="history-section-title" style="margin:16px 4px 10px;">Past Weeks</h3>';
+    // Past weeks list. Only the most recent PAST_WEEKS_SHOWN are visible; the
+    // rest live in a collapsed wrapper behind the header. With a year of
+    // history the full list buried the charts under a wall of week cards.
+    const hiddenCount = Math.max(0, weeklyHistory.length - PAST_WEEKS_SHOWN);
+    html += '<h3 class="history-section-title past-weeks-head" style="margin:16px 4px 10px;'
+          + (hiddenCount ? 'cursor:pointer;' : '') + '"'
+          + (hiddenCount ? ' onclick="window.togglePastWeeks()"' : '') + '>Past Weeks'
+          + (hiddenCount
+              ? '<span id="pastWeeksToggle" class="past-weeks-toggle">+' + hiddenCount + ' more &#8250;</span>'
+              : '')
+          + '</h3>';
     const mostRecentId = weeklyHistory.length ? weeklyHistory[0].id : null;
-    weeklyHistory.forEach(wk => {
+    weeklyHistory.forEach((wk, wkIdx) => {
+        // Open the wrapper right before the first hidden week, close it after
+        // the last — so the visible ones stay outside it and keep rendering.
+        if (wkIdx === PAST_WEEKS_SHOWN) {
+            html += '<div id="pastWeeksRest" style="display:none;">';
+        }
         const isP      = wk.totalBalance >= 0;
         const tCol     = isP ? '#27ae60' : '#d9534f';
         const tStr     = (isP ? '+$' : '-$') + Math.abs(wk.totalBalance).toFixed(2);
@@ -200,6 +214,7 @@ function _paintHistory(root) {
               + '<div id="hwkbody-' + wk.id + '" class="history-week-body" style="display:none;">' + body + '</div>'
               + '</div>';
     });
+    if (weeklyHistory.length > PAST_WEEKS_SHOWN) html += '</div>';
 
     root.innerHTML = html;
     setTimeout(() => { _drawBalanceChart(wks); _storeEarnerData(earnerList); _storeCategoryData(wks); _setupHeatmapTooltip(); }, 0);
@@ -336,6 +351,25 @@ window.switchHistoryTab = (id) => {
         if (id === 'earners')             _drawEarnersChart();
         if (id === 'category')            _drawCategoryChart();
     }, 0);
+};
+
+// How many past weeks stay visible before the rest collapse behind the header.
+const PAST_WEEKS_SHOWN = 2;
+
+// Expand/collapse everything older than the two most recent weeks. Deliberately
+// resets to collapsed on every render — this is a "what happened lately" view,
+// and the full list is the exception she opts into.
+window.togglePastWeeks = () => {
+    const rest = document.getElementById('pastWeeksRest');
+    const tog  = document.getElementById('pastWeeksToggle');
+    if (!rest) return;
+    const open = rest.style.display !== 'none';
+    rest.style.display = open ? 'none' : 'block';
+    if (tog) {
+        const n = rest.querySelectorAll('.history-week-card').length;
+        tog.innerHTML = open ? '+' + n + ' more \u203A' : 'show less \u203A';
+        tog.classList.toggle('is-open', !open);
+    }
 };
 
 window.toggleHistoryWeek = (id) => {
