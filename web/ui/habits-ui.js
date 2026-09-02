@@ -12,7 +12,8 @@ import { effectiveDate } from '../../Core/resetState.js';
 import { unlockAchievement } from '../../Core/achievements.js';
 import { getTier, toCumulative, weekTotal } from '../../Core/habits.js';
 import { LUCKY_DRAW_ODDS, WATER_CONFIG } from '../../Core/config.js';
-import { syncHabits, toggleExcused as coreToggleExcused, deleteHabit as coreDeleteHabit } from '../../Core/habits-data.js';
+import { isLocked, lockTaskLabel } from '../../Core/locks.js';
+import { syncHabits, toggleExcused as coreToggleExcused, deleteHabit as coreDeleteHabit, confirmTaskLock as coreConfirmTaskLock, relockTask as coreRelockTask } from '../../Core/habits-data.js';
 import { syncStarData, addStarLog, useExcuseToken, useStreakResetToken, useMarkOffToken, grantMarkOffTokens, awardLuckyDrawStar, luckyDrawWinsToday } from '../../Core/stars.js';
 import { playBubblePop, triggerFanfare, checkPerfectWeek, checkStreakMilestones } from './animations.js';
 import { showCloverPopup, showLuckyDrawToast } from './lucky-draw.js';
@@ -185,6 +186,24 @@ window.clearBounty = async (id) => {
     window.showManageDetail(id);
 };
 
+// 🔒 Task lock manual controls (Manage). The re-lock cadence still runs on
+// the weekly reset — these only set the live state, so the gate can be
+// tested or enforced early without waiting for it to come round.
+window.relockTaskNow = async (id) => {
+    await coreRelockTask(id);
+    window.showManageDetail(id);
+    window.render?.();
+};
+
+window.unlockTaskNow = async (id) => {
+    const h = uiState.habits.find(x => x.id === id);
+    if (!h) return;
+    h.locked = false;
+    await syncHabits();
+    window.showManageDetail(id);
+    window.render?.();
+};
+
 window.toggleExcused = async (id) => {
     const h = uiState.habits.find(x => x.id === id);
     if (!h) return;
@@ -301,6 +320,42 @@ function isSystemDriven(id) {
     return id === WATER_CONFIG.linkedHabitId;
 }
 
+// ── Task lock ─────────────────────────────────────────────────────────
+// The 🔒 gate: she confirms a secondary task before the habit's bubbles
+// open. Honour system by design — the required task may be something the
+// app doesn't track at all.
+
+window.confirmTaskLock = async (id) => {
+    const h = uiState.habits.find(x => x.id === id);
+    if (!h || !isLocked(h)) return;
+
+    const overlay = document.createElement('div');
+    overlay.id        = 'lockConfirmOverlay';
+    overlay.className = 'period-modal-overlay';
+    overlay.innerHTML = `
+        <div class="period-modal-sheet">
+            <div class="period-modal-title">🔒 ${escapeHtml(h.name)} is locked</div>
+            <div class="period-modal-sub">
+                Before this one opens up, you need to have done:<br><br>
+                <strong>${escapeHtml(lockTaskLabel(h))}</strong><br><br>
+                Have you finished it? Once you confirm you can fill in any days
+                you missed while it was locked.
+            </div>
+            <div class="period-modal-btns">
+                <button class="period-modal-btn cancel" onclick="document.getElementById('lockConfirmOverlay').remove()">Not yet</button>
+                <button class="period-modal-btn confirm" id="lockConfirmBtn">Yes, I did it</button>
+            </div>
+        </div>`;
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+
+    document.getElementById('lockConfirmBtn').addEventListener('click', async () => {
+        overlay.remove();
+        await coreConfirmTaskLock(id);
+        window.render?.();
+    });
+};
+
 // ── Mark-off token ────────────────────────────────────────────────────
 // Spend one mark-off token to synthetically add +1 completion to a habit
 // for the current viewing day, as if she actually did it.
@@ -309,6 +364,9 @@ window.useMarkOffBubble = async (id) => {
     const h = uiState.habits.find(x => x.id === id);
     if (!h) return;
     if (isSystemDriven(id)) return;
+    // 🔒 Task lock: a Day Pass must not buy a way around the gate. render.js
+    // hides the 🎫 button on a locked card, so this is the write-path guard.
+    if (isLocked(h)) return;
     // A day after today has no independent identity yet — editing it isn't
     // meaningful (see toggleBubble below).
     if (getDayIdx(uiState.viewingDate) > getDayIdx(effectiveDate())) return;
@@ -382,6 +440,9 @@ window.toggleBubble = async (id, val) => {
     const h = uiState.habits.find(x => x.id === id);
     if (!h) return;
     if (isSystemDriven(id)) return;
+    // 🔒 Task lock — bubbles stay shut until she confirms the secondary task.
+    // render.js already omits the onclick; this is the write-path guard.
+    if (isLocked(h)) return;
     // A day after today has no independent identity yet (it just mirrors
     // today) — editing it would silently redirect to today with no visual
     // cue, which is confusing. render.js already omits the onclick for

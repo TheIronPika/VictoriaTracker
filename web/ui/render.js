@@ -13,6 +13,7 @@ import { effectiveDate } from '../../Core/resetState.js';
 import { getTier, computeWeeklyPayout, toCumulative } from '../../Core/habits.js';
 import { isCycleDue, isCyclic, cycleLabel, cycleDueLabel } from '../../Core/cycles.js';
 import { computeStreaksFromHistory } from '../../Core/streaks.js';
+import { isLocked, lockTaskLabel } from '../../Core/locks.js';
 import { MANAGE_PASSCODE, TIER_COLORS, WATER_CONFIG } from '../../Core/config.js';
 import { animateMoneyDisplay } from './animations.js';
 import { renderSeasonalSection, renderEventsManage } from './events-ui.js';
@@ -299,6 +300,11 @@ export function render() {
             // Core/water.js, so its bubbles are a read-out, not a control —
             // drop the tap affordance (habits-ui.js also refuses the write).
             const isSystemDriven = h.id === WATER_CONFIG.linkedHabitId;
+            // 🔒 Task lock — bubbles stay shut until she confirms the
+            // secondary task. Same suppression path as isSystemDriven, so a
+            // stale DOM node can't sneak a write past it (habits-ui.js
+            // toggleBubble refuses too).
+            const taskLocked = isLocked(h);
             let bubblesHtml = '';
             for (let i = 1; i <= (h.max || 7); i++) {
                 const stepTier   = getTier(h, i);
@@ -318,7 +324,7 @@ export function render() {
                 const bubbleClass = `bubble day-bub ${isFilled ? ('filled ' + (isSynthetic ? 'mark-off' : stepTier)) : ''} ${isFuture ? 'future' : ''} ${isPaused ? 'period-paused' : ''}`;
                 const borderColor = isSynthetic ? '#aaa' : `var(--color-${stepTier})`;
                 const extraStyle  = isFuture ? `background:${hexToRgba(TIER_COLORS[stepTier], 0.15)};color:${TIER_COLORS[stepTier]};` : '';
-                const onclickAttr = (isFutureDay || isSystemDriven) ? '' : `onclick="window.toggleBubble('${h.id}',${i})"`;
+                const onclickAttr = (isFutureDay || isSystemDriven || taskLocked) ? '' : `onclick="window.toggleBubble('${h.id}',${i})"`;
                 bubblesHtml += `<div class="${bubbleClass}"
                     style="border-color:${borderColor};${extraStyle}"
                     ${onclickAttr}>${dayLetter}</div>`;
@@ -330,11 +336,13 @@ export function render() {
                      ontouchstart="window.startLongPress('${h.id}')"
                      ontouchend="window.cancelLongPress()"
                      ontouchmove="window.cancelLongPress()">
-                    <div style="font-size:24px; margin-right:15px;">${h.icon}</div>
+                    <div style="font-size:24px; margin-right:15px;${taskLocked ? 'cursor:pointer;' : ''}"
+                         ${taskLocked ? `onclick="event.stopPropagation();window.confirmTaskLock('${h.id}')" title="Locked — tap to confirm"` : ''}>${taskLocked ? '🔒' : h.icon}</div>
                     <div style="flex:1">
                         ${isUrgent ? `<span class="priority-tag">✦ ${uiState.priorityMode === 'bonus' ? 'Bonus' : 'Goal'} at Risk</span>` : ''}
                         ${periodProtectedCard ? '<span class="period-tag">✦ Period protected</span>' : ''}
                         ${h.excused ? '<span class="excused-tag">✦ Resting this week</span>' : ''}
+                        ${taskLocked ? `<span class="locked-tag" onclick="event.stopPropagation();window.confirmTaskLock('${h.id}')">🔒 Locked — tap to confirm: ${escapeHtml(lockTaskLabel(h))}</span>` : ''}
                         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                             <p style="margin:0; font-weight:600;">${escapeHtml(h.name)}</p>
                             ${streaks.streak >= 1 ? `<span class="streak-badge">🔥 ${streaks.streak}</span>` : ''}
@@ -345,11 +353,11 @@ export function render() {
                             ${starBadgeSpan}
                             ${forecastBadgeSpan}
                             ${(h.excused || state.excuseTokens > 0) ? `<button class="excuse-btn ${h.excused ? 'excuse-on' : ''}" onclick="event.stopPropagation();window.toggleExcused('${h.id}')">${h.excused ? 'Undo Rest Week' : 'Rest Week'}</button>` : ''}
-                            ${(!isFutureDay && !isSystemDriven && state.markOffTokens > 0) ? `<button class="mark-btn" onclick="event.stopPropagation();window.useMarkOffBubble('${h.id}')" title="Use a Day Pass to mark one bubble for today">🎫 +1</button>` : ''}
+                            ${(!isFutureDay && !isSystemDriven && !taskLocked && state.markOffTokens > 0) ? `<button class="mark-btn" onclick="event.stopPropagation();window.useMarkOffBubble('${h.id}')" title="Use a Day Pass to mark one bubble for today">🎫 +1</button>` : ''}
                         </div>
                         ${forecastDetailDiv}
                         ${starDetailDiv}
-                        <div class="bubbles" style="${isFutureDay ? 'opacity:0.45;pointer-events:none;' : ''}">${bubblesHtml}</div>
+                        <div class="bubbles" style="${isFutureDay ? 'opacity:0.45;pointer-events:none;' : ''}${taskLocked ? 'opacity:0.4;pointer-events:none;' : ''}">${bubblesHtml}</div>
                     </div>
                 </div>`;
 

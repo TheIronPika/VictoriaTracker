@@ -26,6 +26,7 @@
 
 import { getTier, computeWeeklyPayout, weekTotal, toCumulative, getStarsEarned } from './habits.js';
 import { isCycleDue, isCyclic, cycleIntervalMs } from './cycles.js';
+import { advanceLockOnReset } from './locks.js';
 import { FIRESTORE_DOCS, HISTORY_MAX_WEEKS } from './config.js';
 // Pure math only — category-payouts.js deliberately avoids ./firebase.js so
 // this file still runs under plain Node in the GitHub Action. Persistence for
@@ -334,14 +335,17 @@ export async function executeWeeklyReset(io, now = new Date()) {
 
     // ── Wipe history, clear bounties, advance cycles ─────────────────────
     habits = habits.map(h => {
-        if (isDormant(h)) return { ...h, history: [0, 0, 0, 0, 0, 0, 0], excused: false, markOffDays: {} };
+        // Task locks re-arm on the reset clock even while dormant, so a
+        // cyclic habit can't come back due and silently already-open.
+        const lockAdv = advanceLockOnReset(h);
+        if (isDormant(h)) return { ...h, history: [0, 0, 0, 0, 0, 0, 0], excused: false, markOffDays: {}, ...lockAdv };
 
         const hist3 = (h.history || []).slice(0, 7);
         const cur3  = weekTotal(hist3);
         const tier3 = getTier(h, cur3);
         const bountyTriggered3 = h.bountyActive && (tier3 === 'goal' || tier3 === 'bonus');
 
-        let updated = { ...h, history: [0, 0, 0, 0, 0, 0, 0], excused: false, markOffDays: {} };
+        let updated = { ...h, history: [0, 0, 0, 0, 0, 0, 0], excused: false, markOffDays: {}, ...lockAdv };
         if (bountyTriggered3) {
             delete updated.bountyActive;
             delete updated.bountyDollars;

@@ -357,7 +357,41 @@ window.showManageDetail = (id) => {
         +   '<div style="font-size:11px;color:#7a7390;margin-top:6px">Drew\'s bonus reward · pays out when this habit hits Goal or Bonus tier</div>'
         + '</div>';
 
-    detail.innerHTML = headerHtml + '<div class="msp-two-col">' + payoutHtml + rightColHtml + '</div>' + bountyHtml + definitionHtml;
+    // 🔒 Task lock — gate this habit behind a secondary task she confirms.
+    // Cadence is counted in weekly resets by Core/locks.js; "locked now"
+    // is the live state, editable here so the gate can be tested or
+    // enforced early without waiting for the cadence to come round.
+    const lockOn   = !!h.lockEnabled;
+    const lockHtml = '<div class="msp-section" style="margin-top:14px'
+        + (lockOn ? ';border:1px solid rgba(240,192,64,0.25);background:rgba(240,192,64,0.05);border-radius:10px;padding:16px' : '') + '">'
+        +   '<div class="msp-section-title"' + (lockOn ? ' style="color:#c8942a;margin-bottom:12px"' : '') + '>🔒 Task Lock</div>'
+        +   '<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#7a7390;cursor:pointer;margin-bottom:' + (lockOn ? '12px' : '0') + '">'
+        +     '<input type="checkbox" ' + (lockOn ? 'checked' : '') + ' style="accent-color:#c8942a" '
+        +     'onchange="window.updateField(\'' + h.id + '\',\'lockEnabled\',this.checked)"> Lock this habit until she confirms a secondary task'
+        +   '</label>'
+        + (lockOn
+            ? '<div class="msp-field-row" style="margin-bottom:10px"><span class="msp-field-label">Required task</span>'
+            +   '<input type="text" class="msp-field-input" value="' + sv(h.lockTask) + '" placeholder="e.g. Change the sheets" style="width:100%;box-sizing:border-box;font-family:Montserrat,sans-serif" '
+            +   'onchange="window.updateField(\'' + h.id + '\',\'lockTask\',this.value)"></div>'
+            + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">'
+            +   '<div class="msp-field-row"><span class="msp-field-label">Re-lock every (weeks)</span>'
+            +     '<input type="number" class="msp-field-input" min="1" value="' + sv(h.lockEveryWeeks == null ? 2 : h.lockEveryWeeks) + '" style="width:100%;box-sizing:border-box" '
+            +     'onchange="window.updateField(\'' + h.id + '\',\'lockEveryWeeks\',this.value)"></div>'
+            +   '<div class="msp-field-row"><span class="msp-field-label">Status</span>'
+            +     '<div style="font-size:12px;font-weight:700;padding-top:6px;color:' + (h.locked ? '#c8942a' : '#27ae60') + '">'
+            +       (h.locked ? '🔒 Locked now' : '🔓 Open') + '</div></div>'
+            + '</div>'
+            + '<button onclick="window.' + (h.locked ? 'unlockTaskNow' : 'relockTaskNow') + '(\'' + h.id + '\')" '
+            +   'style="padding:6px 14px;background:none;border:1px solid rgba(200,148,42,0.4);border-radius:7px;color:#c8942a;font-size:11px;font-weight:700;cursor:pointer">'
+            +   (h.locked ? '🔓 Unlock now' : '🔒 Lock now') + '</button>'
+            + '<div style="font-size:11px;color:#7a7390;margin-top:6px">'
+            +   'Her bubbles stay shut while locked. Confirming opens them for the rest of the period '
+            +   'and lets her fill in the days she missed. Re-locks automatically at the weekly reset '
+            +   'every ' + (h.lockEveryWeeks || 2) + ' week(s).</div>'
+            : '<div style="font-size:11px;color:#7a7390;margin-top:6px">Her bubbles stay shut until she taps the 🔒 and confirms the task.</div>')
+        + '</div>';
+
+    detail.innerHTML = headerHtml + '<div class="msp-two-col">' + payoutHtml + rightColHtml + '</div>' + bountyHtml + lockHtml + definitionHtml;
 };
 
 // ── Forecast ──────────────────────────────────────────────────────────

@@ -7,6 +7,7 @@
 import { state, setHabits } from './state.js';
 import { readDoc, writeDoc, watchDoc } from './firebase.js';
 import { FIRESTORE_DOCS } from './config.js';
+import { isLocked, isLockGated, confirmLockFields, LOCK_DEFAULT_EVERY_WEEKS } from './locks.js';
 
 /**
  * One-time load of habits — for headless contexts (e.g. the widget task
@@ -94,6 +95,27 @@ export async function updateHabitField(id, field, value) {
         h[field] = parseInt(value) || 0;
     } else if (field === 'streakBonusPer' || field === 'streakPenaltyPer' || field === 'streakCap') {
         h[field] = parseFloat(value) || 0;
+    } else if (field === 'lockTask') {
+        // Free text — must not fall through to the parseInt branch below,
+        // which would turn "Change the sheets" into 1.
+        h.lockTask = String(value == null ? '' : value);
+    } else if (field === 'lockEnabled') {
+        const on = (value === true || value === 'true' || value === 1 || value === '1');
+        h.lockEnabled = on;
+        if (on) {
+            // Arm it immediately, otherwise switching the gate on does
+            // nothing visible until the cadence next comes round.
+            if (h.locked === undefined) h.locked = true;
+            if (h.lockWeeks === undefined) h.lockWeeks = 0;
+        } else {
+            // Don't leave a disabled gate holding a habit shut. isLocked()
+            // already returns false for an ungated habit, but a stale
+            // `locked: true` would spring back the moment it's re-enabled.
+            h.locked = false;
+        }
+    } else if (field === 'lockEveryWeeks') {
+        const n = parseInt(value, 10);
+        h.lockEveryWeeks = (Number.isFinite(n) && n >= 1) ? n : LOCK_DEFAULT_EVERY_WEEKS;
     } else {
         h[field] = parseInt(value) || 1;
     }
@@ -109,4 +131,37 @@ export async function toggleExcused(id) {
     if (!h) return;
     h.excused = !h.excused;
     await syncHabits();
+}
+
+/**
+ * Confirm the secondary task behind a habit's 🔒 task lock, opening its
+ * bubbles for the rest of this period. Honour system — nothing verifies the
+ * task actually happened, which is the point: the required task can be
+ * something the app doesn't track.
+ *
+ * Once open she can fill in the days that passed while it was locked; the
+ * bubbles already allow editing any day up to today, so no backfill of her
+ * history is needed here.
+ *
+ * No-op on a habit that isn't gated or isn't currently locked, so a double
+ * tap can't stamp a fresh lockConfirmedAt over the real one.
+ */
+export async function confirmTaskLock(id) {
+    const h = state.habits.find(x => x.id === id);
+    if (!h || !isLocked(h)) return false;
+    Object.assign(h, confirmLockFields());
+    await syncHabits();
+    return true;
+}
+
+/**
+ * Re-arm a habit's task lock by hand (Manage). Lets the gate be tested, or
+ * enforced again early without waiting for the cadence to come round.
+ */
+export async function relockTask(id) {
+    const h = state.habits.find(x => x.id === id);
+    if (!h || !isLockGated(h)) return false;
+    h.locked = true;
+    await syncHabits();
+    return true;
 }
