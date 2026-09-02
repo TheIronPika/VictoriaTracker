@@ -336,14 +336,12 @@ window.confirmTaskLock = async (id) => {
         <div class="period-modal-sheet">
             <div class="period-modal-title">🔒 ${escapeHtml(h.name)} is locked</div>
             <div class="period-modal-sub">
-                Before this one opens up, you need to have done:<br><br>
-                <strong>${escapeHtml(lockTaskLabel(h))}</strong><br><br>
-                Have you finished it? Once you confirm you can fill in any days
-                you missed while it was locked.
+                Confirm you have done the below required task.<br><br>
+                <strong>${escapeHtml(lockTaskLabel(h))}</strong>
             </div>
             <div class="period-modal-btns">
-                <button class="period-modal-btn cancel" onclick="document.getElementById('lockConfirmOverlay').remove()">Not yet</button>
-                <button class="period-modal-btn confirm" id="lockConfirmBtn">Yes, I did it</button>
+                <button class="period-modal-btn cancel" onclick="document.getElementById('lockConfirmOverlay').remove()">I'm still working on it</button>
+                <button class="period-modal-btn confirm" id="lockConfirmBtn">All done!</button>
             </div>
         </div>`;
     overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
