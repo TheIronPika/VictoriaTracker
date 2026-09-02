@@ -135,6 +135,14 @@ export const SPECIAL_DAYS = {
 // Manage tab passcode.
 export const MANAGE_PASSCODE = '1234';
 
+// How many days ahead of the predicted period start the shark warning
+// (AppShell's periodWarning) fires. Fires once per predicted cycle — see
+// lib/periodWarning.ts.
+// Native-only today, but it lives here because core/config.js is synced
+// wholesale from this file: leaving it out of the PWA copy made every
+// sync-core-from-pwa.mjs run silently delete it from the Native build.
+export const PERIOD_WARNING_DAYS_AHEAD = 3;
+
 // Limits.
 export const HISTORY_MAX_WEEKS = 52;
 export const STAR_LOG_MAX = 200;

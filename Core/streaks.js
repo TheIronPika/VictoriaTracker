@@ -32,6 +32,21 @@ export function sortedOldestFirst(weeklyHistory) {
     return _oldestFirstSorted;
 }
 
+// A week the habit was never on the hook for is NEUTRAL: it neither extends
+// nor breaks either streak, so both scans skip straight past it.
+//   • excused         — she spent a 🌿 Rest Week token to sit the week out
+//   • periodProtected — period-sensitive habit during her period
+// The snapshot still records the tier she literally landed on (usually
+// 'punish', since a rested week has no completions), which is what the weekly
+// report and the "✦ Resting" pill want to show. Reading that tier as a real
+// result is what used to nuke the streak. weeklyReset.js has always frozen the
+// STORED h.streak counter on these weeks (`if (isDormant(h) || h.excused ||
+// streakFrozenH(h)) return { ...h }`) — this keeps the history-derived streak
+// the UI actually displays in agreement with it.
+function isNeutralWeek(h) {
+    return !!h.excused || !!h.periodProtected;
+}
+
 /**
  * Compute current streak and bad streak for a habit by scanning
  * the weekly_history array backward (most recent first).
@@ -40,6 +55,7 @@ export function sortedOldestFirst(weeklyHistory) {
  *   streak    = consecutive 'goal' or 'bonus' weeks from the latest entry
  *   badStreak = consecutive 'punish' or 'low' weeks from the latest entry
  *
+ * Rest weeks and period-protected weeks are skipped (see isNeutralWeek).
  * If the habit doesn't appear in a week, streak counting stops there.
  */
 export function computeStreaksFromHistory(weeklyHistory, habitId, opts = {}) {
@@ -56,6 +72,7 @@ export function computeStreaksFromHistory(weeklyHistory, habitId, opts = {}) {
     for (const wk of sorted) {
         const h = (wk.habits || []).find(x => x.id === habitId);
         if (!h) break;
+        if (isNeutralWeek(h)) continue;
         const good = h.tier === 'goal' || h.tier === 'bonus';
         if (good) { streak++; } else { break; }
     }
@@ -65,6 +82,7 @@ export function computeStreaksFromHistory(weeklyHistory, habitId, opts = {}) {
         if (badResetTs && wk.timestamp < badResetTs) break;
         const h = (wk.habits || []).find(x => x.id === habitId);
         if (!h) break;
+        if (isNeutralWeek(h)) continue;
         const bad = h.tier === 'punish' || h.tier === 'low';
         if (bad) { badStreak++; } else { break; }
     }
@@ -82,6 +100,9 @@ export function computeBestStreak(weeklyHistory, habitId) {
     let best = 0, run = 0;
     for (const wk of sorted) {
         const h = (wk.habits || []).find(x => x.id === habitId);
+        // Same neutrality rule as computeStreaksFromHistory: a rested or
+        // period-protected week doesn't end the run it sits inside.
+        if (h && isNeutralWeek(h)) continue;
         const good = h && (h.tier === 'goal' || h.tier === 'bonus');
         if (good) { run++; if (run > best) best = run; }
         else { run = 0; }
