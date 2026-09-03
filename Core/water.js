@@ -79,14 +79,13 @@ export async function syncWaterData() {
 
 /**
  * Auto-fill the pre-existing "Drink Water" reward habit (WATER_CONFIG.linkedHabitId)
- * with ONE bubble per day the water goal is reached — not one per 10oz. Mirrors
- * HabitCard's own toggleBubble forward-fill (today's value propagates to the rest
- * of the week) so this plugs into the same weekly tier/payout math as a manual tap
- * would, but the day's bubble only banks once total ounces cross the goal; short
- * of that it holds at whatever was already banked coming into today. Crossing back
- * under goal (an undo) un-marks today's bubble again. Skips silently if habits
- * haven't loaded yet or the linked habit isn't found — the water tracker itself
- * must never fail because of the habit side of this.
+ * with ONE bubble per day the water goal is reached — not one per 10oz. Writes a
+ * single day's own cell (per-day storage, like a manual bubble tap), so it feeds
+ * the same weekly tier/payout math without touching any other day. The bubble
+ * banks only once that day's total ounces cross the goal; crossing back under it
+ * (an undo) un-marks it again. Skips silently if habits haven't loaded yet or the
+ * linked habit isn't found — the water tracker itself must never fail because of
+ * the habit side of this.
  */
 async function syncWaterHabit() {
     const habitId = WATER_CONFIG.linkedHabitId;
@@ -94,15 +93,30 @@ async function syncWaterHabit() {
     const h = (state.habits || []).find((x) => x.id === habitId);
     if (!h) return;
 
-    // effectiveDate, not new Date(): while last week's reset is still pending
-    // (Monday pre-approval), h.history still holds LAST week's data — a real
-    // Monday dIdx of 0 would forward-fill 0s over the entire un-paid week.
-    const dIdx = getDayIdx(effectiveDate());
-    // Per-day storage: today's water bubble is worth exactly one completion
-    // ON today when she hits goal, zero otherwise — never more, no matter how
-    // far past goal she drinks. Just set today's own cell; other days are
-    // independent and untouched.
-    const hitGoal = state.waterData.amount >= (state.waterData.goal || WATER_CONFIG.dailyGoalOz);
+    // ONE date drives BOTH halves of this. effectiveDate() is normally today,
+    // but while last week's reset is still pending (Monday pre-approval)
+    // h.history still holds LAST week's data, so it pins to that week's Sunday
+    // — a real Monday dIdx of 0 would write over the entire un-paid week.
+    //
+    // LOAD-BEARING: the ounces must come from the SAME day as the index.
+    // This used to read state.waterData.amount, which is always the REAL
+    // today's total, while writing to the pinned index. So on any Monday
+    // before she approved the reset, the first sub-goal tap wrote 0 over
+    // Sunday's earned bubble, and reaching Monday's goal wrote a 1 onto a
+    // Sunday she hadn't earned — both on the week that hadn't been paid out
+    // yet. Keyed off one date, the pending-Monday write simply re-asserts
+    // Sunday's real result and is a no-op. On every ordinary day
+    // history[dateKey(day)] IS waterData.amount, so nothing else changes.
+    const day  = effectiveDate();
+    const dIdx = getDayIdx(day);
+    // Clamped like normalizeWaterData: concurrent undo races on the additive
+    // increment writes can drive a stored key briefly negative.
+    const oz   = Math.max(0, (state.waterData.history || {})[dateKey(day)] || 0);
+    // Per-day storage: that day's water bubble is worth exactly one completion
+    // when its OWN total crosses goal, zero otherwise — never more, no matter
+    // how far past goal she drinks. Just set that day's own cell; other days
+    // are independent and untouched.
+    const hitGoal = oz >= (state.waterData.goal || WATER_CONFIG.dailyGoalOz);
     const target  = hitGoal ? 1 : 0;
     if ((h.history[dIdx] || 0) === target) return;
 

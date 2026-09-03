@@ -131,14 +131,23 @@ export function triggerPerfectWeek() {
 // for the Monday reset to fold it into history. The native app's
 // checkStreakMilestones does the same with the same gating keys.
 
-// Badge wording per milestone. The streak counter and the displayed week
-// count are NOT the same scale — these strings are the user-facing names
-// and must stay byte-identical to the native app's, since both write into
-// the same achievements doc.
+// Badge wording per milestone, keyed by the streak value in WEEKS — which is
+// what computeStreaksFromHistory returns (one weekly_history entry = one week).
+// These used to read "7 week / 30 week / 100 weeks" against thresholds of
+// 1/4/14, so a single good week announced a seven-week streak. There is no
+// scale on which one history entry is seven weeks; the old note here claiming
+// the two "are NOT the same scale" was rationalising the bug. The thresholds
+// were the intended cadence — the copy was measuring the day-equivalents
+// (7d ≈ 1w, 30d ≈ 4w, 100d ≈ 14w) the achievement IDs are still named after.
+//
+// LOAD-BEARING: must stay byte-identical to the native app's MILESTONE_MSGS
+// minus its emoji (lib/celebrations.ts) — both apps write `label` into the one
+// shared achievements doc, so drift means the badge text depends on which app
+// happened to unlock it.
 const MILESTONE_LABELS = {
-    1:  '7 week streak!',
-    4:  '30 week streak!',
-    14: '100 weeks — legendary!',
+    1:  'One week streak!',
+    4:  'One month streak!',
+    14: '14 weeks — legendary!',
 };
 
 export function checkStreakMilestones() {

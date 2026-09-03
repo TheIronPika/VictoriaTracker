@@ -10,9 +10,14 @@
 // ─────────────────────────────────────────────────────────────────────
 
 export const ACHIEVEMENTS = [
-    { id: 'streak_7',            type: 'streak',          threshold: 7,    label: 'Week of consistency',   emoji: '🔥', description: '7-week streak on a habit.' },
-    { id: 'streak_30',           type: 'streak',          threshold: 30,   label: 'Month of consistency',  emoji: '🔥', description: '30-week streak on a habit.' },
-    { id: 'streak_100',          type: 'streak',          threshold: 100,  label: 'Century streak',        emoji: '🔥', description: '100-week streak on a habit.' },
+    // `threshold` here is the DAY count the id is named for; the trigger runs on
+    // WEEKS (see MILESTONE_TO_ACHIEVEMENT below), so the descriptions state the
+    // real weekly requirement. Don't "fix" the ids to match the weeks — they're
+    // the keys already stored in the shared achievements doc, and renaming them
+    // would orphan every badge Victoria has unlocked.
+    { id: 'streak_7',            type: 'streak',          threshold: 7,    label: 'Week of consistency',   emoji: '🔥', description: 'One week at goal or bonus on a habit.' },
+    { id: 'streak_30',           type: 'streak',          threshold: 30,   label: 'Month of consistency',  emoji: '🔥', description: 'Four weeks in a row at goal or bonus.' },
+    { id: 'streak_100',          type: 'streak',          threshold: 100,  label: 'Century streak',        emoji: '🔥', description: '14 weeks in a row at goal or bonus (~100 days).' },
     { id: 'perfect_week',        type: 'perfect_week',                     label: 'Perfect week',          emoji: '✨', description: 'All habits hit goal or bonus in one week.' },
     { id: 'perfect_month',       type: 'perfect_month',                    label: 'Perfect month',         emoji: '✨', description: 'Four consecutive perfect weeks.' },
     { id: 'first_thousand',      type: 'earnings_total',  threshold: 1000, label: 'First $1,000 earned',   emoji: '💰', description: 'Cumulative weekly earnings reached $1,000.' },
@@ -25,7 +30,10 @@ export const ACHIEVEMENTS = [
     { id: 'water_streak_100',    type: 'water_streak',    threshold: 100,  label: 'Century of hydration',  emoji: '💧', description: '100-day water goal streak.' },
 ];
 
-// Maps milestone week counts to catalog IDs for habit streak achievements.
+// Maps milestone WEEK counts to catalog IDs. The ids are named for the rough
+// day-equivalents (7d ≈ 1w, 30d ≈ 4w, 100d ≈ 14w) — that mismatch is why the
+// badge copy used to claim a seven-week streak after one good week. Keys here
+// are the source of truth for when a milestone fires; see web/ui/animations.js.
 export const MILESTONE_TO_ACHIEVEMENT = {
     1:  'streak_7',
     4:  'streak_30',
