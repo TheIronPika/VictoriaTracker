@@ -44,6 +44,13 @@ export async function syncHabits() {
  * Add a new habit with sensible defaults.
  */
 export async function addHabit({ name, cat, icon = '✨', note = '' }) {
+    // Trim at the data layer, not just in each form. Categories are matched by
+    // exact string, so ONE stored "Self Improvement " (trailing space) splits
+    // into a second category the moment anything submits the trimmed spelling
+    // — which every add form already does. Belt and braces so a new stray-space
+    // category can't be created from any caller.
+    name = String(name || '').trim();
+    cat  = String(cat  || '').trim();
     if (!name || !cat) throw new Error('addHabit requires name and cat');
     const newH = {
         id: Date.now().toString(),
@@ -73,7 +80,10 @@ export async function updateHabitField(id, field, value) {
     const h = state.habits.find(x => x.id === id);
     if (!h) return;
 
-    if (field === 'note' || field === 'cycleType') {
+    if (field === 'cat' || field === 'name') {
+        // Same reason as addHabit: an untrimmed rename re-splits the category.
+        h[field] = String(value == null ? '' : value).trim();
+    } else if (field === 'note' || field === 'cycleType') {
         h[field] = value;
     } else if (field === 'cycleNextDue') {
         // <input type="date"> sends "YYYY-MM-DD" — parse as a local date so

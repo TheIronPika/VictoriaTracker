@@ -23,7 +23,7 @@ import { showCloverPopup, showLuckyDrawToast } from './lucky-draw.js';
 window.populateNewCatSelect = () => {
     const sel = document.getElementById('newCatSelect');
     if (!sel) return;
-    const cats = [...new Set((state.habits || []).map(h => h.cat))].filter(Boolean).sort();
+    const cats = [...new Set((state.habits || []).map(h => (h.cat || '').trim()))].filter(Boolean).sort();
     sel.innerHTML = '<option value="">Select category…</option>'
         + cats.map(c => `<option value="${c.replace(/"/g, '&quot;')}">${escapeHtml(c)}</option>`).join('')
         + '<option value="__new__">✚ Add new…</option>';
