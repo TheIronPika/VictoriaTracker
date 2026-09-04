@@ -62,7 +62,10 @@ export function getHabitTotals() {
     const totals = {};
     state.weeklyHistory.forEach(w => (w.habits || []).forEach(h => {
         if (!totals[h.name]) totals[h.name] = { name: h.name, icon: h.icon || '', val: 0 };
-        totals[h.name].val += (h.payout || 0);
+        // Prefer the full weekly total (base + streak + bounty). Rows written
+        // before 2026-09-04 only carry `payout`, the base, so they fall back to
+        // the old behaviour rather than reading as 0.
+        totals[h.name].val += (h.total ?? h.payout ?? 0);
     }));
     return Object.values(totals).sort((a, b) => b.val - a.val);
 }

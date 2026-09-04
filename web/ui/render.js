@@ -374,7 +374,10 @@ export function render() {
                      data-habit-id="${h.id}"
                      ontouchstart="window.startLongPress('${h.id}')"
                      ontouchend="window.cancelLongPress()"
-                     ontouchmove="window.cancelLongPress()">
+                     ontouchmove="window.cancelLongPress()"
+                     onmousedown="window.startLongPress('${h.id}')"
+                     onmouseup="window.cancelLongPress()"
+                     onmouseleave="window.cancelLongPress()">
                     <div style="font-size:24px; margin-right:15px;">${h.icon}</div>
                     <div style="flex:1">
                         ${isUrgent ? `<span class="priority-tag">✦ ${uiState.priorityMode === 'bonus' ? 'Bonus' : 'Goal'} at Risk</span>` : ''}

@@ -73,6 +73,21 @@ export function getBasePayout(habit, tier) {
 }
 
 /**
+ * A habit's per-week streak cap. Absent/blank -> Infinity (uncapped); a real
+ * number (including 0) -> that number; anything unparseable -> Infinity, so a
+ * malformed value can never turn a payout into NaN.
+ *
+ * Exported because ManageContent, reportModel and manage-ui all recomputed this
+ * with the same `x ? parseFloat(x) : Infinity` idiom and the same 0 bug.
+ */
+export function streakCapOf(habit) {
+    const raw = habit && habit.streakCap;
+    if (raw === undefined || raw === null || raw === '') return Infinity;
+    const n = parseFloat(raw);
+    return Number.isFinite(n) ? n : Infinity;
+}
+
+/**
  * Compute the full per-habit weekly payout in one place.
  *
  * Inputs:
@@ -108,7 +123,13 @@ export function computeWeeklyPayout(habit, opts = {}) {
 
     const cur  = getCurrentCount(habit);
     const tier = getTier(habit, cur);
-    const cap  = habit.streakCap ? parseFloat(habit.streakCap) : Infinity;
+    // ABSENT means unlimited; an explicit 0 is a real cap of zero. This read
+    // `habit.streakCap ? … : Infinity`, so a stored 0 — which is exactly what a
+    // cleared "Cap $" box used to write — silently removed the cap instead of
+    // applying it, the opposite of what the field says. A non-numeric value
+    // also fell through to Infinity rather than NaN-poisoning the payout, which
+    // is the behaviour kept here deliberately.
+    const cap  = streakCapOf(habit);
 
     let base = 0;
     let lateReduction = 0;

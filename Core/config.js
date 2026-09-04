@@ -12,12 +12,18 @@ export const FIREBASE_CONFIG = {
     appId: "1:893813838454:web:72ac9f21756d00f8a88557"
 };
 
-export const EMAIL_CONFIG = {
-    publicKey:  "NBsqPD18bw0R4XtcM",
-    serviceId:  "service_gj1f9sj",
-    templateId: "template_2cyqti5"
-};
+// EMAIL_CONFIG removed 2026-09-04. The weekly email came out of the reset in
+// July and nothing in either app referenced these keys afterwards — they were
+// only still being handed to emailjs.init() at PWA boot.
 
+// ⚠️ These two ship inside the APK and the PWA bundle and are extractable from
+// either — there is no way to hide a key in a client-only app. Firebase's web
+// apiKey above is public BY DESIGN (Firestore rules are the real control);
+// these are not. Exposure is limited to quota theft (OpenUV's free tier is
+// 50 requests/day, so abuse shows up as the UV index quietly going blank).
+// A real fix needs a tiny proxy that holds the keys server-side, or provider-side
+// referrer/IP restrictions — neither is a code change here. If the UV or weather
+// readout starts failing for no reason, rotate both keys first.
 export const WEATHER_CONFIG = {
     openWeatherKey: "ff4155f6320e193fc795a67d1b40b6dd",
     openUVKey:      "openuv-q3onrmo2zfflc-io"

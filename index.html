@@ -14,7 +14,6 @@
     
     <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@300;400;600&display=swap" rel="stylesheet">
     
-    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
     
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -24,13 +23,12 @@
         // Victoria Tracker — modular shell
         // Everything in /core is framework-agnostic (no DOM).
         // Everything in /web/ui is web-only (renders to DOM, registers handlers).
-        // This file only does: imports → emailjs init
-        // → watchHabits subscription → startup loaders.
+        // This file only does: imports → watchHabits subscription
+        // → startup loaders.
         // ─────────────────────────────────────────────────────────────────────
 
         // ── CORE (data + pure logic) ─────────────────────────────────────────
         import { state } from './Core/state.js';
-        import { EMAIL_CONFIG } from './Core/config.js';
         import { watchHabits } from './Core/habits-data.js';
         import { loadStarData, watchStarData } from './Core/stars.js';
         import { loadWeeklyHistory } from './Core/history.js';
@@ -67,9 +65,6 @@
         import './web/ui/planning-ui.js';
         import './web/ui/water-ui.js';
         import { checkPerfectMonth, checkEarningsTotal } from './web/ui/achievements-ui.js';
-
-        // ── EmailJS init ─────────────────────────────────────────────────────
-        emailjs.init(EMAIL_CONFIG.publicKey);
 
         // ── Data watcher ─────────────────────────────────────────────────────
         // onSnapshot keeps uiState.habits in sync with Firestore and re-renders.

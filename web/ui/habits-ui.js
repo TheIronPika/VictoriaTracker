@@ -174,8 +174,15 @@ window.updateField = async (id, field, value) => {
         h[field] = Number.isFinite(f) ? f : (Number.isFinite(h[field]) ? h[field] : 0);
     }
     else if (field.startsWith('star'))                       h[field] = parseInt(value) || 0;
-    else if (field === 'streakBonusPer' || field === 'streakPenaltyPer' || field === 'streakCap')
+    else if (field === 'streakBonusPer' || field === 'streakPenaltyPer')
                                                               h[field] = parseFloat(value) || 0;
+    // streakCap is tri-state: blank DELETES it (uncapped), a number is the cap.
+    // It used to share the line above, so clearing the box wrote 0 — which
+    // Core/habits.js then read as "uncapped" anyway. Now 0 means a real 0.
+    else if (field === 'streakCap') {
+        const n = parseFloat(value);
+        if (Number.isFinite(n)) h.streakCap = n; else delete h.streakCap;
+    }
     else if (field === 'bountyDollars' || field === 'bountyStars')
                                                               h[field] = parseFloat(value) || 0;
     else if (field === 'bountyExcuseTokens' || field === 'bountyStreakResetTokens')
@@ -615,7 +622,10 @@ window.toggleBubble = async (id, val) => {
     }
 
     checkPerfectWeek();
-    checkStreakMilestones();
+    // Pass the habit that just changed: a tap can only cross a milestone for
+    // its own habit, so scanning all 40 (and doing a localStorage read each)
+    // was wasted work — and could fire several confetti bursts at once.
+    checkStreakMilestones(h.id);
 };
 
 // ── Long-press definition modal ───────────────────────────────────────

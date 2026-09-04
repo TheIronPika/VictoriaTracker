@@ -150,11 +150,14 @@ const MILESTONE_LABELS = {
     14: '14 weeks — legendary!',
 };
 
-export function checkStreakMilestones() {
+// habitId restricts the scan to the single habit that just changed — the fast
+// path every real call site uses. Omit it to check all habits.
+export function checkStreakMilestones(habitId) {
     if (!state.weeklyHistory.length) return;
     const milestones = [1, 4, 14];
     const periodActive = isPeriodActive();
-    uiState.habits.forEach(h => {
+    const pool = habitId ? uiState.habits.filter(h => h.id === habitId) : uiState.habits;
+    pool.forEach(h => {
         const { streak: histStreak } = computeStreaksFromHistory(state.weeklyHistory, h.id);
         const { tier: curTier } = computeWeeklyPayout(h, { periodActive, periodWasThisWeek: wasPeriodThisWeek() });
         const curWeekGood = curTier === 'goal' || curTier === 'bonus';

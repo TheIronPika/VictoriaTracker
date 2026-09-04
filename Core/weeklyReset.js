@@ -27,7 +27,7 @@
 import { getTier, computeWeeklyPayout, weekTotal, toCumulative, getStarsEarned } from './habits.js';
 import { isCycleDue, isCyclic, cycleIntervalMs } from './cycles.js';
 import { advanceLockOnReset } from './locks.js';
-import { FIRESTORE_DOCS, HISTORY_MAX_WEEKS } from './config.js';
+import { FIRESTORE_DOCS, HISTORY_MAX_WEEKS, STAR_LOG_MAX } from './config.js';
 import { startOfWeek } from './utils.js';
 // Pure math only — category-payouts.js deliberately avoids ./firebase.js so
 // this file still runs under plain Node in the GitHub Action. Persistence for
@@ -218,21 +218,21 @@ export async function executeWeeklyReset(io, now = new Date()) {
         if (earned > 0) {
             totalStarsEarned += earned;
             starDoc.log = [{ ts: Date.now(), type: 'earn', amount: earned, reason: reasons.join(' + ') },
-                           ...(starDoc.log || [])].slice(0, 200);
+                           ...(starDoc.log || [])].slice(0, STAR_LOG_MAX);
         }
         if (h.bountyActive && (tier === 'goal' || tier === 'bonus') && (h.bountyExcuseTokens || 0) > 0) {
             const tokens = h.bountyExcuseTokens;
             totalExcuseAwarded += tokens;
             starDoc.excuseTokens = (starDoc.excuseTokens || 0) + tokens;
             starDoc.log = [{ ts: Date.now(), type: 'excuseToken', amount: tokens, reason: h.name + ' Bounty 🏆' },
-                           ...(starDoc.log || [])].slice(0, 200);
+                           ...(starDoc.log || [])].slice(0, STAR_LOG_MAX);
         }
         if (h.bountyActive && (tier === 'goal' || tier === 'bonus') && (h.bountyStreakResetTokens || 0) > 0) {
             const tokens = h.bountyStreakResetTokens;
             totalStreakResetAwarded += tokens;
             starDoc.streakResetTokens = (starDoc.streakResetTokens || 0) + tokens;
             starDoc.log = [{ ts: Date.now(), type: 'streakResetToken', amount: tokens, reason: h.name + ' Bounty 🏆' },
-                           ...(starDoc.log || [])].slice(0, 200);
+                           ...(starDoc.log || [])].slice(0, STAR_LOG_MAX);
         }
     });
 
@@ -251,7 +251,7 @@ export async function executeWeeklyReset(io, now = new Date()) {
         const why = `${r.cat} category — all at ${TIER_LABEL[r.tier]} 📂`;
         const log = (type, amount) => {
             starDoc.log = [{ ts: Date.now(), type, amount, reason: why },
-                           ...(starDoc.log || [])].slice(0, 200);
+                           ...(starDoc.log || [])].slice(0, STAR_LOG_MAX);
         };
         if (stars > 0) {
             totalStarsEarned += stars;
@@ -341,7 +341,12 @@ export async function executeWeeklyReset(io, now = new Date()) {
             // bounty" rather than "unknown".
             const bountyPaid = !!h.bountyActive && (r.tier === 'goal' || r.tier === 'bonus');
             return { id: h.id, name: h.name, icon: h.icon, cat: h.cat,
-                     tier: r.tier, payout: r.base, history: toCumulative(hist),
+                     // `payout` is the BASE only, kept as-is so existing rows
+                     // keep meaning what they always meant. `total` is the real
+                     // figure — base + streak + bounty — which is what
+                     // totalBalance sums, so Top Earners can stop under-reporting.
+                     tier: r.tier, payout: r.base, total: r.total,
+                     history: toCumulative(hist),
                      thresh: { punish: h.punish || 1, low: h.low || 3, goal: h.goal || 5, bonus: h.bonus || 7 },
                      excused: !!h.excused,
                      periodProtected: r.periodProtected,
