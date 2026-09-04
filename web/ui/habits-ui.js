@@ -12,7 +12,7 @@ import { effectiveDate } from '../../Core/resetState.js';
 import { unlockAchievement } from '../../Core/achievements.js';
 import { getTier, toCumulative, weekTotal } from '../../Core/habits.js';
 import { LUCKY_DRAW_ODDS, WATER_CONFIG } from '../../Core/config.js';
-import { isLocked, lockTaskLabel } from '../../Core/locks.js';
+import { isLocked, lockTaskLabel, LOCK_DEFAULT_EVERY_WEEKS } from '../../Core/locks.js';
 import { syncHabits, toggleExcused as coreToggleExcused, deleteHabit as coreDeleteHabit, confirmTaskLock as coreConfirmTaskLock, relockTask as coreRelockTask } from '../../Core/habits-data.js';
 import { syncStarData, addStarLog, useExcuseToken, useStreakResetToken, useMarkOffToken, grantMarkOffTokens, awardLuckyDrawStar, luckyDrawWinsToday } from '../../Core/stars.js';
 import { playBubblePop, triggerFanfare, checkPerfectWeek, checkStreakMilestones } from './animations.js';
@@ -132,11 +132,29 @@ window.deleteTask = async (id) => {
     uiState.habits = state.habits;
 };
 
+// Field coercion for every Manage input. Mirrors Core/habits-data.js
+// updateHabitField — which, despite being the "data layer", has no callers in
+// either app: both UIs reimplemented it locally and only the native copy kept
+// up. That drift is what put the branches below out of date.
+//
+// The trailing `else` is `parseInt(value) || 1`, so ANY field without an
+// explicit branch silently becomes the number 1. That is what used to happen
+// to icon, lockTask, lockEnabled and lockEveryWeeks: editing the icon replaced
+// the emoji with 1, typing a required task stored 1 (which then made
+// lockTaskLabel() throw `.trim is not a function` inside the render loop and
+// kill the Today view in BOTH apps, since it is one shared habits doc), and
+// un-checking the lock switch stored 1 — truthy — so the gate could never be
+// switched off again. Add a branch before adding a field.
 window.updateField = async (id, field, value) => {
     const h = uiState.habits.find(x => x.id === id);
     if (!h) return;
     if (field === 'note' || field === 'cycleType' || field === 'bountyNote')
                                                               h[field] = value;
+    else if (field === 'icon')                               h[field] = String(value == null ? '' : value);
+    // Categories are matched by exact string, so one stored "Personal "
+    // (trailing space) splits into a second category the moment anything
+    // submits the trimmed spelling.
+    else if (field === 'name' || field === 'cat')            h[field] = String(value == null ? '' : value).trim();
     else if (field === 'periodSensitive')                    h[field] = !!value;
     else if (field === 'cycleNextDue') {
         // Date picker sends "YYYY-MM-DD". Empty value clears the field
@@ -148,7 +166,13 @@ window.updateField = async (id, field, value) => {
             if (y && mo && d) h.cycleNextDue = new Date(y, mo - 1, d).getTime();
         }
     }
-    else if (field.startsWith('val'))                        h[field] = parseFloat(value);
+    // A cleared or non-numeric box parses to NaN — never write that to
+    // Firestore. `habit.valGoal || 0` reads NaN as 0, so it silently zeroed the
+    // habit's payout while the input echoed "NaN" back. Keep the old value.
+    else if (field.startsWith('val')) {
+        const f = parseFloat(value);
+        h[field] = Number.isFinite(f) ? f : (Number.isFinite(h[field]) ? h[field] : 0);
+    }
     else if (field.startsWith('star'))                       h[field] = parseInt(value) || 0;
     else if (field === 'streakBonusPer' || field === 'streakPenaltyPer' || field === 'streakCap')
                                                               h[field] = parseFloat(value) || 0;
@@ -156,6 +180,26 @@ window.updateField = async (id, field, value) => {
                                                               h[field] = parseFloat(value) || 0;
     else if (field === 'bountyExcuseTokens' || field === 'bountyStreakResetTokens')
                                                               h[field] = parseInt(value)   || 0;
+    // 🔒 Task lock. Free text — must not reach the parseInt fallthrough.
+    else if (field === 'lockTask')                           h.lockTask = String(value == null ? '' : value);
+    else if (field === 'lockEnabled') {
+        const on = (value === true || value === 'true' || value === 1 || value === '1');
+        h.lockEnabled = on;
+        if (on) {
+            // Arm it immediately, otherwise switching the gate on does nothing
+            // visible until the cadence next comes round.
+            if (h.locked === undefined)     h.locked = true;
+            if (h.lockWeeks === undefined)  h.lockWeeks = 0;
+        } else {
+            // Don't leave a disabled gate holding a habit shut — a stale
+            // `locked: true` would spring back the moment it's re-enabled.
+            h.locked = false;
+        }
+    }
+    else if (field === 'lockEveryWeeks') {
+        const n = parseInt(value, 10);
+        h.lockEveryWeeks = (Number.isFinite(n) && n >= 1) ? n : LOCK_DEFAULT_EVERY_WEEKS;
+    }
     else                                                      h[field] = parseInt(value)   || 1;
     await syncHabits();
 };

@@ -1,4 +1,13 @@
-const CACHE = 'victoria-v40';
+// ⚠️ BUMP THIS ON EVERY DEPLOY THAT TOUCHES A SHELL FILE.
+// The fetch handler below is cache-first for the whole shell (index.html
+// included) and `activate` only deletes caches whose key !== CACHE — so
+// leaving this unchanged purges nothing and installed devices keep serving the
+// old modules forever. Because sw.js itself is then byte-identical, the browser
+// never installs a new worker either, so skipWaiting() never runs.
+// This sat at v40 from 2026-08-07 to 2026-09-03 while six commits shipped
+// (task locks, rest-week streaks, History collapse, name/cat trim) — none of
+// which reached an installed device.
+const CACHE = 'victoria-v41';
 
 // App shell files to cache on install.
 // NOTE: Folder is `Core/` (capital C) on disk — GitHub Pages is case-sensitive,
@@ -16,6 +25,11 @@ const SHELL = [
   '/VictoriaTracker/Core/habits.js',
   '/VictoriaTracker/Core/habits-data.js',
   '/VictoriaTracker/Core/cycles.js',
+  // Added 2026-09-03. Shipped with the task-lock feature on 2026-09-02 but was
+  // never listed here, and it's a top-level import in render.js and
+  // habits-ui.js — so a cold OFFLINE start couldn't resolve the module graph
+  // and the app rendered blank.
+  '/VictoriaTracker/Core/locks.js',
   '/VictoriaTracker/Core/streaks.js',
   '/VictoriaTracker/Core/stars.js',
   '/VictoriaTracker/Core/events.js',
