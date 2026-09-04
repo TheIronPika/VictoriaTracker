@@ -234,10 +234,16 @@ export function render() {
 
             // Cache streak computation (called twice per habit otherwise)
             const streaks = computeStreaksFromHistory(state.weeklyHistory, h.id, { badStreakResetTs: h.badStreakResetTs });
-            const glowClass = streaks.streak >= 14 ? 'glow-intense'
-                            : streaks.streak >=  4 ? 'glow-bright'
-                            : streaks.streak >=  2 ? 'glow-medium'
-                            : streaks.streak >=  1 ? 'glow-light'
+            // The current week counts toward the streak once it's already at
+            // goal or bonus — the same liveStreak the native HabitCard shows.
+            // This used the bare history-derived `streaks.streak` for both the
+            // 🔥 badge and the glow, so the same habit on the same data read one
+            // lower here than on her phone for the whole of any good week.
+            const liveStreak = streaks.streak + ((tier === 'goal' || tier === 'bonus') ? 1 : 0);
+            const glowClass = liveStreak >= 14 ? 'glow-intense'
+                            : liveStreak >=  4 ? 'glow-bright'
+                            : liveStreak >=  2 ? 'glow-medium'
+                            : liveStreak >=  1 ? 'glow-light'
                             : '';
 
             // Forecast badge (📈/📉 vs last week pace)
@@ -262,11 +268,34 @@ export function render() {
             const starBadgeSpan = hasStarValue
                 ? `<span class="star-badge" onclick="event.stopPropagation();document.getElementById('star-${h.id}').classList.toggle('show')">⭐</span>`
                 : '';
+            // Goal and Bonus do NOT stack: getStarsEarned tests `tier === 'goal'`
+            // and `tier === 'bonus'` against one value, so a bonus week pays
+            // starBonus INSTEAD of starGoal — and if starBonus < starGoal,
+            // reaching bonus is a pay cut. The old static table listed both as
+            // if they added up. Rows now mark which one is actually live, and
+            // the note spells the exclusivity out (native lib/habitStarInfo.ts
+            // does the same in its long-press sheet).
+            //
+            // The streak row mirrors getStarsEarned's own test — the STORED
+            // h.streak counter, which is what the reset pays from, not the
+            // history-derived badge above.
+            const starTier      = tier;
+            const nextStreakVal = (starTier === 'goal' || starTier === 'bonus') ? (h.streak || 0) + 1 : 0;
+            const starRow = (label, val, on, note) =>
+                `<div class="star-detail-row${on ? ' star-detail-on' : ''}">`
+                + `<span>${label}${note ? ` <em style="opacity:0.7;font-style:normal;font-size:10px">${note}</em>` : ''}</span>`
+                + `<span>+${val} ⭐</span></div>`;
             const starDetailDiv = hasStarValue
                 ? `<div class="star-detail" id="star-${h.id}">
-                       ${starGoal   > 0 ? `<div class="star-detail-row"><span>Goal</span><span>+${starGoal} ⭐</span></div>` : ''}
-                       ${starBonus  > 0 ? `<div class="star-detail-row"><span>Bonus</span><span>+${starBonus} ⭐</span></div>` : ''}
-                       ${starStreak > 0 ? `<div class="star-detail-row"><span>2+ week streak</span><span>+${starStreak} ⭐</span></div>` : ''}
+                       ${starGoal   > 0 ? starRow('Goal',  starGoal,  starTier === 'goal',
+                             starTier === 'bonus' ? 'passed — Bonus pays instead' : (starTier === 'goal' ? 'earning now' : '')) : ''}
+                       ${starBonus  > 0 ? starRow('Bonus', starBonus, starTier === 'bonus',
+                             starTier === 'bonus' ? 'earning now' : '') : ''}
+                       ${starStreak > 0 ? starRow('2+ week streak', starStreak, nextStreakVal >= 2,
+                             nextStreakVal >= 2 ? `earning now (🔥 ${nextStreakVal})` : '') : ''}
+                       ${starGoal > 0 && starBonus > 0
+                            ? `<div class="star-detail-note">Goal and Bonus don't stack — you're paid for whichever tier you land on.</div>`
+                            : ''}
                    </div>`
                 : '';
 
@@ -354,7 +383,7 @@ export function render() {
                         ${taskLocked ? `<span class="locked-tag" onclick="event.stopPropagation();window.confirmTaskLock('${h.id}')">🔒 Locked — tap to confirm: ${escapeHtml(lockTaskLabel(h))}</span>` : ''}
                         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                             <p style="margin:0; font-weight:600;">${escapeHtml(h.name)}</p>
-                            ${streaks.streak >= 1 ? `<span class="streak-badge">🔥 ${streaks.streak}</span>` : ''}
+                            ${liveStreak >= 1 ? `<span class="streak-badge">🔥 ${liveStreak}</span>` : ''}
                             ${streaks.badStreak >= 1 ? `<span class="bad-streak-badge" onclick="event.stopPropagation();window.resetBadStreak('${h.id}')" style="cursor:pointer" title="Click to use a Fresh Start">🌧️ ${streaks.badStreak}</span>` : ''}
                             ${cycleLabel(h) ? `<span class="cycle-badge">🔄 ${cycleLabel(h)}</span>` : ''}
                             ${wkLate > 0 ? `<span class="cycle-badge" style="background:rgba(217,83,79,0.15);color:#d9534f;border-color:rgba(217,83,79,0.3);" title="Late completion will reduce payout">⏰ ${wkLate}w late</span>` : ''}

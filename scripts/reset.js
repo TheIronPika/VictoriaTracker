@@ -16,7 +16,7 @@
 import fetch from 'node-fetch';
 
 import { FIRESTORE_DOCS } from '../Core/config.js';
-import { proposeWeeklyReset, executeWeeklyReset, resetAlreadyHandledToday } from '../Core/weeklyReset.js';
+import { proposeWeeklyReset, executeWeeklyReset, resetAlreadyHandledThisWeek } from '../Core/weeklyReset.js';
 
 // ── Firebase init (uses REST API key for Firestore access) ──────────────────
 const PROJECT_ID  = process.env.FIREBASE_PROJECT_ID;
@@ -136,7 +136,7 @@ async function main() {
     const mode = process.env.RESET_MODE || 'propose';
 
     if (mode === 'propose') {
-        if (await resetAlreadyHandledToday(io, now) && process.env.FORCE_RESET !== '1') {
+        if (await resetAlreadyHandledThisWeek(io, now) && process.env.FORCE_RESET !== '1') {
             console.log('⚠️  Reset already ran today. Skipping. (Set FORCE_RESET=1 to override.)');
             return;
         }
@@ -153,7 +153,7 @@ async function main() {
             console.log('ℹ️  No pending reset to force (already approved, or never proposed). Skipping.');
             return;
         }
-        if (await resetAlreadyHandledToday(io, now) && process.env.FORCE_RESET !== '1') {
+        if (await resetAlreadyHandledThisWeek(io, now) && process.env.FORCE_RESET !== '1') {
             console.log('⚠️  Reset already ran today. Skipping. (Set FORCE_RESET=1 to override.)');
             return;
         }

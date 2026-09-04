@@ -28,15 +28,38 @@ import { getTier, computeWeeklyPayout, weekTotal, toCumulative, getStarsEarned }
 import { isCycleDue, isCyclic, cycleIntervalMs } from './cycles.js';
 import { advanceLockOnReset } from './locks.js';
 import { FIRESTORE_DOCS, HISTORY_MAX_WEEKS } from './config.js';
+import { startOfWeek } from './utils.js';
 // Pure math only — category-payouts.js deliberately avoids ./firebase.js so
 // this file still runs under plain Node in the GitHub Action. Persistence for
 // that feature lives in category-config.js, which is NOT imported here.
 import { computeAllCategoryResults, rewardIsEmpty, TIER_LABEL } from './category-payouts.js';
 
-/** True if a reset already executed today — idempotency guard for both modes. */
-export async function resetAlreadyHandledToday(io, now = new Date()) {
+/**
+ * True if a reset already executed for the week containing `now` — the
+ * idempotency guard for both modes.
+ *
+ * Compares WEEKS, not days. It used to be `rs.lastWeeklyReset === now.toDateString()`,
+ * an exact string match between a date the app writes in device-LOCAL time and
+ * a date the GitHub Action evaluates in UTC. The force cron runs at
+ * `0 0 * * 2` — Tuesday 00:00 UTC, which is Monday 19:00 Central — so the two
+ * never matched on that path and the guard contributed nothing there. (No
+ * double payout resulted, because scripts/reset.js bails on `!rs.pendingReset`
+ * first and executeWeeklyReset clears that flag; this guard was simply inert.)
+ *
+ * A reset is a WEEKLY event, so the week is the right granularity, and
+ * startOfWeek() collapses the local/UTC skew: Monday 19:00 Central and
+ * Tuesday 00:00 UTC land in the same Monday-anchored week. The stored format
+ * is unchanged (toDateString), so isResetOverdue/isResetPromptDue in
+ * resetState.js keep parsing it exactly as before.
+ *
+ * Set FORCE_RESET=1 to deliberately run a second reset inside one week.
+ */
+export async function resetAlreadyHandledThisWeek(io, now = new Date()) {
     const rs = (await io.readDoc(FIRESTORE_DOCS.RESET)) || {};
-    return rs.lastWeeklyReset === now.toDateString();
+    if (!rs.lastWeeklyReset) return false;
+    const last = new Date(rs.lastWeeklyReset);
+    if (isNaN(last.getTime())) return false;
+    return startOfWeek(last).getTime() === startOfWeek(now).getTime();
 }
 
 /**
@@ -67,7 +90,7 @@ export async function proposeWeeklyReset(io, now = new Date()) {
  * ATOMICITY: every read happens first, then everything is computed, then all
  * seven writes are committed together through io.writeAll(). They used to be
  * seven separate awaited writes, with the reset_state doc — the only thing
- * resetAlreadyHandledToday() checks — written LAST. Any failure before that
+ * resetAlreadyHandledThisWeek() checks — written LAST. Any failure before that
  * left the guard false while part of the work had already landed, and the
  * approval modal tells her to try again: a retry after the stars write but
  * before the habits wipe re-awarded every star AND prepended a second copy of

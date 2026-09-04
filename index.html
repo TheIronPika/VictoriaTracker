@@ -906,6 +906,21 @@
         }
         .star-detail-row + .star-detail-row { margin-top: 2px; }
         .star-detail-row span:last-child { font-weight: 700; }
+        /* The rung actually being banked right now — Goal and Bonus are
+           mutually exclusive, so at most one of them is ever lit. */
+        .star-detail-on {
+            background: rgba(240,192,64,0.28);
+            border-radius: 5px;
+            margin: 0 -4px;
+            padding: 1px 4px;
+            font-weight: 700;
+        }
+        .star-detail-note {
+            font-size: 10px;
+            color: #a08fa0;
+            font-style: italic;
+            margin-top: 4px;
+        }
 
         /* ── DEFINITION MODAL ────────────────────────────────────────── */
         #defOverlay {
