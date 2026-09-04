@@ -20,7 +20,7 @@ import { renderSeasonalSection, renderEventsManage } from './events-ui.js';
 import { getEventPayoutsTotal } from '../../Core/events.js';
 import { renderShopManage } from './shop-ui.js';
 import { renderHistory, destroyHistoryCharts } from './history-ui.js';
-import { isPeriodActive, periodDayCount, periodStartDayIdx } from '../../Core/period.js';
+import { isPeriodActive, wasPeriodThisWeek, periodDayCount, periodStartDayIdx } from '../../Core/period.js';
 import { getRoomPayoutsTotal } from '../../Core/rooms.js';
 import { renderPeriodHistory } from './period-ui.js';
 import { renderRoomsSection } from './rooms-ui.js';
@@ -214,7 +214,7 @@ export function render() {
             // Single source of truth — see Core/habits.js computeWeeklyPayout.
             // Bounty, cyclic late-reduction, period protection, etc. all live
             // there; we just consume the resulting total.
-            const result = computeWeeklyPayout(h, { periodActive: isPeriodActive() });
+            const result = computeWeeklyPayout(h, { periodActive: isPeriodActive(), periodWasThisWeek: wasPeriodThisWeek() });
             const { tier, total: payout, weeksLate: wkLate } = result;
             if (!h.excused) {
                 totalMoney += payout;

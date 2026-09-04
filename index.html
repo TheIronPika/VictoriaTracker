@@ -1727,12 +1727,16 @@
                 <div class="msp-section">
                   <div class="msp-section-title">&#128193; Category Payouts</div>
                   <div style="font-size:11px;color:#aaa;margin-bottom:6px;line-height:1.5;">
-                    Paid when <strong>every</strong> counting habit in a category reaches a tier. The
-                    category takes the <strong>lowest</strong> tier any habit landed on — all at Goal pays
-                    Goal, and one straggler at Low drags the whole category to Low.
+                    Paid at the <strong>highest</strong> tier every counting habit reaches — except that
+                    <strong>one</strong> habit sitting exactly one tier below is forgiven. Two below, or
+                    two habits behind, and the category drops a rung.
                   </div>
                   <div style="font-size:11px;color:#7a7390;margin-bottom:12px;line-height:1.5;">
-                    Resting (&#127807;), period-protected and not-yet-due habits don't count either way.
+                    A habit already at its weekly max counts as Bonus, even if its Bonus threshold is
+                    out of reach. Weekly habits only &mdash; cyclic (&#128260;), resting (&#127807;) and
+                    period-protected habits don't count either way. In Sexual, a week where period
+                    protection removes a habit is scored strictly: no forgiveness, every remaining
+                    habit must reach the tier.
                     Debt/Low are dollars-only &mdash; use a negative number for a penalty.
                   </div>
                   <div id="categoryPayoutRoot"></div>

@@ -47,6 +47,22 @@ export function isPeriodActive() {
     return !!state.periodData.active;
 }
 
+/**
+ * True if a period happened at any point during the current week — still
+ * running, or started and already ended. Cleared by the weekly reset.
+ *
+ * Period protection is a WHOLE-WEEK judgement: a period that ended on
+ * Wednesday still protects that habit for the week it sat inside. Pair this
+ * with isPeriodActive() wherever protection is decided —
+ * computeWeeklyPayout({ periodActive, periodWasThisWeek }), the streak roll in
+ * weeklyReset.js, and the category math — so the four consumers agree. Using
+ * isPeriodActive() alone means a period that ends before Monday's reset drops
+ * its own protection.
+ */
+export function wasPeriodThisWeek() {
+    return !!(state.periodData && state.periodData.periodWasThisWeek);
+}
+
 /** Returns how many days since period started (1-based, e.g. "Day 3"). */
 export function periodDayCount() {
     if (!state.periodData.startTs) return 1;

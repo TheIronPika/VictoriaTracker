@@ -16,7 +16,7 @@ import { renderEventsManage } from './events-ui.js';
 import { renderShopManage } from './shop-ui.js';
 import { renderAchievementsManage } from './achievements-ui.js';
 import { resolveOrderedSections, moveSection, SECTION_SEASONAL, SECTION_ROOMS } from '../../Core/section-order.js';
-import { isPeriodActive } from '../../Core/period.js';
+import { isPeriodActive, wasPeriodThisWeek } from '../../Core/period.js';
 import { getRoomPayoutsTotal } from '../../Core/rooms.js';
 import { getEventPayoutsTotal } from '../../Core/events.js';
 import { isCyclic, weeksLate } from '../../Core/cycles.js';
@@ -99,9 +99,11 @@ function currentAvailableSections() {
 }
 
 // ── Category payouts (Manage > Category $) ───────────────────────────
-// Per-category, per-tier rewards paid when EVERY counting habit in the
-// category reaches that tier. The tier rule (lowest tier wins; resting,
-// period-protected and not-yet-due habits are neutral) lives in
+// Per-category, per-tier rewards. The tier rule — highest rung every counting
+// habit reaches, with one straggler exactly one tier below forgiven; maxed-out
+// habits count as Bonus; cyclic, resting and period-protected habits are
+// neutral; forgiveness suspended for STRICT_WHEN_PERIOD_PROTECTED categories on
+// weeks protection shrank them — lives in
 // Core/category-payouts.js — this panel only edits the numbers.
 //
 // Debt/Low are dollars-only, matching habits (which have valPunish/valLow
@@ -893,7 +895,7 @@ function _streakCap(h) {
 // this panel, and the Monday reset can never silently disagree. Adds the
 // stored streak/badStreak counters to the structure for badge rendering.
 function _thisWeekBreakdown(h, periodActive) {
-    const r = computeWeeklyPayout(h, { periodActive });
+    const r = computeWeeklyPayout(h, { periodActive, periodWasThisWeek: wasPeriodThisWeek() });
     return {
         ...r,
         streakCount:    h.streak    || 0,

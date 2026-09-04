@@ -11,7 +11,7 @@ import { getTier, toCumulative, computeWeeklyPayout } from '../../Core/habits.js
 import { getDayIdx } from '../../Core/utils.js';
 import { computeStreaksFromHistory } from '../../Core/streaks.js';
 import { isCycleDue } from '../../Core/cycles.js';
-import { isPeriodActive } from '../../Core/period.js';
+import { isPeriodActive, wasPeriodThisWeek } from '../../Core/period.js';
 import { WEATHER_CONFIG } from '../../Core/config.js';
 import { unlockAchievement } from '../../Core/achievements.js';
 import { MILESTONE_TO_ACHIEVEMENT } from './achievement-catalog.js';
@@ -156,7 +156,7 @@ export function checkStreakMilestones() {
     const periodActive = isPeriodActive();
     uiState.habits.forEach(h => {
         const { streak: histStreak } = computeStreaksFromHistory(state.weeklyHistory, h.id);
-        const { tier: curTier } = computeWeeklyPayout(h, { periodActive });
+        const { tier: curTier } = computeWeeklyPayout(h, { periodActive, periodWasThisWeek: wasPeriodThisWeek() });
         const curWeekGood = curTier === 'goal' || curTier === 'bonus';
         const streak = histStreak + (curWeekGood ? 1 : 0);
         if (!milestones.includes(streak)) return;

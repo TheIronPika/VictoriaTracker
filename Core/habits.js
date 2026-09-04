@@ -88,8 +88,21 @@ export function getBasePayout(habit, tier) {
  */
 export function computeWeeklyPayout(habit, opts = {}) {
     const periodActive    = !!opts.periodActive;
+    // Whole-week test, matching weeklyReset.js's streak roll (streakFrozenH)
+    // and category-payouts.js — a period that started and ENDED inside the week
+    // still protects that habit for the week it sat inside.
+    //
+    // This read `periodActive` alone until 2026-09-04, which is the normal case
+    // for a period that finishes before Monday: the habit got its stored streak
+    // frozen and its category math protected, but was still charged the full
+    // valPunish AND snapshotted with periodProtected:false — which
+    // streaks.js isNeutralWeek() then read as a real result, breaking the
+    // history-derived streak the UI displays. Of 19 recorded weeks only 2 ever
+    // stored a periodProtected row, so this was dropping protection on nearly
+    // every cycle. Callers pass wasPeriodThisWeek() from Core/period.js.
+    const periodWasThisWeek = !!opts.periodWasThisWeek;
     const now             = opts.now || Date.now();
-    const periodProtected = periodActive && !!habit.periodSensitive;
+    const periodProtected = (periodActive || periodWasThisWeek) && !!habit.periodSensitive;
     const cyclic          = isCyclic(habit);
     const wkLate          = cyclic ? weeksLate(habit, now) : 0;
 

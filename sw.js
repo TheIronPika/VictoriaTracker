@@ -7,7 +7,7 @@
 // This sat at v40 from 2026-08-07 to 2026-09-03 while six commits shipped
 // (task locks, rest-week streaks, History collapse, name/cat trim) — none of
 // which reached an installed device.
-const CACHE = 'victoria-v41';
+const CACHE = 'victoria-v42';
 
 // App shell files to cache on install.
 // NOTE: Folder is `Core/` (capital C) on disk — GitHub Pages is case-sensitive,

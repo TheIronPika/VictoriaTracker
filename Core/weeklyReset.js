@@ -129,7 +129,7 @@ export async function executeWeeklyReset(io, now = new Date()) {
     let totalMoney = 0;
     habits.forEach(h => {
         if (isDormant(h) || h.excused) return;
-        const r = computeWeeklyPayout(h, { periodActive, now: nowTs });
+        const r = computeWeeklyPayout(h, { periodActive, periodWasThisWeek, now: nowTs });
         totalMoney += r.total;
     });
     rooms.forEach(r => {
@@ -308,12 +308,26 @@ export async function executeWeeklyReset(io, now = new Date()) {
         totalBalance: totalMoney,
         habits: habits.filter(h => !isDormant(h)).map(h => {
             const hist = (h.history || []).slice(0, 7);
-            const r = computeWeeklyPayout(h, { periodActive, now: nowTs });
+            const r = computeWeeklyPayout(h, { periodActive, periodWasThisWeek, now: nowTs });
+            // Bounty as it SETTLED this week. Snapshotted for exactly the same
+            // reason `categories` is: the wipe below deletes the bounty fields
+            // once one pays, so a report reading them off the live habit shows
+            // a currently-armed bounty on every past week and never on the week
+            // that actually paid it. Absent on weeks where none triggered (and
+            // on every week predating this), which readers must treat as "no
+            // bounty" rather than "unknown".
+            const bountyPaid = !!h.bountyActive && (r.tier === 'goal' || r.tier === 'bonus');
             return { id: h.id, name: h.name, icon: h.icon, cat: h.cat,
                      tier: r.tier, payout: r.base, history: toCumulative(hist),
                      thresh: { punish: h.punish || 1, low: h.low || 3, goal: h.goal || 5, bonus: h.bonus || 7 },
                      excused: !!h.excused,
-                     periodProtected: r.periodProtected };
+                     periodProtected: r.periodProtected,
+                     ...(bountyPaid ? { bounty: {
+                         dollars:    h.bountyDollars           || 0,
+                         stars:      h.bountyStars             || 0,
+                         restWeek:   h.bountyExcuseTokens      || 0,
+                         freshStart: h.bountyStreakResetTokens || 0,
+                     } } : {}) };
         }),
         // Settled category results. Snapshotted rather than re-derived at read
         // time because the config can change after the week closes — the same
