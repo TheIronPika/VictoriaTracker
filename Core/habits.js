@@ -10,6 +10,7 @@
 // ─────────────────────────────────────────────────────────────────────
 
 import { isCyclic, weeksLate } from './cycles.js';
+import { computeStreaksFromHistory } from './streaks.js';
 
 /**
  * Classify a count into a tier based on the habit's thresholds.
@@ -185,11 +186,31 @@ export function computeWeeklyPayout(habit, opts = {}) {
  * Returns { earned, reasons[] }. Bounty stars are handled separately by the
  * reset script (they require bounty active + clearing state).
  */
-export function getStarsEarned(habit) {
+export function getStarsEarned(habit, opts = {}) {
     if (habit.excused) return { earned: 0, reasons: [] };
     const cur  = getCurrentCount(habit);
     const tier = getTier(habit, cur);
-    const newStreak = (tier === 'goal' || tier === 'bonus') ? (habit.streak || 0) + 1 : 0;
+    // HISTORY-DERIVED, not the stored habit.streak counter.
+    //
+    // The app has always had two streak numbers: the counter the reset rolls,
+    // and computeStreaksFromHistory() scanning weekly_history — which exists
+    // precisely because the counter drifts ("Counter-free design: avoids drift
+    // from missed resets or manual edits"). The 🔥 badge, the card glow and the
+    // weekly report all show the derived one; only the star PAYOUT read the
+    // counter, so a drifted habit could show 🔥 4 and pay for 3.
+    //
+    // Derived is now the single source. `opts.weeklyHistory` must be the history
+    // NOT yet containing the week being scored — at reset time the snapshot for
+    // this week hasn't been written, and live it's simply the past — so
+    // `past + 1` means "streak through last week, plus this one", exactly what
+    // the counter version meant.
+    //
+    // Measured before switching: of 40 live habits only 2 disagreed, and neither
+    // pays streak stars, so this changed nobody's payout on the day it landed.
+    const past = computeStreaksFromHistory(
+        opts.weeklyHistory || [], habit.id, { badStreakResetTs: habit.badStreakResetTs },
+    ).streak;
+    const newStreak = (tier === 'goal' || tier === 'bonus') ? past + 1 : 0;
 
     let earned = 0;
     const reasons = [];

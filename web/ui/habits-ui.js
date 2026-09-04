@@ -132,10 +132,14 @@ window.deleteTask = async (id) => {
     uiState.habits = state.habits;
 };
 
-// Field coercion for every Manage input. Mirrors Core/habits-data.js
-// updateHabitField — which, despite being the "data layer", has no callers in
-// either app: both UIs reimplemented it locally and only the native copy kept
-// up. That drift is what put the branches below out of date.
+// Field coercion for every Manage input.
+//
+// ⚠️ TWIN: components/HabitEditorModal.tsx `updateField` in the NATIVE repo does
+// the same job for the same shared habits doc. There is no shared version —
+// Core/habits-data.js updateHabitField was deleted on 2026-09-04 after sitting
+// unused for its whole life while three fixes were committed into it and did
+// nothing. So when you change a rule here, change it there too; the two writing
+// different shapes into one Firestore doc is exactly how `lockTask: 1` got in.
 //
 // The trailing `else` is `parseInt(value) || 1`, so ANY field without an
 // explicit branch silently becomes the number 1. That is what used to happen

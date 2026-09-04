@@ -7,7 +7,7 @@
 import { state, setHabits } from './state.js';
 import { readDoc, writeDoc, watchDoc } from './firebase.js';
 import { FIRESTORE_DOCS } from './config.js';
-import { isLocked, isLockGated, confirmLockFields, LOCK_DEFAULT_EVERY_WEEKS } from './locks.js';
+import { isLocked, isLockGated, confirmLockFields } from './locks.js';
 
 /**
  * One-time load of habits — for headless contexts (e.g. the widget task
@@ -73,64 +73,17 @@ export async function deleteHabit(id) {
     await syncHabits();
 }
 
-/**
- * Update a single field on a habit. Handles type coercion based on field name.
- */
-export async function updateHabitField(id, field, value) {
-    const h = state.habits.find(x => x.id === id);
-    if (!h) return;
-
-    if (field === 'cat' || field === 'name') {
-        // Same reason as addHabit: an untrimmed rename re-splits the category.
-        h[field] = String(value == null ? '' : value).trim();
-    } else if (field === 'note' || field === 'cycleType') {
-        h[field] = value;
-    } else if (field === 'cycleNextDue') {
-        // <input type="date"> sends "YYYY-MM-DD" — parse as a local date so
-        // the hide-until window aligns with the calendar day the user picked.
-        // Empty string clears the field (habit is visible immediately).
-        if (!value) {
-            delete h.cycleNextDue;
-        } else {
-            const [y, m, d] = String(value).split('-').map(Number);
-            if (y && m && d) h.cycleNextDue = new Date(y, m - 1, d).getTime();
-        }
-    } else if (field.startsWith('val')) {
-        // A cleared/non-numeric input parses to NaN — never write that to
-        // Firestore (it propagates into every payout total as "$NaN").
-        // Keep the previous value instead so a mis-tap can't zero a payout.
-        const f = parseFloat(value);
-        h[field] = Number.isFinite(f) ? f : (Number.isFinite(h[field]) ? h[field] : 0);
-    } else if (field.startsWith('star')) {
-        h[field] = parseInt(value) || 0;
-    } else if (field === 'streakBonusPer' || field === 'streakPenaltyPer' || field === 'streakCap') {
-        h[field] = parseFloat(value) || 0;
-    } else if (field === 'lockTask') {
-        // Free text — must not fall through to the parseInt branch below,
-        // which would turn "Change the sheets" into 1.
-        h.lockTask = String(value == null ? '' : value);
-    } else if (field === 'lockEnabled') {
-        const on = (value === true || value === 'true' || value === 1 || value === '1');
-        h.lockEnabled = on;
-        if (on) {
-            // Arm it immediately, otherwise switching the gate on does
-            // nothing visible until the cadence next comes round.
-            if (h.locked === undefined) h.locked = true;
-            if (h.lockWeeks === undefined) h.lockWeeks = 0;
-        } else {
-            // Don't leave a disabled gate holding a habit shut. isLocked()
-            // already returns false for an ungated habit, but a stale
-            // `locked: true` would spring back the moment it's re-enabled.
-            h.locked = false;
-        }
-    } else if (field === 'lockEveryWeeks') {
-        const n = parseInt(value, 10);
-        h.lockEveryWeeks = (Number.isFinite(n) && n >= 1) ? n : LOCK_DEFAULT_EVERY_WEEKS;
-    } else {
-        h[field] = parseInt(value) || 1;
-    }
-    await syncHabits();
-}
+// updateHabitField() was deleted on 2026-09-04. It had ZERO callers in either
+// app for its entire life — both UIs coerce fields in their own copy
+// (web/ui/habits-ui.js window.updateField, native components/HabitEditorModal
+// updateField) — yet three separate fixes were committed into it and silently
+// did nothing: the July NaN guard on val*, the September name/cat trim, and the
+// task-lock branches. Meanwhile the PWA's real path was writing the number 1
+// into `icon` and `lockTask`, the latter crashing the render loop in BOTH apps.
+//
+// It wasn't neutral dead code, it was a decoy that looked like the place fixes
+// belonged. If a third consumer ever appears, reintroduce it deliberately and
+// route BOTH editors through it — don't resurrect it as a fourth copy.
 
 /**
  * Toggle the "excused" flag on a habit. Excused habits freeze streaks

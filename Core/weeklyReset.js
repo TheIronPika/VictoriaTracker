@@ -148,6 +148,19 @@ export async function executeWeeklyReset(io, now = new Date()) {
     const isDormant     = h => !isCycleDue(h);
     const streakFrozenH = h => (periodActive || periodWasThisWeek) && !!h.periodSensitive;
 
+    // ── Load weekly history ──────────────────────────────────────────────
+    // Read UP HERE, not just before the snapshot is written, because
+    // getStarsEarned() now derives the streak from it rather than from the
+    // stored habit.streak counter. At this point it does NOT yet contain the
+    // week being closed, which is exactly what that call wants: the streak
+    // through LAST week, to which it adds this one.
+    let histDoc = { weeks: [] };
+    try {
+        const hd = await io.readDoc(FIRESTORE_DOCS.HISTORY);
+        if (hd) histDoc = hd;
+    } catch (e) { /* first run */ }
+    const priorWeeks = histDoc.weeks || [];
+
     // ── Calculate payouts ────────────────────────────────────────────────
     let totalMoney = 0;
     habits.forEach(h => {
@@ -210,7 +223,8 @@ export async function executeWeeklyReset(io, now = new Date()) {
         // HERE, don't re-implement" rule, and the two had already drifted on
         // the streak reason string. Bounty stars stay here because the bounty
         // flags they depend on are cleared further down.
-        let { earned, reasons } = getStarsEarned(h);
+        // priorWeeks, not the stored counter — see habits.js getStarsEarned.
+        let { earned, reasons } = getStarsEarned(h, { weeklyHistory: priorWeeks });
         if (h.bountyActive && (tier === 'goal' || tier === 'bonus') && (h.bountyStars || 0) > 0) {
             earned += h.bountyStars;
             reasons = [...reasons, h.name + ' Bounty 🏆'];
@@ -289,6 +303,11 @@ export async function executeWeeklyReset(io, now = new Date()) {
     }
 
     // ── Update streaks ───────────────────────────────────────────────────
+    // NOTE: h.streak is no longer what the star payout reads — getStarsEarned()
+    // derives that from weekly_history (2026-09-04). The counter is still rolled
+    // here because bestStreak is computed from it and the Streak $ panel shows
+    // it, but if it ever disagrees with computeStreaksFromHistory(), history
+    // wins. Don't reintroduce a payout that reads this field.
     // A streak-reset token used this week (h.badStreakResetTs within the past
     // 7 days) keeps badStreak at 0 even if she didn't hit goal — the flag is
     // then cleared so next week ticks normally.
@@ -318,12 +337,7 @@ export async function executeWeeklyReset(io, now = new Date()) {
     });
 
     // ── Save history snapshot ────────────────────────────────────────────
-    let histDoc = { weeks: [] };
-    try {
-        const hd = await io.readDoc(FIRESTORE_DOCS.HISTORY);
-        if (hd) histDoc = hd;
-    } catch (e) { /* first run */ }
-
+    // histDoc was read at the top — getStarsEarned needs it before this point.
     const entry = {
         id:           String(Date.now()),
         weekEnding:   dateStr,

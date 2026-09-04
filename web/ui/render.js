@@ -279,8 +279,12 @@ export function render() {
             // The streak row mirrors getStarsEarned's own test — the STORED
             // h.streak counter, which is what the reset pays from, not the
             // history-derived badge above.
-            const starTier      = tier;
-            const nextStreakVal = (starTier === 'goal' || starTier === 'bonus') ? (h.streak || 0) + 1 : 0;
+            const starTier = tier;
+            // liveStreak, the history-derived number shown on the 🔥 badge —
+            // the same source getStarsEarned() switched to on 2026-09-04. It
+            // read the stored h.streak counter until then, so this row could
+            // disagree with both the badge above it and the actual payout.
+            const nextStreakVal = (starTier === 'goal' || starTier === 'bonus') ? liveStreak : 0;
             const starRow = (label, val, on, note) =>
                 `<div class="star-detail-row${on ? ' star-detail-on' : ''}">`
                 + `<span>${label}${note ? ` <em style="opacity:0.7;font-style:normal;font-size:10px">${note}</em>` : ''}</span>`
