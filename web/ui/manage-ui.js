@@ -398,6 +398,13 @@ window.showManageDetail = (id) => {
         +     ovRow('★ Milestone pays $', 'overflowMilestoneDollars', h.overflowMilestoneDollars, '0.50',   '0.25')
         +   '</div>'
         +   '<div style="font-size:11px;font-weight:700;color:#e0a013;background:rgba(245,166,35,0.1);border-radius:8px;padding:6px 9px;margin-bottom:10px">' + escapeHtml(ovLadder) + '</div>'
+        +   '<div style="font-size:10px;color:#7a7390;margin-bottom:6px">Put wording in a box and that milestone shows a lock on her card instead of a fillable bubble \u00b7 she taps it, reads it, confirms \u00b7 blank leaves it open \u00b7 re-locks every Monday</div>'
+        +   '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">'
+        +     overflowMilestonesOf(h).map(function (n) {
+                  return ovRow('\ud83d\udd12 Extra ' + n, 'overflowMilestoneTask:' + n,
+                               (h.overflowMilestoneTasks || {})[String(n)] || '', 'open \u2014 no task', 'text');
+              }).join('')
+        +   '</div>'
         +   ovToggleBtn(false, 'Turn off Overflow', 'padding:6px 14px;background:none;border:1px solid rgba(217,83,79,0.4);border-radius:7px;color:#d9534f;font-size:11px;font-weight:700;cursor:pointer')
         + '</div>'
         : '<div class="msp-section" style="margin-top:14px">'

@@ -8,6 +8,7 @@ import { state, setHabits } from './state.js';
 import { readDoc, writeDoc, watchDoc } from './firebase.js';
 import { FIRESTORE_DOCS } from './config.js';
 import { isLocked, isLockGated, confirmLockFields } from './locks.js';
+import { overflowMilestoneLocked, confirmOverflowMilestoneFields } from './habits.js';
 
 /**
  * One-time load of habits — for headless contexts (e.g. the widget task
@@ -113,6 +114,24 @@ export async function confirmTaskLock(id) {
     const h = state.habits.find(x => x.id === id);
     if (!h || !isLocked(h)) return false;
     Object.assign(h, confirmLockFields());
+    await syncHabits();
+    return true;
+}
+
+/**
+ * Confirm the task gating one milestone of the overflow ladder, opening that
+ * rung for the rest of this week. Same honour system as confirmTaskLock() —
+ * nothing verifies it happened, which is the point: the required task is
+ * something the app cannot see.
+ *
+ * No-op on a rung that isn't gated or is already open, so a double tap can't
+ * stamp over an existing confirmation. The stamp carries the week, so it
+ * expires by itself on Monday without the weekly reset touching it.
+ */
+export async function confirmOverflowMilestone(id, n) {
+    const h = state.habits.find(x => x.id === id);
+    if (!h || !overflowMilestoneLocked(h, n)) return false;
+    Object.assign(h, confirmOverflowMilestoneFields(h, n));
     await syncHabits();
     return true;
 }

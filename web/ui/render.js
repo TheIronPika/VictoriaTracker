@@ -12,6 +12,7 @@ import { getDayIdx, escapeHtml, startOfWeek, formatMoney } from '../../Core/util
 import { effectiveDate } from '../../Core/resetState.js';
 import { getTier, computeWeeklyPayout, toCumulative, computeOverflow, habitMax,
          overflowMilestoneDollars } from '../../Core/habits.js';
+import { confirmOverflowMilestone } from '../../Core/habits-data.js';
 import { isCycleDue, isCyclic, cycleLabel, cycleDueLabel } from '../../Core/cycles.js';
 import { computeStreaksFromHistory } from '../../Core/streaks.js';
 import { isLocked, lockTaskLabel } from '../../Core/locks.js';
@@ -396,17 +397,29 @@ export function render() {
                         bubblesHtml += `<div class="${cls}" ${tap} title="Extra ${k}">+</div>`;
                     }
                     const waitN = ovShown + 1;
-                    const tapW  = tapAllowed ? `onclick="window.toggleBubble('${h.id}',${ovCeiling + waitN})"` : '';
-                    bubblesHtml += `<div class="bubble bubble-overflow-next" ${tapW}
-                        title="Take another — pays ${formatMoney(ov.nextValue, true)}">+</div>`;
+                    if (ov.nextLocked && waitN === ov.count + 1) {
+                        // Gated milestone — the padlock replaces the fillable
+                        // bubble, exactly as it does on the native card.
+                        const tapL = tapAllowed ? `onclick="window.confirmOverflowMilestone('${h.id}',${waitN})"` : '';
+                        bubblesHtml += `<div class="bubble bubble-overflow-locked" ${tapL}
+                            title="Locked — ${escapeHtml(ov.nextTask)}">🔒</div>`;
+                    } else {
+                        const tapW = tapAllowed ? `onclick="window.toggleBubble('${h.id}',${ovCeiling + waitN})"` : '';
+                        bubblesHtml += `<div class="bubble bubble-overflow-next" ${tapW}
+                            title="Take another — pays ${formatMoney(ov.nextValue, true)}">+</div>`;
+                    }
 
                     if (!h.excused) {
                         const msChip = ov.nextIsMilestone
                             ? `<span class="overflow-ms-chip">${formatMoney(overflowMilestoneDollars(h), true)} milestone</span>` : '';
                         const earned = ov.count > 0
                             ? `<span class="overflow-earned">${formatMoney(ov.dollars)} extra so far</span>` : '';
-                        overflowPillHtml = `<div class="overflow-pill">⚡ ${ov.count === 0 ? 'OVERFLOW UNLOCKED' : 'KEEP GOING'}`
-                                         + ` · next ${formatMoney(ov.nextValue, true)} ${msChip} ${earned}</div>`;
+                        overflowPillHtml = ov.nextLocked
+                            ? `<div class="overflow-pill overflow-pill-locked">🔒 MILESTONE LOCKED`
+                              + ` · next ${formatMoney(ov.nextValue, true)}`
+                              + ` <span class="overflow-task">🔑 ${escapeHtml(ov.nextTask)}</span> ${earned}</div>`
+                            : `<div class="overflow-pill">⚡ ${ov.count === 0 ? 'OVERFLOW UNLOCKED' : 'KEEP GOING'}`
+                              + ` · next ${formatMoney(ov.nextValue, true)} ${msChip} ${earned}</div>`;
                     }
                 }
             }

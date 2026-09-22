@@ -373,6 +373,22 @@
             color: #6b3591;
         }
         .overflow-earned { font-weight: 700; color: #8a7d92; }
+        /* A gated milestone. Drained of gold on purpose — the ladder's colour
+           is the reward, and this rung isn't open yet. Solid, not dashed:
+           dashed reads as "coming", this is "shut". */
+        .bubble.bubble-overflow-locked {
+            background: rgba(235,228,216,0.85);
+            border-color: rgba(122,82,0,0.45);
+            font-size: 11px;
+            line-height: 19px;
+            text-align: center;
+        }
+        .overflow-pill.overflow-pill-locked {
+            background: linear-gradient(100deg, rgba(140,120,90,0.20), rgba(110,95,70,0.14));
+            border-color: rgba(122,82,0,0.4);
+            color: #6b5d45;
+        }
+        .overflow-task { font-weight: 700; color: #6b5d45; }
 
         @keyframes cardLeave {
             0%   { opacity: 1; transform: translateY(0) scale(1); }

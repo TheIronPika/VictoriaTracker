@@ -10,10 +10,10 @@ import { state } from '../../Core/state.js';
 import { getDayIdx, escapeHtml } from '../../Core/utils.js';
 import { effectiveDate } from '../../Core/resetState.js';
 import { unlockAchievement } from '../../Core/achievements.js';
-import { getTier, toCumulative, weekTotal, overflowOn, habitMax } from '../../Core/habits.js';
+import { getTier, toCumulative, weekTotal, overflowOn, habitMax, overflowMilestoneLocked } from '../../Core/habits.js';
 import { LUCKY_DRAW_ODDS, WATER_CONFIG } from '../../Core/config.js';
 import { isLocked, lockTaskLabel, LOCK_DEFAULT_EVERY_WEEKS } from '../../Core/locks.js';
-import { syncHabits, toggleExcused as coreToggleExcused, deleteHabit as coreDeleteHabit, confirmTaskLock as coreConfirmTaskLock, relockTask as coreRelockTask } from '../../Core/habits-data.js';
+import { syncHabits, toggleExcused as coreToggleExcused, deleteHabit as coreDeleteHabit, confirmTaskLock as coreConfirmTaskLock, relockTask as coreRelockTask, confirmOverflowMilestone as coreConfirmOverflowMilestone } from '../../Core/habits-data.js';
 import { syncStarData, addStarLog, useExcuseToken, useStreakResetToken, useMarkOffToken, grantMarkOffTokens, awardLuckyDrawStar, luckyDrawWinsToday } from '../../Core/stars.js';
 import { playBubblePop, triggerFanfare, checkPerfectWeek, checkStreakMilestones } from './animations.js';
 import { showCloverPopup, showLuckyDrawToast } from './lucky-draw.js';
@@ -149,6 +149,23 @@ window.deleteTask = async (id) => {
 // kill the Today view in BOTH apps, since it is one shared habits doc), and
 // un-checking the lock switch stored 1 — truthy — so the gate could never be
 // switched off again. Add a branch before adding a field.
+/**
+ * Confirm the task gating one overflow milestone. Honour system, same as the
+ * habit-level 🔒 confirm — a plain window.confirm here matches how the rest of
+ * this file asks, since the web app has no StyledAlert.
+ */
+window.confirmOverflowMilestone = async (id, n) => {
+    const h = uiState.habits.find(x => x.id === id);
+    if (!h) return;
+    const task = ((h.overflowMilestoneTasks || {})[String(n)] || '').trim() || 'the required task';
+    if (!window.confirm(`Extra ${n} is locked.
+
+Confirm you have done:
+${task}`)) return;
+    await coreConfirmOverflowMilestone(id, n);
+    window.render?.();
+};
+
 window.updateField = async (id, field, value) => {
     const h = uiState.habits.find(x => x.id === id);
     if (!h) return;
@@ -199,6 +216,17 @@ window.updateField = async (id, field, value) => {
     // for the same reason lockTask does: the whole-number fallthrough below
     // would store 1 and collapse every milestone into a single one.
     else if (field === 'overflowMilestones')                 h.overflowMilestones = String(value == null ? '' : value);
+    // Per-milestone lock wording, addressed as `overflowMilestoneTask:3`. Free
+    // text, so it sits above the whole-number fallthrough. Blank clears that
+    // rung's gate; emptying the last one drops the map rather than leaving {}.
+    else if (field.indexOf('overflowMilestoneTask:') === 0) {
+        const key = field.slice('overflowMilestoneTask:'.length);
+        const txt = String(value == null ? '' : value).trim();
+        const map = Object.assign({}, h.overflowMilestoneTasks || {});
+        if (txt) map[key] = txt; else delete map[key];
+        if (Object.keys(map).length) h.overflowMilestoneTasks = map;
+        else delete h.overflowMilestoneTasks;
+    }
     else if (field === 'overflowEnabled') {
         const on = (value === true || value === 'true' || value === 1 || value === '1');
         if (on) h.overflowEnabled = true; else delete h.overflowEnabled;
@@ -554,6 +582,12 @@ window.toggleBubble = async (id, val) => {
     // "no change", so the feature could never fire. The headroom bounds a
     // runaway write; it is not a pacing rule. TWIN: components/HabitCard.tsx.
     const maxPer   = overflowOn(h) ? habitMax(h) + 99 : (h.max || 7);
+    // A gated milestone refuses the write, not just the tap. TWIN of the same
+    // guard in components/HabitCard.tsx toggleBubble.
+    if (overflowOn(h) && val > habitMax(h)) {
+        const stepN = val - habitMax(h);
+        if (stepN > weekTotal(h.history) - habitMax(h) && overflowMilestoneLocked(h, stepN)) return;
+    }
     let targetDay, targetNew;
     if (val <= cur) {
         targetDay = -1;

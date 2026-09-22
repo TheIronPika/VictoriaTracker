@@ -10,6 +10,7 @@
 // ─────────────────────────────────────────────────────────────────────
 
 import { isCyclic, weeksLate } from './cycles.js';
+import { weekKey } from './utils.js';
 import { computeStreaksFromHistory } from './streaks.js';
 
 /**
@@ -174,6 +175,60 @@ export function overflowMilestoneDollars(habit) {
     return Math.max(0, overflowNum(habit && habit.overflowMilestoneDollars, 0.5));
 }
 
+// ── Milestone locks ───────────────────────────────────────────────────
+// A milestone can sit behind a secondary task she has to confirm before she
+// can take it — the same honour-system gate locks.js puts in front of a whole
+// habit, scoped to one rung of the ladder and with its own wording.
+//
+//   overflowMilestoneTasks  { "3": "Send me a photo" }
+//       Wording per milestone. No entry, or blank, means that rung is open.
+//   overflowMilestoneOk     { "3": "2026-09-22" }
+//       The weekKey she confirmed in — stamped with the WEEK rather than a
+//       boolean so it expires by itself every Monday. Extras reset weekly, so
+//       the gate has to re-arm weekly, and keying it this way means the weekly
+//       reset's atomic batch never has to learn about it.
+
+/** The wording for milestone `n`, or '' when that rung isn't gated. */
+export function overflowMilestoneTask(habit, n) {
+    const map = habit && habit.overflowMilestoneTasks;
+    if (!map || typeof map !== 'object') return '';
+    return String(map[String(n)] || '').trim();
+}
+
+/** Does milestone `n` sit behind a task at all? */
+export function overflowMilestoneIsGated(habit, n) {
+    return overflowMilestoneTask(habit, n) !== '';
+}
+
+/** Has she confirmed milestone `n` during the CURRENT week? */
+export function overflowMilestoneConfirmed(habit, n, now = new Date()) {
+    const map = habit && habit.overflowMilestoneOk;
+    if (!map || typeof map !== 'object') return false;
+    return String(map[String(n)] || '') === weekKey(now);
+}
+
+/** Gated and not yet confirmed this week — she can't take this one. */
+export function overflowMilestoneLocked(habit, n, now = new Date()) {
+    return overflowMilestoneIsGated(habit, n) && !overflowMilestoneConfirmed(habit, n, now);
+}
+
+/**
+ * The map to write when she confirms milestone `n`. Returns the WHOLE
+ * overflowMilestoneOk map with the one key set, so a caller can assign it
+ * without having to merge by hand — and stale keys from previous weeks are
+ * dropped on the way through rather than accumulating forever.
+ */
+export function confirmOverflowMilestoneFields(habit, n, now = new Date()) {
+    const wk = weekKey(now);
+    const prev = (habit && habit.overflowMilestoneOk) || {};
+    const next = {};
+    for (const k of Object.keys(prev)) {
+        if (String(prev[k] ?? '') === wk) next[k] = wk;
+    }
+    next[String(n)] = wk;
+    return { overflowMilestoneOk: next };
+}
+
 /**
  * The habit's overflow standing right now.
  *
@@ -182,11 +237,12 @@ export function overflowMilestoneDollars(habit) {
  * many extras are already banked, `dollars` what they're worth together, and
  * `nextValue` what one more would pay — which is what the card tells her.
  */
-export function computeOverflow(habit) {
+export function computeOverflow(habit, now = new Date()) {
     const ceiling = habitMax(habit);
     const shut = {
         on: false, open: false, count: 0, dollars: 0, ceiling,
         milestones: [], milestonesHit: [], nextValue: 0, nextIsMilestone: false,
+        nextLocked: false, nextTask: '',
     };
     if (!overflowOn(habit)) return shut;
 
@@ -205,6 +261,12 @@ export function computeOverflow(habit) {
     dollars += milestonesHit.length * overflowMilestoneDollars(habit);
 
     const nextN = count + 1;
+    const nextIsMilestone = milestones.indexOf(nextN) !== -1;
+    // A gated milestone she hasn't confirmed this week blocks the NEXT extra
+    // only. Everything already banked stays banked and stays paid — if a lock
+    // is added mid-week she keeps what she has already earned.
+    const nextLocked = nextIsMilestone && overflowMilestoneLocked(habit, nextN, now);
+
     return {
         on: true,
         open,
@@ -214,7 +276,9 @@ export function computeOverflow(habit) {
         milestones,
         milestonesHit,
         nextValue: overflowValueAt(habit, nextN),
-        nextIsMilestone: milestones.indexOf(nextN) !== -1,
+        nextIsMilestone,
+        nextLocked,
+        nextTask: nextLocked ? overflowMilestoneTask(habit, nextN) : '',
     };
 }
 
