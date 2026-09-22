@@ -8,8 +8,9 @@ import { uiState } from './ui-state.js';
 import { state } from '../../Core/state.js';
 import { cycleDueLabel } from '../../Core/cycles.js';
 import { computeStreaksFromHistory, sortedNewestFirst, sortedOldestFirst } from '../../Core/streaks.js';
-import { getTier, computeWeeklyPayout, toCumulative } from '../../Core/habits.js';
-import { getDayIdx, escapeHtml } from '../../Core/utils.js';
+import { getTier, computeWeeklyPayout, toCumulative, habitMax,
+         overflowValueAt, overflowMilestonesOf } from '../../Core/habits.js';
+import { getDayIdx, escapeHtml, formatMoney } from '../../Core/utils.js';
 import { loadWeeklyHistory } from '../../Core/history.js';
 import { renderPeriodHistory } from './period-ui.js';
 import { renderEventsManage } from './events-ui.js';
@@ -359,6 +360,52 @@ window.showManageDetail = (id) => {
         +   '<div style="font-size:11px;color:#7a7390;margin-top:6px">Drew\'s bonus reward · pays out when this habit hits Goal or Bonus tier</div>'
         + '</div>';
 
+    // ⚡ Overflow — let her keep banking past the ceiling, each extra worth
+    // more than the last. TWIN of the Overflow card in the native
+    // components/HabitEditorModal.tsx; both write the same Firestore fields.
+    const ovField = (field, val, ph, step) =>
+        '<input type="' + (step === 'text' ? 'text' : 'number') + '" class="msp-field-input"'
+        + (step && step !== 'text' ? ' step="' + step + '" min="0"' : '')
+        + ' value="' + sv(val) + '" placeholder="' + ph + '"'
+        + ' style="width:100%;box-sizing:border-box"'
+        + ' onchange="window.updateField(&quot;' + h.id + '&quot;,&quot;' + field + '&quot;,this.value)">';
+    const ovRow = (label, field, val, ph, step) =>
+        '<div class="msp-field-row"><span class="msp-field-label">' + label + '</span>'
+        + ovField(field, val, ph, step) + '</div>';
+    const ovToggleBtn = (on, label, style) =>
+        '<button onclick="window.updateField(&quot;' + h.id + '&quot;,&quot;overflowEnabled&quot;,&quot;'
+        + (on ? '1' : '') + '&quot;);window.render()" style="' + style + '">' + label + '</button>';
+
+    const ovLadder = (() => {
+        const ms = overflowMilestonesOf(h);
+        const out = [];
+        for (let n = 1; n <= 5; n++) {
+            out.push(formatMoney(overflowValueAt(h, n), true) + (ms.indexOf(n) !== -1 ? '★' : ''));
+        }
+        return out.join('  ·  ') + '  …';
+    })();
+
+    const overflowHtml = h.overflowEnabled
+        ? '<div class="msp-section" style="margin-top:14px;border:1px solid rgba(212,144,10,0.28);background:rgba(245,166,35,0.06);border-radius:10px;padding:16px">'
+        +   '<div class="msp-section-title" style="color:#e0a013;margin-bottom:12px">⚡ Overflow</div>'
+        +   '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px">'
+        +     ovRow('First extra $',   'overflowBase', h.overflowBase, '0.50', '0.25')
+        +     ovRow('Each adds $',     'overflowStep', h.overflowStep, '0.25', '0.05')
+        +     ovRow('Most one pays $', 'overflowCap',  h.overflowCap,  'blank = no cap', '0.25')
+        +   '</div>'
+        +   '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">'
+        +     ovRow('★ Milestones at',   'overflowMilestones',       h.overflowMilestones,       '3,5,10', 'text')
+        +     ovRow('★ Milestone pays $', 'overflowMilestoneDollars', h.overflowMilestoneDollars, '0.50',   '0.25')
+        +   '</div>'
+        +   '<div style="font-size:11px;font-weight:700;color:#e0a013;background:rgba(245,166,35,0.1);border-radius:8px;padding:6px 9px;margin-bottom:10px">' + escapeHtml(ovLadder) + '</div>'
+        +   ovToggleBtn(false, 'Turn off Overflow', 'padding:6px 14px;background:none;border:1px solid rgba(217,83,79,0.4);border-radius:7px;color:#d9534f;font-size:11px;font-weight:700;cursor:pointer')
+        + '</div>'
+        : '<div class="msp-section" style="margin-top:14px">'
+        +   '<div class="msp-section-title">Overflow</div>'
+        +   ovToggleBtn(true, '⚡ Let her keep going past ' + habitMax(h), 'padding:8px 18px;background:rgba(245,166,35,0.1);border:1px solid rgba(212,144,10,0.3);border-radius:8px;color:#e0a013;font-size:12px;font-weight:700;cursor:pointer')
+        +   '<div style="font-size:11px;color:#7a7390;margin-top:6px">A new bubble appears once all ' + habitMax(h) + ' are filled, and keeps appearing · each one pays more than the last · resets every week</div>'
+        + '</div>';
+
     // 🔒 Task lock — gate this habit behind a secondary task she confirms.
     // Cadence is counted in weekly resets by Core/locks.js; "locked now"
     // is the live state, editable here so the gate can be tested or
@@ -393,7 +440,7 @@ window.showManageDetail = (id) => {
             : '<div style="font-size:11px;color:#7a7390;margin-top:6px">Her bubbles stay shut until she taps the 🔒 and confirms the task.</div>')
         + '</div>';
 
-    detail.innerHTML = headerHtml + '<div class="msp-two-col">' + payoutHtml + rightColHtml + '</div>' + bountyHtml + lockHtml + definitionHtml;
+    detail.innerHTML = headerHtml + '<div class="msp-two-col">' + payoutHtml + rightColHtml + '</div>' + bountyHtml + overflowHtml + lockHtml + definitionHtml;
 };
 
 // ── Forecast ──────────────────────────────────────────────────────────

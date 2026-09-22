@@ -317,6 +317,63 @@
         .bubble.filled.mark-off  { background: rgba(175,175,175,0.5); border-color: #aaa !important; }
         .bubble.future           { border-style: dashed; }
 
+        /* ⚡ Overflow — the bubbles past the ceiling. Gold on purpose: not one
+           of the four tier colours, because overflow is not a tier. Each one
+           sits a shade deeper than the last so the climb is visible. The
+           native app animates these in; the web just shows them. */
+        .bubble.bubble-overflow {
+            background: linear-gradient(145deg, #ffd166, #e0a013);
+            border-color: #d4900a;
+            color: #fff;
+            font-size: 11px;
+            font-weight: 800;
+            line-height: 19px;
+            text-align: center;
+        }
+        .bubble.bubble-overflow.deep {
+            background: linear-gradient(145deg, #ffd166, #c07f06);
+            border-color: #a86b00;
+            box-shadow: 0 0 9px rgba(245,166,35,0.5);
+        }
+        .bubble.bubble-overflow-ms { box-shadow: 0 0 0 2px rgba(142,68,173,0.45); }
+        .bubble.bubble-overflow-next {
+            background: rgba(255,232,180,0.72);
+            border-color: #d4900a;
+            border-style: dashed;
+            color: #8a5a00;
+            font-size: 11px;
+            font-weight: 800;
+            line-height: 19px;
+            text-align: center;
+            animation: overflowBreathe 2.2s ease-in-out infinite;
+        }
+        @keyframes overflowBreathe {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(245,166,35,0); }
+            50%      { box-shadow: 0 0 9px 2px rgba(245,166,35,0.45); }
+        }
+        .overflow-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            border: 1px solid rgba(212,144,10,0.5);
+            background: linear-gradient(100deg, rgba(245,166,35,0.26), rgba(212,144,10,0.16));
+            font-size: 11px;
+            font-weight: 800;
+            color: #7a5200;
+        }
+        .overflow-ms-chip {
+            background: rgba(142,68,173,0.16);
+            border-radius: 7px;
+            padding: 1px 5px;
+            font-size: 10px;
+            color: #6b3591;
+        }
+        .overflow-earned { font-weight: 700; color: #8a7d92; }
+
         @keyframes cardLeave {
             0%   { opacity: 1; transform: translateY(0) scale(1); }
             100% { opacity: 0; transform: translateY(18px) scale(0.96); }

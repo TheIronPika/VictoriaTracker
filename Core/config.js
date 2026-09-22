@@ -103,6 +103,24 @@ export const TIER_COLORS = {
     bonus:  '#8e44ad'
 };
 
+// Overflow — the bubbles past the ceiling. Deliberately gold and deliberately
+// NOT in TIER_COLORS: overflow is not a tier (getTier still stops at 'bonus'),
+// and the whole point is that it reads as something other than the four
+// colours she already knows. `deep` takes over from DEEP_FROM extras on, so
+// the row visibly gets richer the further she goes.
+export const OVERFLOW_COLORS = {
+    rim:      '#d4900a',
+    rimDeep:  '#a86b00',
+    fillTop:  '#ffd166',
+    fill:     '#e0a013',
+    fillDeep: '#c07f06',
+    ink:      '#7a5200',
+    glow:     '#f5a623'
+};
+
+/** Extras from this one on use the deeper gold. */
+export const OVERFLOW_DEEP_FROM = 5;
+
 // Lucky draw odds (% chance per completion), keyed by the tier the completion lands in.
 export const LUCKY_DRAW_ODDS = {
     punish: 2,

@@ -8,13 +8,14 @@
 
 import { uiState, saveCollapsedState } from './ui-state.js';
 import { state } from '../../Core/state.js';
-import { getDayIdx, escapeHtml, startOfWeek } from '../../Core/utils.js';
+import { getDayIdx, escapeHtml, startOfWeek, formatMoney } from '../../Core/utils.js';
 import { effectiveDate } from '../../Core/resetState.js';
-import { getTier, computeWeeklyPayout, toCumulative } from '../../Core/habits.js';
+import { getTier, computeWeeklyPayout, toCumulative, computeOverflow, habitMax,
+         overflowMilestoneDollars } from '../../Core/habits.js';
 import { isCycleDue, isCyclic, cycleLabel, cycleDueLabel } from '../../Core/cycles.js';
 import { computeStreaksFromHistory } from '../../Core/streaks.js';
 import { isLocked, lockTaskLabel } from '../../Core/locks.js';
-import { MANAGE_PASSCODE, TIER_COLORS, WATER_CONFIG } from '../../Core/config.js';
+import { MANAGE_PASSCODE, TIER_COLORS, WATER_CONFIG, OVERFLOW_DEEP_FROM } from '../../Core/config.js';
 import { animateMoneyDisplay } from './animations.js';
 import { renderSeasonalSection, renderEventsManage } from './events-ui.js';
 import { getEventPayoutsTotal } from '../../Core/events.js';
@@ -373,6 +374,43 @@ export function render() {
                     ${onclickAttr}>${dayLetter}</div>`;
             }
 
+            // ⚡ Overflow — everything banked past the ceiling, plus the one
+            // still waiting. Deliberately static here: the reveal choreography
+            // belongs to the native app (components/OverflowBubble.tsx), which
+            // is the one Victoria actually uses. The web still has to SHOW and
+            // accept these, or the two apps would disagree about one Firestore
+            // doc — which is how bugs get in. Shaped by the viewed day's
+            // cumulative, exactly like the base row; the money stays weekly.
+            let overflowPillHtml = '';
+            if (!taskLocked) {
+                const ov        = computeOverflow(h);
+                const ovCeiling = habitMax(h);
+                const ovShown   = Math.max(0, cur - ovCeiling);
+                if (ov.open && cur >= ovCeiling) {
+                    const tapAllowed = !(isFutureDay || isSystemDriven);
+                    for (let k = 1; k <= ovShown; k++) {
+                        const cls = 'bubble bubble-overflow'
+                                  + (k >= OVERFLOW_DEEP_FROM ? ' deep' : '')
+                                  + (ov.milestones.indexOf(k) !== -1 ? ' bubble-overflow-ms' : '');
+                        const tap = tapAllowed ? `onclick="window.toggleBubble('${h.id}',${ovCeiling + k})"` : '';
+                        bubblesHtml += `<div class="${cls}" ${tap} title="Extra ${k}">+</div>`;
+                    }
+                    const waitN = ovShown + 1;
+                    const tapW  = tapAllowed ? `onclick="window.toggleBubble('${h.id}',${ovCeiling + waitN})"` : '';
+                    bubblesHtml += `<div class="bubble bubble-overflow-next" ${tapW}
+                        title="Take another — pays ${formatMoney(ov.nextValue, true)}">+</div>`;
+
+                    if (!h.excused) {
+                        const msChip = ov.nextIsMilestone
+                            ? `<span class="overflow-ms-chip">${formatMoney(overflowMilestoneDollars(h), true)} milestone</span>` : '';
+                        const earned = ov.count > 0
+                            ? `<span class="overflow-earned">${formatMoney(ov.dollars)} extra so far</span>` : '';
+                        overflowPillHtml = `<div class="overflow-pill">⚡ ${ov.count === 0 ? 'OVERFLOW UNLOCKED' : 'KEEP GOING'}`
+                                         + ` · next ${formatMoney(ov.nextValue, true)} ${msChip} ${earned}</div>`;
+                    }
+                }
+            }
+
             const cardHtml = `
                 <div class="habit-card ${isUrgent ? 'priority-border' : ''} ${isArriving ? 'card-arriving' : ''} ${glowClass} ${h.bountyActive ? 'bounty-glow' : ''} ${periodProtectedCard ? 'period-protected-card' : ''}"
                      data-habit-id="${h.id}"
@@ -403,6 +441,7 @@ export function render() {
                         ${forecastDetailDiv}
                         ${starDetailDiv}
                         <div class="bubbles" style="${isFutureDay ? 'opacity:0.45;pointer-events:none;' : ''}">${bubblesHtml}</div>
+                        ${overflowPillHtml}
                     </div>
                 </div>`;
 

@@ -89,6 +89,136 @@ export function streakCapOf(habit) {
 }
 
 /**
+ * A habit's weekly ceiling — the most completions its bubble row shows.
+ * Lived in category-payouts.js until overflow needed it too; moved here so
+ * the ceiling sits beside getTier/streakCapOf and category-payouts imports it
+ * rather than keeping a second copy (habits.js can't import from there — the
+ * dependency runs the other way).
+ */
+export function habitMax(habit) {
+    const n = parseFloat(habit && habit.max);
+    return Number.isFinite(n) && n > 0 ? n : 7;
+}
+
+// ── Overflow: banking past the ceiling ────────────────────────────────
+// `max` is the number of bubbles she sees, and for most habits it is also
+// where the week stops. A habit with overflow on keeps going: once the
+// ceiling is reached, every further completion pays its OWN amount, each
+// one worth strictly more than the last, until a per-extra cap.
+//
+// Deliberately NOT a new tier. getTier() still tops out at 'bonus', so
+// category math, star payouts, streak rolls and the weekly snapshot all read
+// exactly what they read before overflow existed. Overflow is one extra line
+// item on the payout, and nothing else in the app changes shape.
+//
+// Fields, all optional and all editable per habit:
+//   overflowEnabled          — off unless explicitly true
+//   overflowBase             — dollars for the FIRST extra          (0.50)
+//   overflowStep             — added to each subsequent extra       (0.25)
+//   overflowCap              — ceiling on ONE extra's value         (2.00)
+//   overflowMilestones       — "3,5,10": extras that pay a bonus
+//   overflowMilestoneDollars — flat bonus each milestone pays       (0.50)
+
+/** True when this habit banks past its ceiling. */
+export function overflowOn(habit) {
+    return !!(habit && habit.overflowEnabled);
+}
+
+/**
+ * Absent/blank -> fallback; a real number (including 0) -> that number;
+ * anything unparseable -> fallback, so a malformed field can never
+ * NaN-poison a payout. Same contract as streakCapOf, for the same reason.
+ */
+function overflowNum(raw, fallback) {
+    if (raw === undefined || raw === null || raw === '') return fallback;
+    const n = parseFloat(raw);
+    return Number.isFinite(n) ? n : fallback;
+}
+
+/** Per-extra cap. Blank means uncapped; an explicit 0 is a real cap of zero. */
+export function overflowCapOf(habit) {
+    const raw = habit && habit.overflowCap;
+    if (raw === undefined || raw === null || raw === '') return Infinity;
+    const n = parseFloat(raw);
+    return Number.isFinite(n) ? n : Infinity;
+}
+
+/** Dollars paid by the nth extra (n starts at 1). */
+export function overflowValueAt(habit, n) {
+    if (!(n >= 1)) return 0;
+    const base = Math.max(0, overflowNum(habit && habit.overflowBase, 0.5));
+    const step = Math.max(0, overflowNum(habit && habit.overflowStep, 0.25));
+    const val  = base + (n - 1) * step;
+    return Math.round(Math.min(val, overflowCapOf(habit)) * 100) / 100;
+}
+
+/**
+ * Which extras pay a milestone bonus. Stored as "3,5,10" (a string from the
+ * editor) or an array; either way it comes back sorted, de-duplicated and
+ * free of anything that isn't a positive whole number.
+ */
+export function overflowMilestonesOf(habit) {
+    const raw = habit && habit.overflowMilestones;
+    if (raw === undefined || raw === null || raw === '') return [3, 5, 10];
+    const parts = Array.isArray(raw) ? raw : String(raw).split(',');
+    const out = [];
+    for (const p of parts) {
+        const n = parseInt(String(p).trim(), 10);
+        if (Number.isFinite(n) && n >= 1 && out.indexOf(n) === -1) out.push(n);
+    }
+    return out.sort((a, b) => a - b);
+}
+
+/** Flat dollars a single milestone pays, on top of that extra's own value. */
+export function overflowMilestoneDollars(habit) {
+    return Math.max(0, overflowNum(habit && habit.overflowMilestoneDollars, 0.5));
+}
+
+/**
+ * The habit's overflow standing right now.
+ *
+ * `open` is the thing the UI hangs the reveal on: the ceiling is reached and
+ * the week is a genuine bonus week, so the extra bubble exists. `count` is how
+ * many extras are already banked, `dollars` what they're worth together, and
+ * `nextValue` what one more would pay — which is what the card tells her.
+ */
+export function computeOverflow(habit) {
+    const ceiling = habitMax(habit);
+    const shut = {
+        on: false, open: false, count: 0, dollars: 0, ceiling,
+        milestones: [], milestonesHit: [], nextValue: 0, nextIsMilestone: false,
+    };
+    if (!overflowOn(habit)) return shut;
+
+    const milestones = overflowMilestonesOf(habit);
+    const total = getCurrentCount(habit);
+    // Overflow rides on top of a bonus week. A habit whose bonus threshold
+    // sits above its own ceiling can never reach 'bonus' (bonusUnreachable in
+    // category-payouts.js), and correctly never opens.
+    const open = total >= ceiling && getTier(habit, total) === 'bonus';
+    const count = open ? Math.max(0, total - ceiling) : 0;
+
+    let dollars = 0;
+    for (let n = 1; n <= count; n++) dollars += overflowValueAt(habit, n);
+
+    const milestonesHit = milestones.filter(m => m <= count);
+    dollars += milestonesHit.length * overflowMilestoneDollars(habit);
+
+    const nextN = count + 1;
+    return {
+        on: true,
+        open,
+        count,
+        dollars: Math.round(dollars * 100) / 100,
+        ceiling,
+        milestones,
+        milestonesHit,
+        nextValue: overflowValueAt(habit, nextN),
+        nextIsMilestone: milestones.indexOf(nextN) !== -1,
+    };
+}
+
+/**
  * Compute the full per-habit weekly payout in one place.
  *
  * Inputs:
@@ -137,6 +267,7 @@ export function computeWeeklyPayout(habit, opts = {}) {
     let goodStreak = 0;
     let badStreak  = 0;
     let bounty     = 0;
+    let overflow   = 0;
 
     if (!habit.excused) {
         if (tier === 'punish') {
@@ -170,12 +301,19 @@ export function computeWeeklyPayout(habit, opts = {}) {
         if (habit.bountyActive && (tier === 'goal' || tier === 'bonus') && (habit.bountyDollars || 0) > 0) {
             bounty = habit.bountyDollars;
         }
+
+        // Everything banked past the ceiling, each extra worth more than the
+        // last. computeOverflow() already refuses to open on anything but a
+        // bonus week, so this adds nothing on a normal one.
+        overflow = computeOverflow(habit).dollars;
     }
 
-    const total = base + goodStreak + badStreak + bounty;
+    // Rounded to cents: overflow sums fractional steps, and float drift there
+    // would otherwise surface as $12.750000000000002 in the headline.
+    const total = Math.round((base + goodStreak + badStreak + bounty + overflow) * 100) / 100;
 
     return {
-        tier, base, lateReduction, goodStreak, badStreak, bounty, total,
+        tier, base, lateReduction, goodStreak, badStreak, bounty, overflow, total,
         cyclic, weeksLate: wkLate, periodProtected,
         excused: !!habit.excused
     };

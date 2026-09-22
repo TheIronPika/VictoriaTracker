@@ -90,7 +90,7 @@
 // confiscating things she already earned.
 // ─────────────────────────────────────────────────────────────────────
 
-import { getTier, weekTotal } from './habits.js';
+import { getTier, weekTotal, habitMax } from './habits.js';
 import { isCyclic } from './cycles.js';
 
 // Tier ranking, lowest first — the category takes the minimum.
@@ -156,14 +156,11 @@ export function readReward(catCfg, tier) {
     return out;
 }
 
-/**
- * A habit's weekly ceiling — the most completions it can bank. Mirrors the
- * `h.max || 7` fallback the bubble UI and the Day Pass gate already use.
- */
-export function habitMax(habit) {
-    const n = parseFloat(habit && habit.max);
-    return Number.isFinite(n) && n > 0 ? n : 7;
-}
+// habitMax moved to habits.js when overflow needed it there too — habits.js
+// can't import from this file (the dependency runs the other way), so the
+// ceiling lives beside getTier and is re-exported here to keep this module's
+// surface unchanged for anything already importing it from category-payouts.
+export { habitMax };
 
 /**
  * True if `habit` literally cannot reach 'bonus': its bonus threshold sits

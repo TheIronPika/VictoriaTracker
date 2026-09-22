@@ -10,7 +10,7 @@ import { state } from '../../Core/state.js';
 import { getDayIdx, escapeHtml } from '../../Core/utils.js';
 import { effectiveDate } from '../../Core/resetState.js';
 import { unlockAchievement } from '../../Core/achievements.js';
-import { getTier, toCumulative, weekTotal } from '../../Core/habits.js';
+import { getTier, toCumulative, weekTotal, overflowOn, habitMax } from '../../Core/habits.js';
 import { LUCKY_DRAW_ODDS, WATER_CONFIG } from '../../Core/config.js';
 import { isLocked, lockTaskLabel, LOCK_DEFAULT_EVERY_WEEKS } from '../../Core/locks.js';
 import { syncHabits, toggleExcused as coreToggleExcused, deleteHabit as coreDeleteHabit, confirmTaskLock as coreConfirmTaskLock, relockTask as coreRelockTask } from '../../Core/habits-data.js';
@@ -193,6 +193,26 @@ window.updateField = async (id, field, value) => {
                                                               h[field] = parseInt(value)   || 0;
     // 🔒 Task lock. Free text — must not reach the parseInt fallthrough.
     else if (field === 'lockTask')                           h.lockTask = String(value == null ? '' : value);
+    // ⚡ Overflow. TWIN: components/HabitEditorModal.tsx updateField — these
+    // two write the same Firestore doc, so a rule changed in one has to change
+    // in the other. `overflowMilestones` is free text ("3,5,10") and sits here
+    // for the same reason lockTask does: the whole-number fallthrough below
+    // would store 1 and collapse every milestone into a single one.
+    else if (field === 'overflowMilestones')                 h.overflowMilestones = String(value == null ? '' : value);
+    else if (field === 'overflowEnabled') {
+        const on = (value === true || value === 'true' || value === 1 || value === '1');
+        if (on) h.overflowEnabled = true; else delete h.overflowEnabled;
+    }
+    else if (field === 'overflowBase' || field === 'overflowStep' || field === 'overflowMilestoneDollars') {
+        const f = parseFloat(value);
+        h[field] = Number.isFinite(f) ? f : (Number.isFinite(h[field]) ? h[field] : 0);
+    }
+    // Tri-state like streakCap: blank DELETES the cap (climbs forever), a
+    // number is a real ceiling, and 0 really is 0.
+    else if (field === 'overflowCap') {
+        const n = parseFloat(value);
+        if (Number.isFinite(n)) h.overflowCap = n; else delete h.overflowCap;
+    }
     else if (field === 'lockEnabled') {
         const on = (value === true || value === 'true' || value === 1 || value === '1');
         h.lockEnabled = on;
@@ -529,7 +549,11 @@ window.toggleBubble = async (id, val) => {
     const cum      = toCumulative(h.history);
     const cur      = cum[dIdx] || 0;
     const base     = dIdx > 0 ? (cum[dIdx - 1] || 0) : 0;
-    const maxPer   = h.max || 7;
+    // ⚡ Overflow lifts the per-day ceiling. Without this the tap onto the
+    // first extra bubble clamps straight back to the ceiling and reads as
+    // "no change", so the feature could never fire. The headroom bounds a
+    // runaway write; it is not a pacing rule. TWIN: components/HabitCard.tsx.
+    const maxPer   = overflowOn(h) ? habitMax(h) + 99 : (h.max || 7);
     let targetDay, targetNew;
     if (val <= cur) {
         targetDay = -1;
