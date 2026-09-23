@@ -149,7 +149,7 @@ export const TIER_DOTS = {
 // Special days — MM-DD strings trigger themed accent + particles + optional love note.
 export const SPECIAL_DAYS = {
     birthday:    '04-12',   // Victoria's birthday
-    anniversary: '09-23',   // Drew + Victoria anniversary
+    anniversary: '02-24',   // Drew + Victoria wedding anniversary (Feb 24)
     victoriaDay: '12-15',   // app's "birthday" — first day the tracker shipped
     custom: [
         { date: '02-14', label: "Valentine's", greeting: "Happy Valentine's,", accent: '#e84a7b', particles: 'hearts' },
