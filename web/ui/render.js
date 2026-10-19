@@ -8,7 +8,7 @@
 
 import { uiState, saveCollapsedState } from './ui-state.js';
 import { state } from '../../Core/state.js';
-import { getDayIdx, escapeHtml, startOfWeek, formatMoney } from '../../Core/utils.js';
+import { getDayIdx, escapeHtml, startOfWeek, formatMoney, shortDate } from '../../Core/utils.js';
 import { effectiveDate } from '../../Core/resetState.js';
 import { getTier, computeWeeklyPayout, toCumulative, computeOverflow, habitMax,
          overflowMilestoneDollars } from '../../Core/habits.js';
@@ -22,7 +22,7 @@ import { renderSeasonalSection, renderEventsManage } from './events-ui.js';
 import { getEventPayoutsTotal } from '../../Core/events.js';
 import { renderShopManage } from './shop-ui.js';
 import { renderHistory, destroyHistoryCharts } from './history-ui.js';
-import { isPeriodActive, wasPeriodThisWeek, periodDayCount, periodStartDayIdx } from '../../Core/period.js';
+import { isPeriodActive, wasPeriodThisWeek, periodDayCount, periodStartDayIdx, predictNextPeriod } from '../../Core/period.js';
 import { getRoomPayoutsTotal } from '../../Core/rooms.js';
 import { renderPeriodHistory } from './period-ui.js';
 import { renderRoomsSection } from './rooms-ui.js';
@@ -90,15 +90,20 @@ export function render() {
     buildDateStrip();
     updateFiltersUI();
 
-    // Update period pill in header
+    // Update period pill in header: "Day N" while active; otherwise the next
+    // predicted start date (same predictNextPeriod() as the Period Tracking
+    // card), blank until there are two logged periods to measure a cycle from.
     const pill = document.getElementById('periodPill');
     if (pill) {
         if (isPeriodActive()) {
             pill.textContent = `🩸 Day ${periodDayCount()}`;
-            pill.classList.remove('period-inactive');
+            pill.classList.remove('period-inactive', 'period-next');
         } else {
-            pill.textContent = '🩸';
+            const p = predictNextPeriod();
+            const next = p.confidence !== 'none' && p.predictedTs ? shortDate(p.predictedTs) : '';
+            pill.textContent = next ? `🩸 ${next}` : '🩸';
             pill.classList.add('period-inactive');
+            pill.classList.toggle('period-next', !!next);
         }
     }
 
