@@ -40,6 +40,9 @@ export const uiState = {
         catch (e) { return {}; }
     })(),
 
+    // Period pill shows the next predicted date (tap the pill to toggle)
+    showPeriodDate: localStorage.getItem('periodPillDate') !== '0',
+
     // Seasonal events section collapsed
     seasonalCollapsed: localStorage.getItem('seasonalCollapsed') !== 'false',
 

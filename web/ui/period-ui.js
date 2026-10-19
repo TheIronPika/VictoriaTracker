@@ -18,6 +18,50 @@ function sameDay(a, b) {
         && a.getDate()     === b.getDate();
 }
 
+// ── Header pill: tap = show/hide predicted date, hold = Start/End ──────
+
+/** Brief bottom toast, same treatment the lucky draw uses. */
+function showToast(text) {
+    document.querySelectorAll('.toast-notification.period-toast').forEach(t => t.remove());
+    const toast = document.createElement('div');
+    toast.className   = 'toast-notification period-toast';
+    toast.textContent = text;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 5000);
+}
+
+let pillHoldTimer = null;
+let pillHoldFired = false;
+
+window.periodPillDown = () => {
+    pillHoldFired = false;
+    clearTimeout(pillHoldTimer);
+    pillHoldTimer = setTimeout(() => {
+        pillHoldFired = true;
+        pillHoldTimer = null;
+        navigator.vibrate?.(15);
+        window.openPeriodModal();
+    }, 500);
+};
+
+window.periodPillCancel = () => {
+    clearTimeout(pillHoldTimer);
+    pillHoldTimer = null;
+};
+
+window.periodPillTap = () => {
+    // The click that follows a completed hold must not also toggle the date.
+    if (pillHoldFired) { pillHoldFired = false; return; }
+    if (isPeriodActive()) { showToast('Hold the 🩸 pill to end your period'); return; }
+    const p = predictNextPeriod();
+    const label = p.confidence !== 'none' && p.predictedTs ? shortDate(p.predictedTs) : '';
+    if (!label) { showToast('Hold the 🩸 pill to start your period'); return; }
+    uiState.showPeriodDate = !uiState.showPeriodDate;
+    localStorage.setItem('periodPillDate', uiState.showPeriodDate ? '1' : '0');
+    showToast(uiState.showPeriodDate ? `Next period ~${label} · hold to start` : 'Date hidden · hold to start period');
+    window.render?.();
+};
+
 // ── Modal ─────────────────────────────────────────────────────────────
 
 window.openPeriodModal = () => {

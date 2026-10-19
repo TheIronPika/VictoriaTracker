@@ -92,7 +92,8 @@ export function render() {
 
     // Update period pill in header: "Day N" while active; otherwise the next
     // predicted start date (same predictNextPeriod() as the Period Tracking
-    // card), blank until there are two logged periods to measure a cycle from.
+    // card), blank until there are two logged periods to measure a cycle from
+    // or while she's tapped it hidden (uiState.showPeriodDate).
     const pill = document.getElementById('periodPill');
     if (pill) {
         if (isPeriodActive()) {
@@ -100,7 +101,8 @@ export function render() {
             pill.classList.remove('period-inactive', 'period-next');
         } else {
             const p = predictNextPeriod();
-            const next = p.confidence !== 'none' && p.predictedTs ? shortDate(p.predictedTs) : '';
+            const next = uiState.showPeriodDate && p.confidence !== 'none' && p.predictedTs
+                ? shortDate(p.predictedTs) : '';
             pill.textContent = next ? `🩸 ${next}` : '🩸';
             pill.classList.add('period-inactive');
             pill.classList.toggle('period-next', !!next);

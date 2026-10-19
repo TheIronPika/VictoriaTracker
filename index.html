@@ -796,6 +796,11 @@
             color: #72243E;
             transition: all 0.15s;
             flex-shrink: 0;
+            /* Long-press opens Start/End — keep the OS callout/selection out of it */
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+            touch-action: manipulation;
         }
         .period-pill:active { transform: scale(0.96); }
         .period-pill.period-inactive {
@@ -1496,7 +1501,13 @@
     <header>
         <div style="display:flex;align-items:center;justify-content:space-between;">
             <div class="greeting-line"><span id="daytimeGreeting">Good Morning</span>,<span class="beloved">Victoria</span></div>
-            <button id="periodPill" class="period-pill period-inactive" onclick="window.openPeriodModal()">🩸</button>
+            <button id="periodPill" class="period-pill period-inactive"
+                    onclick="window.periodPillTap()"
+                    onpointerdown="window.periodPillDown()"
+                    onpointerup="window.periodPillCancel()"
+                    onpointerleave="window.periodPillCancel()"
+                    onpointercancel="window.periodPillCancel()"
+                    oncontextmenu="return false">🩸</button>
         </div>
         <div class="date-strip" id="dateStrip"></div>
     </header>
