@@ -308,17 +308,24 @@ export async function executeWeeklyReset(io, now = new Date()) {
     // here because bestStreak is computed from it and the Streak $ panel shows
     // it, but if it ever disagrees with computeStreaksFromHistory(), history
     // wins. Don't reintroduce a payout that reads this field.
-    // A streak-reset token used this week (h.badStreakResetTs within the past
-    // 7 days) keeps badStreak at 0 even if she didn't hit goal — the flag is
-    // then cleared so next week ticks normally.
-    const tokenResetCutoff = nowTs - 7 * 86400000;
+    // A ☀️ Fresh Start spent this week (h.badStreakResetTs after the last
+    // snapshot) keeps badStreak at 0 even if she didn't hit goal. "This week"
+    // is measured from the last snapshot, not a 7-day window: resets land
+    // anywhere from Monday morning to Tuesday 1am, so two of them can be under
+    // 7 days apart and a window would exempt a second week.
+    //
+    // h.badStreakResetTs is NOT cleared here. It's a permanent watermark that
+    // computeStreaksFromHistory() needs on every read to keep the pre-token
+    // weeks out of the 🌧️ count; deleting it brought them all back after one
+    // reset (2026-11-16, Streching 🌧️ 29 the week after a Fresh Start).
+    const lastSnapshotTs = priorWeeks.reduce((m, w) => Math.max(m, w.timestamp || 0), 0);
     habits = habits.map(h => {
         if (isDormant(h) || h.excused || streakFrozenH(h)) return { ...h };
         const hist = (h.history || []).slice(0, 7);
         const cur  = weekTotal(hist);
         const tier = getTier(h, cur);
         const isGood = tier === 'goal' || tier === 'bonus';
-        const tokenResetThisWeek = !!h.badStreakResetTs && h.badStreakResetTs >= tokenResetCutoff;
+        const tokenResetThisWeek = !!h.badStreakResetTs && h.badStreakResetTs > lastSnapshotTs;
         let streak, badStreak;
         if (isCyclic(h)) {
             streak = isGood ? (h.streak || 0) + 1 : (h.streak || 0);
@@ -331,9 +338,7 @@ export async function executeWeeklyReset(io, now = new Date()) {
             badStreak = !isGood ? (h.badStreak || 0) + 1 : 0;
         }
         const best = Math.max(streak, h.bestStreak || 0);
-        const updated = { ...h, streak, badStreak, bestStreak: best };
-        if (updated.badStreakResetTs) delete updated.badStreakResetTs;
-        return updated;
+        return { ...h, streak, badStreak, bestStreak: best };
     });
 
     // ── Save history snapshot ────────────────────────────────────────────

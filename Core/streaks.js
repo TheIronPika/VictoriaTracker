@@ -62,10 +62,25 @@ export function computeStreaksFromHistory(weeklyHistory, habitId, opts = {}) {
     if (!weeklyHistory.length) return { streak: 0, badStreak: 0 };
 
     const sorted = sortedNewestFirst(weeklyHistory);
-    // opts.badStreakResetTs: if set, weeks ending before this timestamp don't
-    // count toward the bad-streak total. Lets the "🌧️ Reset" shop token clear
-    // an accumulated streak without rewriting history.
+    // opts.badStreakResetTs: when the ☀️ Fresh Start was spent. Clears the
+    // bad streak without rewriting history: weeks snapshotted before it don't
+    // count, and neither does the week she spent it IN (the first snapshot
+    // after it). That second part matches weeklyReset.js, which holds the
+    // stored badStreak at 0 for the token week — and it's what she expects
+    // when she spends it on Monday while last week's reset is still pending
+    // approval: that pending week is the one she was clearing.
+    //
+    // The stamp is permanent. weeklyReset.js used to delete it after one
+    // reset, which silently brought every pre-token week back (2026-11-16:
+    // Streching showed 🌧️ 29 a week after a Fresh Start).
     const badResetTs = opts.badStreakResetTs || 0;
+    let tokenWeekTs = Infinity;          // no snapshot since the token → nothing counts
+    if (badResetTs) {
+        for (const wk of sorted) {
+            if (wk.timestamp < badResetTs) break;
+            tokenWeekTs = wk.timestamp;  // ends on the OLDEST snapshot after the token
+        }
+    }
     let streak = 0, badStreak = 0;
 
     // Count consecutive good weeks from most recent.
@@ -79,7 +94,7 @@ export function computeStreaksFromHistory(weeklyHistory, habitId, opts = {}) {
 
     // Count consecutive bad weeks from most recent.
     for (const wk of sorted) {
-        if (badResetTs && wk.timestamp < badResetTs) break;
+        if (badResetTs && wk.timestamp <= tokenWeekTs) break;
         const h = (wk.habits || []).find(x => x.id === habitId);
         if (!h) break;
         if (isNeutralWeek(h)) continue;

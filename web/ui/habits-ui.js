@@ -364,7 +364,7 @@ window.toggleExcused = async (id) => {
 // Spend one streak reset token to zero a habit's bad streak (🌧️) without
 // requiring a goal week. Sets h.badStreak = 0 immediately, stamps
 // h.badStreakResetTs so future history scans + the upcoming Monday reset
-// honor the wipe.
+// honor the wipe. The stamp is permanent — see Core/streaks.js.
 
 window.resetBadStreak = async (id) => {
     const h = uiState.habits.find(x => x.id === id);
