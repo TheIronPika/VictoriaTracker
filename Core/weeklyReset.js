@@ -70,12 +70,16 @@ export async function resetAlreadyHandledThisWeek(io, now = new Date()) {
 export async function proposeWeeklyReset(io, now = new Date()) {
     const rs = (await io.readDoc(FIRESTORE_DOCS.RESET)) || {};
     if (rs.pendingReset) return false;
+    // Snooze state is kept, not zeroed: the app opens the prompt itself at
+    // Monday 4am (resetState.js), so by the time this late cron lands she
+    // may already have snoozed. executeWeeklyReset clears both fields, so
+    // anything here belongs to the current week.
     await io.writeDoc(FIRESTORE_DOCS.RESET, {
         lastWeeklyReset: rs.lastWeeklyReset || null,
         pendingReset:    true,
         pendingSince:    now.getTime(),
-        snoozeCount:     0,
-        snoozedUntil:    null,
+        snoozeCount:     rs.snoozeCount  || 0,
+        snoozedUntil:    rs.snoozedUntil || null,
     });
     return true;
 }

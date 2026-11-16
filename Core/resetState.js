@@ -85,22 +85,40 @@ export function effectiveDate(now = new Date()) {
     return d;
 }
 
+/** Local hour on Monday the approval prompt opens — what the propose cron was scheduled for. */
+export const PROMPT_HOUR = 4;
+
 /**
- * Whether the approval modal should be visible right now. Normally just
- * "propose already fired and she isn't snoozed" — but if the Monday 4am
- * propose never fires at all (e.g. the GitHub Action is down) she'd
- * otherwise have no in-app way to close out the week: effectiveDate()
- * would keep pinning her to last week with nothing prompting her to act.
- * So once the data is overdue by more than a day with no pending flag,
- * surface the modal anyway as a fallback so Approve is reachable.
+ * When the approval modal becomes visible, as epoch ms (0 = already), or
+ * null while no reset is waiting. Snoozes push it later.
+ *
+ * The app opens the prompt itself at Monday PROMPT_HOUR local; it doesn't
+ * wait for the GitHub propose cron. That cron is scheduled for 4am Central
+ * but fires 10am–2pm or later (2026-11 runs), and until 2026-11-16 the app
+ * only stepped in a full day late. So every Monday she sat pinned to Sunday
+ * (effectiveDate) with no prompt until the late propose, and if she missed
+ * the afternoon window the force cron closed the week at ~midnight Tuesday
+ * without her. An early in-app approval is safe: scripts/reset.js propose
+ * skips a week resetAlreadyHandledThisWeek() says is done, and force skips
+ * anything not pendingReset.
  */
-export function isResetPromptDue(now = new Date()) {
+export function resetPromptDueAt(now = new Date()) {
     const rs = state.resetState || {};
-    if (rs.snoozedUntil && Date.now() < rs.snoozedUntil) return false;
-    if (rs.pendingReset) return true;
-    if (!rs.lastWeeklyReset) return false;
-    const last = new Date(rs.lastWeeklyReset);
-    if (isNaN(last.getTime()) || last >= startOfWeek(now)) return false;
-    const daysSinceWeekStart = (now.getTime() - startOfWeek(now).getTime()) / 86400000;
-    return daysSinceWeekStart >= 1;
+    let at;
+    if (rs.pendingReset) {
+        at = 0;
+    } else {
+        if (!rs.lastWeeklyReset) return null;
+        const last = new Date(rs.lastWeeklyReset);
+        const weekStart = startOfWeek(now);
+        if (isNaN(last.getTime()) || last >= weekStart) return null;
+        at = weekStart.getTime() + PROMPT_HOUR * 3600000;
+    }
+    return Math.max(at, rs.snoozedUntil || 0);
+}
+
+/** Whether the approval modal should be visible right now. */
+export function isResetPromptDue(now = new Date()) {
+    const at = resetPromptDueAt(now);
+    return at !== null && now.getTime() >= at;
 }
